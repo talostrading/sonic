@@ -1,6 +1,10 @@
 package sonic
 
-import "github.com/talostrading/sonic/internal"
+import (
+	"io"
+
+	"github.com/talostrading/sonic/internal"
+)
 
 type IO struct {
 	poller    *internal.Poller
@@ -24,23 +28,23 @@ func NewIO(timeout int) (*IO, error) {
 }
 
 // Run runs the event processing loop
-func (io *IO) Run() error {
+func (ioc *IO) Run() error {
 	for {
-		if err := io.RunOne(); err != nil && err != internal.ErrTimeout {
+		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
 			return err
 		}
 	}
 }
 
 // TODO
-func (io *IO) RunPending() error {
+func (ioc *IO) RunPending() error {
 	return nil
 }
 
 // Poll runs the event processing loop to execute ready handlers
-func (io *IO) Poll() error {
+func (ioc *IO) Poll() error {
 	for {
-		if err := io.PollOne(); err != nil && err != internal.ErrTimeout {
+		if err := ioc.PollOne(); err != nil && err != internal.ErrTimeout {
 			return err
 		}
 	}
@@ -48,17 +52,35 @@ func (io *IO) Poll() error {
 
 // RunOne runs the event processing loop to execute at most one handler
 // note: this blocks the calling coroutine in case timeoutMs is positive
-func (io *IO) RunOne() error {
-	return io.poller.Poll(io.timeoutMs)
+func (ioc *IO) RunOne() error {
+	if err := ioc.poller.Poll(ioc.timeoutMs); err != nil {
+		if ioc.poller.Closed() {
+			return io.EOF
+		} else {
+			return err
+		}
+	}
+	return nil
 }
 
 // PollOne runs the event processing loop to execute one ready handler
 // note: this will not block the calling goroutine
-func (io *IO) PollOne() error {
-	return io.poller.Poll(0)
+func (ioc *IO) PollOne() error {
+	if err := ioc.poller.Poll(-1); err != nil {
+		if ioc.poller.Closed() {
+			return io.EOF
+		} else {
+			return err
+		}
+	}
+	return nil
 }
 
 // TODO requires some mechanism to wake up the process as the handler is not bound by an fd
-func (io *IO) Dispatch() error {
+func (ioc *IO) Dispatch() error {
 	return nil
+}
+
+func (ioc *IO) Close() error {
+	return ioc.poller.Close()
 }

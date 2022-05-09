@@ -1,28 +1,33 @@
 package main
 
 import (
+	"fmt"
+	"io"
 	"time"
 
 	"github.com/talostrading/sonic"
 )
 
 func main() {
-	io, err := sonic.NewIO(-1)
+	ioc, err := sonic.NewIO(-1)
 	if err != nil {
 		panic(err)
 	}
 
-	timer, err := sonic.NewTimer(io)
+	timer, err := sonic.NewTimer(ioc)
 	if err != nil {
 		panic(err)
 	}
 
 	timer.Arm(5*time.Second, func() {
-		// we must panic to close the process
-		panic("timer fired")
+		ioc.Close()
 	})
 
-	if err := io.Run(); err != nil {
+	fmt.Println("timer armed: ", time.Now())
+
+	if err := ioc.Run(); err != nil && err != io.EOF {
 		panic(err)
 	}
+
+	fmt.Println("timer fired: ", time.Now())
 }

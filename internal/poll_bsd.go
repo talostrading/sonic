@@ -3,6 +3,8 @@
 package internal
 
 import (
+	"io"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -25,7 +27,7 @@ type Poller struct {
 
 	pending int64
 
-	closed uint8
+	closed uint32
 }
 
 func NewPoller() (*Poller, error) {
@@ -51,6 +53,26 @@ func NewPoller() (*Poller, error) {
 	}
 
 	return p, nil
+}
+
+func (p *Poller) Pending() int64 {
+	return p.pending
+}
+
+func (p *Poller) Close() error {
+	if !atomic.CompareAndSwapUint32(&p.closed, 0, 1) {
+		return io.EOF
+	}
+
+	p.changelist = p.changelist[:0]
+	p.eventlist = p.eventlist[:0]
+	p.pending = 0
+
+	return syscall.Close(p.fd)
+}
+
+func (p *Poller) Closed() bool {
+	return atomic.LoadUint32(&p.closed) == 1
 }
 
 func (p *Poller) Poll(timeoutMs int) error {
