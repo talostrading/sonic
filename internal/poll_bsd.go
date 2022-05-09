@@ -4,6 +4,7 @@ package internal
 
 import (
 	"io"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -25,12 +26,33 @@ type Poller struct {
 
 	pd PollData
 
+	lck      sync.Mutex
+	handlers []func()
+
+	pipe *Pipe
+
+	// pending is the number of pending handlers in the poller needs to execute
 	pending int64
 
 	closed uint32
+
+	oneByte [1]byte
 }
 
 func NewPoller() (*Poller, error) {
+	pipe, err := NewPipe()
+	if err != nil {
+		return nil, err
+	}
+
+	if err := pipe.SetReadNonblock(); err != nil {
+		return nil, err
+	}
+
+	if err := pipe.SetWriteNonblock(); err != nil {
+		return nil, err
+	}
+
 	kq, err := syscall.Kqueue()
 	if err != nil {
 		return nil, err
@@ -39,18 +61,27 @@ func NewPoller() (*Poller, error) {
 	_, err = syscall.Kevent(kq, []syscall.Kevent_t{{
 		Ident:  uint64(kq),
 		Filter: syscall.EVFILT_USER,
-		Flags:  syscall.EV_ADD | syscall.EV_CLEAR,
-	}}, nil, nil) // listen to user events by default
+		Flags:  syscall.EV_ADD | syscall.EV_CLEAR, // TODO not sure about these flags
+	}}, nil, nil) // listen to user events by default (TODO i think that's how you listen to sig stuff)
 	if err != nil {
 		syscall.Close(kq)
 		return nil, err
 	}
 
 	p := &Poller{
+		pipe:       pipe,
 		fd:         kq,
 		changelist: make([]syscall.Kevent_t, 0, 8),
 		eventlist:  make([]syscall.Kevent_t, 128),
 	}
+
+	err = p.setRead(p.pipe.ReadFd(), syscall.EV_ADD, &p.pipe.pd)
+	if err != nil {
+		p.pipe.Close()
+		syscall.Close(kq)
+		return nil, err
+	}
+	p.pending-- // ignore the pipe read
 
 	return p, nil
 }
@@ -68,6 +99,8 @@ func (p *Poller) Close() error {
 	p.eventlist = p.eventlist[:0]
 	p.pending = 0
 
+	p.pipe.Close()
+
 	return syscall.Close(p.fd)
 }
 
@@ -75,9 +108,39 @@ func (p *Poller) Closed() bool {
 	return atomic.LoadUint32(&p.closed) == 1
 }
 
+func (p *Poller) Dispatch(handler func()) error {
+	p.lck.Lock()
+	p.handlers = append(p.handlers, handler)
+	p.lck.Unlock()
+
+	p.pending++
+
+	// notify the operating system that the event processing loop
+	// should run the provided handler
+	_, err := p.pipe.Write([]byte{0})
+	return err
+}
+
+func (p *Poller) dispatch() {
+	for {
+		_, err := p.pipe.Read(p.oneByte[:])
+		if err != nil {
+			break
+		}
+	}
+
+	p.lck.Lock()
+	for _, handler := range p.handlers {
+		handler()
+		p.pending--
+	}
+	p.handlers = p.handlers[:0]
+	p.lck.Unlock()
+}
+
 func (p *Poller) Poll(timeoutMs int) error {
 	// 0 polls
-	// -1 waits indefinitely
+	// -1 waits indefinitely // TODO standardize timeouts
 	var timeout *syscall.Timespec
 	if timeoutMs >= 0 {
 		ts := syscall.NsecToTimespec(int64(timeoutMs) * 1e6)
@@ -102,6 +165,11 @@ func (p *Poller) Poll(timeoutMs int) error {
 		flags := -PollFlags(event.Filter)
 		pd := (*PollData)(unsafe.Pointer(event.Udata))
 
+		if pd.Fd == p.pipe.ReadFd() {
+			p.dispatch()
+			continue
+		}
+
 		if flags&pd.Flags&ReadFlags == ReadFlags {
 			p.pending--
 			pd.Cbs[ReadEvent](nil)
@@ -117,11 +185,15 @@ func (p *Poller) Poll(timeoutMs int) error {
 }
 
 func (p *Poller) SetRead(fd int, pd *PollData) error {
+	return p.setRead(fd, syscall.EV_ADD|syscall.EV_ONESHOT, pd)
+}
+
+func (p *Poller) setRead(fd int, flags uint16, pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&ReadFlags != ReadFlags {
 		p.pending++
 		*pdflags |= ReadFlags
-		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -ReadFlags, pd, 0))
+		return p.set(fd, createEvent(flags, -ReadFlags, pd, 0))
 	}
 	return nil
 }

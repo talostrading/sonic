@@ -17,10 +17,6 @@ type IO struct {
 	timeoutMs int
 }
 
-type pollOpts struct {
-	Timeout int
-}
-
 func NewIO(timeout int) (*IO, error) {
 	poller, err := internal.NewPoller()
 	if err != nil {
@@ -32,6 +28,14 @@ func NewIO(timeout int) (*IO, error) {
 		timeoutMs:      timeout,
 		inflightTimers: make(map[*Timer]struct{}),
 	}, nil
+}
+
+func MustIO(timeout int) *IO {
+	ioc, err := NewIO(timeout)
+	if err != nil {
+		panic(err)
+	}
+	return ioc
 }
 
 // Run runs the event processing loop
@@ -92,9 +96,10 @@ func (ioc *IO) PollOne() error {
 	return nil
 }
 
-// TODO requires some mechanism to wake up the process as the handler is not bound by an fd
-func (ioc *IO) Dispatch() error {
-	return nil
+// Dispatch dispatches the provided handler to be run by the event processing loop
+// in its own thread. This call is thread safe.
+func (ioc *IO) Dispatch(handler func()) error {
+	return ioc.poller.Dispatch(handler)
 }
 
 func (ioc *IO) Close() error {

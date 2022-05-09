@@ -15,6 +15,9 @@ const (
 type Handler func(error)
 
 type PollData struct {
+	// Fd is the file descriptor associated with an instance of PollData
+	// Fd is the unique identifier of PollData
+	Fd    int
 	Flags PollFlags
 	Cbs   [MaxEvent]Handler
 }

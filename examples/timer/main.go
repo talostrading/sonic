@@ -9,10 +9,7 @@ import (
 )
 
 func main() {
-	ioc, err := sonic.NewIO(-1)
-	if err != nil {
-		panic(err)
-	}
+	ioc := sonic.MustIO(-1)
 
 	timer, err := sonic.NewTimer(ioc)
 	if err != nil {
