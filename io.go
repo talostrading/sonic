@@ -43,18 +43,18 @@ func (ioc *IO) Run() error {
 	}
 }
 
-// TODO
+// RunPending runs the event processing loop to execute all the pending handlers
 func (ioc *IO) RunPending() error {
-	return nil
-}
-
-// Poll runs the event processing loop to execute ready handlers
-func (ioc *IO) Poll() error {
 	for {
-		if err := ioc.PollOne(); err != nil && err != internal.ErrTimeout {
+		if ioc.poller.Pending() <= 0 {
+			break
+		}
+
+		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
 			return err
 		}
 	}
+	return nil
 }
 
 // RunOne runs the event processing loop to execute at most one handler
@@ -68,6 +68,15 @@ func (ioc *IO) RunOne() error {
 		}
 	}
 	return nil
+}
+
+// Poll runs the event processing loop to execute ready handlers
+func (ioc *IO) Poll() error {
+	for {
+		if err := ioc.PollOne(); err != nil && err != internal.ErrTimeout {
+			return err
+		}
+	}
 }
 
 // PollOne runs the event processing loop to execute one ready handler

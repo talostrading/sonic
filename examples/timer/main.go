@@ -19,15 +19,12 @@ func main() {
 		panic(err)
 	}
 
+	fmt.Println("timer armed: ", time.Now())
 	timer.Arm(5*time.Second, func() {
-		ioc.Close()
+		fmt.Println("timer fired: ", time.Now())
 	})
 
-	fmt.Println("timer armed: ", time.Now())
-
-	if err := ioc.Run(); err != nil && err != io.EOF {
+	if err := ioc.RunPending(); err != nil && err != io.EOF {
 		panic(err)
 	}
-
-	fmt.Println("timer fired: ", time.Now())
 }
