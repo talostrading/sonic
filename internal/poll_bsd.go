@@ -5,6 +5,7 @@ package internal
 import (
 	"errors"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -92,4 +93,68 @@ func (p *Poller) Poll(timeoutMs int) error {
 	}
 
 	return nil
+}
+
+func (p *Poller) SetRead(fd int, pd *PollData) error {
+	pdflags := &pd.Flags
+	if *pdflags&ReadFlags != ReadFlags {
+		p.pending++
+		*pdflags |= ReadFlags
+		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, ReadFlags, pd))
+	}
+	return nil
+}
+
+func (p *Poller) SetWrite(fd int, pd *PollData) error {
+	pdflags := &pd.Flags
+	if *pdflags&WriteFlags != WriteFlags {
+		p.pending++
+		*pdflags |= WriteFlags
+		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, WriteFlags, pd))
+	}
+}
+
+func (p *Poller) DelRead(fd int, pd *PollData) error {
+	pdflags := &pd.Flags
+	if *pdflags&ReadFlags == ReadFlags {
+		p.pending--
+		*pdflags ^= ReadFlags
+		return p.set(createEvent(syscall.EV_DELETE, ReadFlags, pd))
+	}
+}
+
+func (p *Poller) DelWrite(fd int, pd *PollData) error {
+	pdflags := &pd.Flags
+	if *pdflags&WriteFlags == WriteFlags {
+		p.pending--
+		*pdflags ^= WriteFlags
+		return p.set(createEvent(syscall.EV_DELETE, WriteFlags, pd))
+	}
+}
+
+func (p *Poller) Del(fd int, pd *PollData) error {
+	err := p.DelRead(fd, pd)
+	if err == nil {
+		err = p.DelWrite(fd, pd)
+	}
+
+	return err
+}
+
+func (p *PollData) set(fd int, ev syscall.Kevent_t) {
+	ev.Ident = uint64(fd)
+	p.changelist = append(p.changelist, ev)
+}
+
+func createEvent(flags uint16, filter PollFlags, pd *PollData, tickerTimeout time.Duration) syscall.Kevent_t {
+	ev := syscall.Kevent_t{
+		Flags:  flags,
+		Filter: int16(-filter),
+	}
+
+	if pd != nil {
+		ev.Udata = (*byte)(unsafe.Pointer(pd))
+	}
+
+	return ev
 }
