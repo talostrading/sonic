@@ -7,27 +7,47 @@ import (
 )
 
 type Timer struct {
-	io *IO
-	it *internal.Timer
-	cb func()
+	ioc *IO
+	it  *internal.Timer
 }
 
-func NewTimer(io *IO) (*Timer, error) {
-	it, err := internal.NewTimer(io.poller)
+func NewTimer(ioc *IO) (*Timer, error) {
+	it, err := internal.NewTimer(ioc.poller)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Timer{
-		io: io,
-		it: it,
+		ioc: ioc,
+		it:  it,
 	}, nil
 }
 
 func (t *Timer) Arm(dur time.Duration, onFire func()) error {
-	return t.it.Arm(dur, onFire)
+	err := t.it.Arm(dur, func() {
+		delete(t.ioc.inflightTimers, t)
+		onFire()
+	})
+
+	if err == nil {
+		t.ioc.inflightTimers[t] = struct{}{}
+	}
+
+	return err
 }
 
 func (t *Timer) Disarm() error {
-	return t.it.Disarm()
+	err := t.it.Disarm()
+	if err == nil {
+		delete(t.ioc.inflightTimers, t)
+	}
+	return err
+}
+
+func (t *Timer) Close() error {
+	err := t.it.Close()
+	if err == nil {
+		delete(t.ioc.inflightTimers, t)
+	}
+	return err
 }

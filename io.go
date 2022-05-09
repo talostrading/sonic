@@ -7,7 +7,13 @@ import (
 )
 
 type IO struct {
-	poller    *internal.Poller
+	poller *internal.Poller
+
+	// inflightTimers prevents the PollData owned by the Timer to
+	// be garbage collected while an async operation is in-flight,
+	// in case the owning PollData goes out of scope
+	inflightTimers map[*Timer]struct{}
+
 	timeoutMs int
 }
 
@@ -22,8 +28,9 @@ func NewIO(timeout int) (*IO, error) {
 	}
 
 	return &IO{
-		poller:    poller,
-		timeoutMs: timeout,
+		poller:         poller,
+		timeoutMs:      timeout,
+		inflightTimers: make(map[*Timer]struct{}),
 	}, nil
 }
 
