@@ -26,7 +26,7 @@ func NewIO(timeout int) (*IO, error) {
 // Run runs the event processing loop
 func (io *IO) Run() error {
 	for {
-		if err := io.RunOne(); err != nil {
+		if err := io.RunOne(); err != nil && err != internal.ErrTimeout {
 			return err
 		}
 	}
@@ -40,7 +40,7 @@ func (io *IO) RunPending() error {
 // Poll runs the event processing loop to execute ready handlers
 func (io *IO) Poll() error {
 	for {
-		if err := io.PollOne(); err != nil {
+		if err := io.PollOne(); err != nil && err != internal.ErrTimeout {
 			return err
 		}
 	}

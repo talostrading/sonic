@@ -3,13 +3,10 @@
 package internal
 
 import (
-	"errors"
 	"syscall"
 	"time"
 	"unsafe"
 )
-
-var ErrTimeout = errors.New("operation timed out")
 
 type PollFlags int16
 
@@ -19,7 +16,7 @@ const (
 )
 
 type Poller struct {
-	kq int
+	fd int
 
 	changelist []syscall.Kevent_t
 	eventlist  []syscall.Kevent_t
@@ -48,7 +45,7 @@ func NewPoller() (*Poller, error) {
 	}
 
 	p := &Poller{
-		kq:         kq,
+		fd:         kq,
 		changelist: make([]syscall.Kevent_t, 0, 8),
 		eventlist:  make([]syscall.Kevent_t, 128),
 	}
@@ -57,8 +54,10 @@ func NewPoller() (*Poller, error) {
 }
 
 func (p *Poller) Poll(timeoutMs int) error {
+	// 0 polls
+	// -1 waits indefinitely
 	var timeout *syscall.Timespec
-	if timeoutMs >= 0 { // 0 does a poll
+	if timeoutMs >= 0 {
 		ts := syscall.NsecToTimespec(int64(timeoutMs) * 1e6)
 		timeout = &ts
 	}
@@ -66,7 +65,7 @@ func (p *Poller) Poll(timeoutMs int) error {
 	changelist := p.changelist
 	p.changelist = p.changelist[:0]
 
-	n, err := syscall.Kevent(p.kq, changelist, p.eventlist, timeout)
+	n, err := syscall.Kevent(p.fd, changelist, p.eventlist, timeout)
 	if err != nil {
 		return err
 	}
@@ -100,7 +99,7 @@ func (p *Poller) SetRead(fd int, pd *PollData) error {
 	if *pdflags&ReadFlags != ReadFlags {
 		p.pending++
 		*pdflags |= ReadFlags
-		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, ReadFlags, pd))
+		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -ReadFlags, pd, 0))
 	}
 	return nil
 }
@@ -110,8 +109,9 @@ func (p *Poller) SetWrite(fd int, pd *PollData) error {
 	if *pdflags&WriteFlags != WriteFlags {
 		p.pending++
 		*pdflags |= WriteFlags
-		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, WriteFlags, pd))
+		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -WriteFlags, pd, 0))
 	}
+	return nil
 }
 
 func (p *Poller) DelRead(fd int, pd *PollData) error {
@@ -119,8 +119,9 @@ func (p *Poller) DelRead(fd int, pd *PollData) error {
 	if *pdflags&ReadFlags == ReadFlags {
 		p.pending--
 		*pdflags ^= ReadFlags
-		return p.set(createEvent(syscall.EV_DELETE, ReadFlags, pd))
+		return p.set(fd, createEvent(syscall.EV_DELETE, -ReadFlags, pd, 0))
 	}
+	return nil
 }
 
 func (p *Poller) DelWrite(fd int, pd *PollData) error {
@@ -128,32 +129,38 @@ func (p *Poller) DelWrite(fd int, pd *PollData) error {
 	if *pdflags&WriteFlags == WriteFlags {
 		p.pending--
 		*pdflags ^= WriteFlags
-		return p.set(createEvent(syscall.EV_DELETE, WriteFlags, pd))
+		return p.set(fd, createEvent(syscall.EV_DELETE, -WriteFlags, pd, 0))
 	}
+	return nil
 }
 
 func (p *Poller) Del(fd int, pd *PollData) error {
 	err := p.DelRead(fd, pd)
 	if err == nil {
-		err = p.DelWrite(fd, pd)
+		return p.DelWrite(fd, pd)
 	}
-
-	return err
+	return nil
 }
 
-func (p *PollData) set(fd int, ev syscall.Kevent_t) {
+func (p *Poller) set(fd int, ev syscall.Kevent_t) error {
 	ev.Ident = uint64(fd)
 	p.changelist = append(p.changelist, ev)
+	return nil
 }
 
-func createEvent(flags uint16, filter PollFlags, pd *PollData, tickerTimeout time.Duration) syscall.Kevent_t {
+func createEvent(flags uint16, filter PollFlags, pd *PollData, dur time.Duration) syscall.Kevent_t {
 	ev := syscall.Kevent_t{
 		Flags:  flags,
-		Filter: int16(-filter),
+		Filter: int16(filter),
+	}
+
+	if dur != 0 && (filter&syscall.EVFILT_TIMER == syscall.EVFILT_TIMER) {
+		ev.Fflags = syscall.NOTE_NSECONDS
+		ev.Data = dur.Nanoseconds()
 	}
 
 	if pd != nil {
-		ev.Udata = (*byte)(unsafe.Pointer(pd))
+		ev.Udata = (*byte)(unsafe.Pointer(pd)) // this is not touched by the kernel
 	}
 
 	return ev
