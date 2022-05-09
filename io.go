@@ -96,8 +96,10 @@ func (ioc *IO) PollOne() error {
 	return nil
 }
 
-// Dispatch dispatches the provided handler to be run by the event processing loop
-// in its own thread. This call is thread safe.
+// Dispatch schedules the provided handler to be run immediately by the event
+// processing loop in its own thread. This call is thread safe.
+// in its own thread.
+// It is safe to call Dispatch concurrently.
 func (ioc *IO) Dispatch(handler func()) error {
 	return ioc.poller.Dispatch(handler)
 }

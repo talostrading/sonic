@@ -17,10 +17,12 @@ type Timer struct {
 }
 
 func NewTimer(poller *Poller) (*Timer, error) {
-	return &Timer{
+	t := &Timer{
 		fd:     rand.Int(), // TODO figure out something better
 		poller: poller,
-	}, nil
+	}
+	t.pd.Fd = t.fd
+	return t, nil
 }
 
 func (t *Timer) Arm(dur time.Duration, onFire func()) error {
