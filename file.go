@@ -63,14 +63,26 @@ func (f *file) Write(b []byte) (int, error) {
 }
 
 func (f *file) AsyncRead(b []byte, cb AsyncCallback) {
-	f.asyncRead(b, 0, false, cb)
+	f.asyncRead(b, false, cb)
 }
 
 func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
-	f.asyncRead(b, 0, true, cb)
+	f.asyncRead(b, true, cb)
 }
 
-func (f *file) asyncRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
+	if f.readDispatch < MaxReadDispatch {
+		f.asyncReadNow(b, 0, readAll, func(err error, n int) {
+			f.readDispatch++
+			cb(err, n)
+			f.readDispatch--
+		})
+	} else {
+		f.scheduleRead(b, 0, readAll, cb)
+	}
+}
+
+func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
 	n, err := f.Read(b[readBytes:])
 	readBytes += n
 
@@ -109,7 +121,7 @@ func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCal
 		if err != nil {
 			cb(err, 0)
 		} else {
-			f.asyncRead(b, readBytes, readAll, cb)
+			f.asyncReadNow(b, readBytes, readAll, cb)
 		}
 	}
 }
@@ -119,14 +131,26 @@ func (f *file) setRead() error {
 }
 
 func (f *file) AsyncWrite(b []byte, cb AsyncCallback) {
-	f.asyncWrite(b, 0, false, cb)
+	f.asyncWrite(b, false, cb)
 }
 
 func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
-	f.asyncWrite(b, 0, true, cb)
+	f.asyncWrite(b, true, cb)
 }
 
-func (f *file) asyncWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
+	if f.writeDispatch < MaxWriteDispatch {
+		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
+			f.writeDispatch++
+			cb(err, n)
+			f.writeDispatch--
+		})
+	} else {
+		f.scheduleWrite(b, 0, writeAll, cb)
+	}
+}
+
+func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
 	n, err := f.Write(b[writtenBytes:])
 	writtenBytes += n
 
@@ -165,7 +189,7 @@ func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb Asy
 		if err != nil {
 			cb(err, 0)
 		} else {
-			f.asyncWrite(b, writtenBytes, writeAll, cb)
+			f.asyncWriteNow(b, writtenBytes, writeAll, cb)
 		}
 	}
 }

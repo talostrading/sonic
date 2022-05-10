@@ -26,8 +26,8 @@ type File interface {
 }
 
 const (
-	maxReadDispatch  int = 512
-	maxWriteDispatch int = 512
+	MaxReadDispatch  int = 512
+	MaxWriteDispatch int = 512
 )
 
 var (
