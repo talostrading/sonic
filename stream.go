@@ -56,7 +56,7 @@ func connectTimeout(network, addr string, timeout time.Duration) (int, net.Addr,
 			return -1, nil, nil, err
 		}
 
-		if err := setSockOpt(fd); err != nil {
+		if err := setDefaultSockOpt(fd); err != nil {
 			return -1, nil, nil, err
 		}
 
@@ -162,12 +162,17 @@ func getTCPSockAddr(addr *net.TCPAddr) syscall.Sockaddr {
 	}
 }
 
-func setSockOpt(fd int) error {
+func setDefaultSockOpt(fd int) error {
 	err := syscall.SetNonblock(fd, true)
 	if err != nil {
 		err = os.NewSyscallError("set_nonblock", err)
 	}
-	// TODO probably no delay as well but after you write socket class
+
+	err = syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, 1)
+	if err != nil {
+		err = os.NewSyscallError("tcp_no_delay", err)
+	}
+
 	return err
 }
 
