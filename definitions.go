@@ -1,6 +1,10 @@
 package sonic
 
-import "errors"
+import (
+	"errors"
+	"net"
+	"time"
+)
 
 type AsyncCallback func(error, int)
 
@@ -26,6 +30,19 @@ type File interface {
 	Cancel()
 
 	Close() error
+}
+
+// Stream is a stateful connection
+// Stream tries to match the semantics of net.Conn as much as possible
+type Stream interface {
+	File
+
+	LocalAddr() net.Addr
+	RemoteAddr() net.Addr
+
+	SetDeadline(t time.Time) error
+	SetReadDeadline(t time.Time) error
+	SetWriteDeadline(t time.Time) error
 }
 
 const (
