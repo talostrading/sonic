@@ -22,6 +22,9 @@ type File interface {
 
 	Seek(offset int64, whence SeekWhence) error
 
+	// Cancel cancells all async operations on the file
+	Cancel()
+
 	Close() error
 }
 
@@ -32,6 +35,7 @@ const (
 
 var (
 	ErrWouldBlock = errors.New("operation would block")
+	ErrCancelled  = errors.New("operation cancelled")
 )
 
 type SeekWhence int

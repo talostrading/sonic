@@ -216,3 +216,28 @@ func (f *file) Seek(offset int64, whence SeekWhence) error {
 	_, err := syscall.Seek(f.fd, offset, int(whence))
 	return err
 }
+
+func (f *file) Cancel() {
+	f.cancelReads()
+	f.cancelWrites()
+}
+
+func (f *file) cancelReads() {
+	if f.pd.Flags&internal.ReadFlags == internal.ReadFlags {
+		err := f.ioc.poller.DelRead(f.fd, &f.pd)
+		if err == nil {
+			err = ErrCancelled
+		}
+		f.pd.Cbs[internal.ReadEvent](err)
+	}
+}
+
+func (f *file) cancelWrites() {
+	if f.pd.Flags&internal.WriteFlags == internal.WriteFlags {
+		err := f.ioc.poller.DelWrite(f.fd, &f.pd)
+		if err == nil {
+			err = ErrCancelled
+		}
+		f.pd.Cbs[internal.WriteEvent](err)
+	}
+}
