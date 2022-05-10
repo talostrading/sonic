@@ -16,7 +16,7 @@ func main() {
 	}
 	defer file.Close()
 
-	msg := []byte("hello, world!")
+	msg := []byte("hello, sonic!")
 	n, err := file.Write(msg)
 	if err != nil {
 		panic(err)
