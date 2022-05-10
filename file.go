@@ -1,7 +1,6 @@
 package sonic
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"sync/atomic"
@@ -64,8 +63,16 @@ func (f *file) Write(b []byte) (int, error) {
 }
 
 func (f *file) AsyncRead(b []byte, cb AsyncCallback) {
+	f.asyncRead(b, false, cb)
+}
+
+func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
+	f.asyncRead(b, true, cb)
+}
+
+func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
 	n, err := f.Read(b)
-	if err == nil && n == len(b) {
+	if err == nil && !(readAll && n != len(b)) {
 		cb(nil, n)
 		return
 	}
@@ -75,16 +82,16 @@ func (f *file) AsyncRead(b []byte, cb AsyncCallback) {
 		return
 	}
 
-	f.scheduleRead(b, cb)
+	f.scheduleRead(b, readAll, cb)
 }
 
-func (f *file) scheduleRead(b []byte, cb AsyncCallback) {
+func (f *file) scheduleRead(b []byte, readAll bool, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
-	handler := f.getReadHandler(b, cb)
+	handler := f.getReadHandler(b, readAll, cb)
 	f.pd.Set(internal.ReadEvent, handler)
 
 	if err := f.setRead(); err != nil {
@@ -94,14 +101,13 @@ func (f *file) scheduleRead(b []byte, cb AsyncCallback) {
 	}
 }
 
-func (f *file) getReadHandler(b []byte, cb AsyncCallback) internal.Handler {
+func (f *file) getReadHandler(b []byte, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		delete(f.ioc.inflightReads, &f.pd)
 		if err != nil {
 			cb(err, 0)
 		} else {
-			fmt.Println("handler triggered")
-			f.AsyncRead(b, cb)
+			f.asyncRead(b, readAll, cb)
 		}
 	}
 }
@@ -111,8 +117,16 @@ func (f *file) setRead() error {
 }
 
 func (f *file) AsyncWrite(b []byte, cb AsyncCallback) {
+	f.asyncWrite(b, false, cb)
+}
+
+func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
+	f.asyncWrite(b, true, cb)
+}
+
+func (f *file) asyncWrite(b []byte, readAll bool, cb AsyncCallback) {
 	n, err := f.Write(b)
-	if err == nil && n == len(b) {
+	if err == nil && !(readAll && n != len(b)) {
 		cb(nil, n)
 		return
 	}
@@ -121,16 +135,16 @@ func (f *file) AsyncWrite(b []byte, cb AsyncCallback) {
 		cb(err, 0)
 	}
 
-	f.scheduleWrite(b, cb)
+	f.scheduleWrite(b, readAll, cb)
 }
 
-func (f *file) scheduleWrite(b []byte, cb AsyncCallback) {
+func (f *file) scheduleWrite(b []byte, readAll bool, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
-	handler := f.getWriteHandler(b, cb)
+	handler := f.getWriteHandler(b, readAll, cb)
 	f.pd.Set(internal.WriteEvent, handler)
 
 	if err := f.setWrite(); err != nil {
@@ -140,14 +154,14 @@ func (f *file) scheduleWrite(b []byte, cb AsyncCallback) {
 	}
 }
 
-func (f *file) getWriteHandler(b []byte, cb AsyncCallback) internal.Handler {
+func (f *file) getWriteHandler(b []byte, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		delete(f.ioc.inflightWrites, &f.pd)
 
 		if err != nil {
 			cb(err, 0)
 		} else {
-			f.AsyncWrite(b, cb)
+			f.asyncWrite(b, readAll, cb)
 		}
 	}
 }

@@ -16,16 +16,6 @@ func main() {
 	}
 	defer file.Close()
 
-	b := make([]byte, 10)
-	file.AsyncRead(b, func(err error, n int) {
-		if err != nil {
-			panic(err)
-		} else {
-			fmt.Println("read", n, "bytes")
-			fmt.Println(b)
-		}
-	})
-
 	file.AsyncWrite([]byte("hello, sonic!"), func(err error, n int) {
 		if err != nil {
 			panic(err)
@@ -36,8 +26,8 @@ func main() {
 			panic(err)
 		}
 
-		b := make([]byte, n)
-		file.AsyncRead(b, func(err error, n int) {
+		b := make([]byte, n+5)
+		file.AsyncReadAll(b, func(err error, n int) {
 			fmt.Println("read", n, "bytes:", string(b))
 		})
 	})
