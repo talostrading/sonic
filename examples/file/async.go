@@ -26,11 +26,11 @@ func main() {
 			panic(err)
 		}
 
-		b := make([]byte, n+5)
-		file.AsyncReadAll(b, func(err error, n int) {
+		b := make([]byte, n)
+		file.AsyncRead(b, func(err error, n int) {
 			fmt.Println("read", n, "bytes:", string(b))
 		})
 	})
 
-	ioc.Run()
+	ioc.RunPending()
 }
