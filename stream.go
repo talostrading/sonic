@@ -11,7 +11,6 @@ var _ Stream = &stream{}
 
 type stream struct {
 	*file
-
 	sock *internal.Socket
 }
 
