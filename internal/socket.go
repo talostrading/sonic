@@ -110,6 +110,8 @@ func (s *Socket) Accept() (*Socket, error) {
 	return ns, nil
 }
 
+//func (s *Socket) AsyncAccept()
+
 func (s *Socket) listenUnix(network, addr string) error {
 	panic("cannot listen on unix sockets atm")
 }

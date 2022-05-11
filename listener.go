@@ -9,7 +9,8 @@ type listener struct {
 	sock *internal.Socket
 }
 
-func Listen(ioc *IO, network, address string) (Listener, error) {
+func Listen(ioc *IO, network, address string, opts ...Option) (Listener, error) {
+	// TODO non blocking listen?
 	sock, err := internal.NewSocket()
 	if err != nil {
 		return nil, err
@@ -41,7 +42,7 @@ func (l *listener) Accept() (Conn, error) {
 	return c, nil
 }
 
-func (l *listener) AsyncAccept(AcceptCallback) {
+func (l *listener) AsyncAccept(cb AcceptCallback) {
 
 }
 
