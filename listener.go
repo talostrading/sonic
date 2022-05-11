@@ -116,7 +116,11 @@ func (l *listener) accept() (Conn, error) {
 
 	if err := ns.SetNonblock(true); err != nil {
 		syscall.Close(nfd)
-		return nil, os.NewSyscallError("set_nonblock", err)
+		return nil, err
+	}
+	if err := ns.SetNoDelay(true); err != nil {
+		syscall.Close(nfd)
+		return nil, err
 	}
 
 	c := &conn{

@@ -166,6 +166,18 @@ func (s *Socket) SetNonblock(v bool) error {
 	return nil
 }
 
+func (s *Socket) SetNoDelay(v bool) error {
+	iv := 0
+	if v {
+		iv = 1
+	}
+
+	if err := syscall.SetsockoptInt(s.Fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, iv); err != nil {
+		return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
+	}
+	return nil
+}
+
 func createSocket(resolvedAddr net.Addr) (int, error) {
 	var (
 		domain int
