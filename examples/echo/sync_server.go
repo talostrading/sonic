@@ -18,13 +18,10 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("this is printed only after accepting something, as we block on accept")
 
-	conn.AsyncWrite([]byte("hello, sonic!"), func(err error, n int) {
-		if err != nil {
-			panic(err)
-		}
-		fmt.Println("wrote", n, "bytes")
-	})
-
-	ioc.Run()
+	_, err = conn.Write([]byte("hello, sonic!"))
+	if err != nil {
+		panic(err)
+	}
 }

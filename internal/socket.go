@@ -73,7 +73,7 @@ func (s *Socket) listenTCP(network, addr string) error {
 		return os.NewSyscallError("setsockopt", err)
 	}
 
-	sockAddr := toSockaddr(localAddr)
+	sockAddr := ToSockaddr(localAddr)
 	if err := syscall.Bind(fd, sockAddr); err != nil {
 		syscall.Close(fd)
 		return os.NewSyscallError("bind", err)
@@ -87,30 +87,8 @@ func (s *Socket) listenTCP(network, addr string) error {
 	s.Fd = fd
 	s.LocalAddr = localAddr
 
-	return err
+	return nil
 }
-
-func (s *Socket) Accept() (*Socket, error) {
-	nfd, remoteAddr, err := syscall.Accept(s.Fd)
-	if err != nil {
-		return nil, os.NewSyscallError("accept", err)
-	}
-
-	ns := &Socket{
-		Fd:         nfd,
-		LocalAddr:  s.LocalAddr,
-		RemoteAddr: fromSockaddr(remoteAddr),
-	}
-
-	if err := syscall.SetNonblock(nfd, true); err != nil {
-		syscall.Close(nfd)
-		return nil, os.NewSyscallError("set_nonblock", err)
-	}
-
-	return ns, nil
-}
-
-//func (s *Socket) AsyncAccept()
 
 func (s *Socket) listenUnix(network, addr string) error {
 	panic("cannot listen on unix sockets atm")
@@ -131,7 +109,7 @@ func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
 		return err
 	}
 
-	err = syscall.Connect(fd, toSockaddr(remoteAddr))
+	err = syscall.Connect(fd, ToSockaddr(remoteAddr))
 	if err != nil {
 		// this can happen if the socket is nonblocking, so we fix it with a select
 		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
@@ -164,7 +142,7 @@ func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
 
 	sockAddr, err := syscall.Getsockname(fd)
 
-	s.LocalAddr = fromSockaddr(sockAddr)
+	s.LocalAddr = FromSockaddr(sockAddr)
 	s.RemoteAddr = remoteAddr
 	s.Fd = fd
 
@@ -178,6 +156,13 @@ func (s *Socket) connectUDP(network, addr string, timeout time.Duration) error {
 
 func (s *Socket) connectUnix(network, addr string, timeout time.Duration) error {
 	// TODO
+	return nil
+}
+
+func (s *Socket) SetNonblock(v bool) error {
+	if err := syscall.SetNonblock(s.Fd, v); err != nil {
+		return os.NewSyscallError(fmt.Sprintf("set_nonblock(%v)", v), err)
+	}
 	return nil
 }
 
@@ -213,15 +198,13 @@ func createSocket(resolvedAddr net.Addr) (int, error) {
 }
 
 func setDefaultOpts(fd int) error {
-	err := syscall.SetNonblock(fd, true)
-	if err != nil {
-		err = os.NewSyscallError("set_nonblock", err)
+	if err := syscall.SetNonblock(fd, true); err != nil {
+		return os.NewSyscallError("set_nonblock(true)", err)
 	}
 
-	err = syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, 1)
-	if err != nil {
-		err = os.NewSyscallError("tcp_no_delay", err)
+	if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, 1); err != nil {
+		return os.NewSyscallError("tcp_no_delay", err)
 	}
 
-	return err
+	return nil
 }

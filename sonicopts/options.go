@@ -1,4 +1,4 @@
-package sonic
+package sonicopts
 
 type OptionType uint8
 

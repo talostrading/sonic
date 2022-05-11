@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-func toSockaddr(sockAddr net.Addr) syscall.Sockaddr {
+func ToSockaddr(sockAddr net.Addr) syscall.Sockaddr {
 	switch addr := sockAddr.(type) {
 	case *net.TCPAddr:
 		return &syscall.SockaddrInet4{
@@ -28,7 +28,7 @@ func toSockaddr(sockAddr net.Addr) syscall.Sockaddr {
 	}
 }
 
-func fromSockaddr(sockAddr syscall.Sockaddr) net.Addr {
+func FromSockaddr(sockAddr syscall.Sockaddr) net.Addr {
 	switch addr := sockAddr.(type) {
 	case *syscall.SockaddrInet4:
 		return &net.TCPAddr{
