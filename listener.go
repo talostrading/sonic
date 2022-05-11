@@ -11,10 +11,11 @@ import (
 var _ Listener = &listener{}
 
 type listener struct {
-	ioc  *IO
-	sock *internal.Socket
-	pd   internal.PollData
-	fd   int
+	ioc            *IO
+	sock           *internal.Socket
+	pd             internal.PollData
+	fd             int
+	acceptDispatch int
 }
 
 // Listen creates a Listener that listens for new connections on the local address.
@@ -60,11 +61,17 @@ func (l *listener) Accept() (Conn, error) {
 func (l *listener) AsyncAccept(cb AcceptCallback) {
 	// we try to accept synchronously first
 	// if that fails, we schedule an async accept
-	conn, err := l.accept()
-	if err != nil && (err == ErrWouldBlock) {
+	if l.acceptDispatch >= MaxAcceptDispatch {
 		l.asyncAccept(cb)
 	} else {
-		cb(err, conn)
+		conn, err := l.accept()
+		if err != nil && (err == ErrWouldBlock) {
+			l.asyncAccept(cb)
+		} else {
+			l.acceptDispatch++
+			cb(err, conn)
+			l.acceptDispatch--
+		}
 	}
 }
 
@@ -74,13 +81,13 @@ func (l *listener) asyncAccept(cb AcceptCallback) {
 	if err := l.ioc.poller.SetRead(l.fd, &l.pd); err != nil {
 		cb(err, nil)
 	} else {
-		l.ioc.inflightReads[&l.pd] = struct{}{}
+		l.ioc.pendingReads[&l.pd] = struct{}{}
 	}
 }
 
 func (l *listener) handleAsyncAccept(cb AcceptCallback) internal.Handler {
 	return func(err error) {
-		delete(l.ioc.inflightReads, &l.pd)
+		delete(l.ioc.pendingReads, &l.pd)
 
 		if err != nil {
 			cb(err, nil)

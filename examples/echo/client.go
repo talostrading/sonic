@@ -22,5 +22,5 @@ func main() {
 		fmt.Println("read", n, "bytes:", string(b))
 	})
 
-	ioc.Run()
+	ioc.RunPending()
 }

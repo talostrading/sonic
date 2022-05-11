@@ -65,8 +65,9 @@ type Listener interface {
 }
 
 const (
-	MaxReadDispatch  int = 512
-	MaxWriteDispatch int = 512
+	MaxReadDispatch   int = 512
+	MaxWriteDispatch  int = 512
+	MaxAcceptDispatch int = 512
 )
 
 var (

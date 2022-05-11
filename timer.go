@@ -25,12 +25,12 @@ func NewTimer(ioc *IO) (*Timer, error) {
 
 func (t *Timer) Arm(dur time.Duration, onFire func()) error {
 	err := t.it.Arm(dur, func() {
-		delete(t.ioc.inflightTimers, t)
+		delete(t.ioc.pendingTimers, t)
 		onFire()
 	})
 
 	if err == nil {
-		t.ioc.inflightTimers[t] = struct{}{}
+		t.ioc.pendingTimers[t] = struct{}{}
 	}
 
 	return err
@@ -39,7 +39,7 @@ func (t *Timer) Arm(dur time.Duration, onFire func()) error {
 func (t *Timer) Disarm() error {
 	err := t.it.Disarm()
 	if err == nil {
-		delete(t.ioc.inflightTimers, t)
+		delete(t.ioc.pendingTimers, t)
 	}
 	return err
 }
@@ -47,7 +47,7 @@ func (t *Timer) Disarm() error {
 func (t *Timer) Close() error {
 	err := t.it.Close()
 	if err == nil {
-		delete(t.ioc.inflightTimers, t)
+		delete(t.ioc.pendingTimers, t)
 	}
 	return err
 }
