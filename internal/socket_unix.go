@@ -39,10 +39,67 @@ func (s *Socket) ConnectTimeout(network, addr string, timeout time.Duration) err
 	case "uni":
 		return s.connectUnix(network, addr, timeout)
 	default:
-		panic(fmt.Sprintf("unsupported protocol: %s", network))
+		return fmt.Errorf("unsupported protocol: %s", network)
 	}
 
 	return nil
+}
+
+func (s *Socket) Listen(network, addr string) error {
+	switch network[:3] {
+	case "tcp":
+		return s.listenTCP(network, addr)
+	case "uni":
+		return s.listenUnix(network, addr)
+	default:
+		return fmt.Errorf("unsupported protocol: %s", network)
+	}
+	return nil
+}
+
+func (s *Socket) listenTCP(network, addr string) error {
+	localAddr, err := net.ResolveTCPAddr(network, addr)
+	if err != nil {
+		return err
+	}
+
+	fd, err := createSocket(localAddr)
+	if err != nil {
+		return err
+	}
+
+	sockAddr := toSockaddr(localAddr)
+	if err := syscall.Bind(fd, sockAddr); err != nil {
+		return err
+	}
+
+	if err := syscall.Listen(fd, 2048); err != nil {
+		return err
+	}
+
+	s.Fd = fd
+	s.LocalAddr = localAddr
+
+	return err
+}
+
+func (s *Socket) Accept() (*Socket, error) {
+	nfd, remoteAddr, err := syscall.Accept(s.Fd)
+	if err != nil {
+		return nil, os.NewSyscallError("accept", err)
+	}
+
+	ns := &Socket{
+		Fd:         nfd,
+		LocalAddr:  s.LocalAddr,
+		RemoteAddr: fromSockaddr(remoteAddr),
+	}
+
+	return ns, nil
+}
+
+func (s *Socket) listenUnix(network, addr string) error {
+	panic("cannot listen on unix sockets atm")
 }
 
 func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
@@ -153,42 +210,4 @@ func setDefaultOpts(fd int) error {
 	}
 
 	return err
-}
-
-func toSockaddr(sockAddr net.Addr) syscall.Sockaddr {
-	switch addr := sockAddr.(type) {
-	case *net.TCPAddr:
-		return &syscall.SockaddrInet4{
-			Port: addr.Port,
-			Addr: func() (b [4]byte) {
-				copy(b[:], addr.IP.To4())
-				return
-			}(),
-		}
-	case *net.UDPAddr:
-		return nil
-	case *net.UnixAddr:
-		return nil
-	default:
-		panic(fmt.Sprintf("unsupported address type: %s", reflect.TypeOf(sockAddr)))
-	}
-}
-
-func fromSockaddr(sockAddr syscall.Sockaddr) net.Addr {
-	switch addr := sockAddr.(type) {
-	case *syscall.SockaddrInet4:
-		return &net.TCPAddr{
-			IP:   append([]byte{}, addr.Addr[:]...),
-			Port: addr.Port,
-		}
-	case *syscall.SockaddrInet6:
-		// TODO
-	case *syscall.SockaddrUnix:
-		return &net.UnixAddr{
-			Name: addr.Name,
-			Net:  "unix",
-		}
-	}
-
-	return nil
 }

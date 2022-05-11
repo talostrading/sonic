@@ -7,6 +7,7 @@ import (
 )
 
 type AsyncCallback func(error, int)
+type AcceptCallback func(error, Conn)
 
 type File interface {
 	Read([]byte) (int, error)
@@ -32,8 +33,7 @@ type File interface {
 	Close() error
 }
 
-// Conn is a stateful connection
-// Conn tries to match the semantics of net.Conn as much as possible
+// Conn is a generic stream-oriented network connection.
 type Conn interface {
 	File
 
@@ -43,6 +43,25 @@ type Conn interface {
 	SetDeadline(t time.Time) error
 	SetReadDeadline(t time.Time) error
 	SetWriteDeadline(t time.Time) error
+}
+
+// TODO
+type PacketConn interface {
+}
+
+// Listener is a generic network listener for stream-oriented protocols.
+type Listener interface {
+	// Accept waits for and returns the next connection to the listener synchronously.
+	Accept() (Conn, error)
+
+	// AsyncAccept waits for and returns the next connection to the listener asynchronously.
+	AsyncAccept(AcceptCallback)
+
+	// Close closes the listener.
+	Close() error
+
+	// Addr returns the listener's network address.
+	Addr() error
 }
 
 const (

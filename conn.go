@@ -29,12 +29,15 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 		return nil, err
 	}
 
-	return &conn{
+	c := &conn{
 		file: &file{
 			ioc: ioc,
 			fd:  sock.Fd,
 		},
-	}, nil
+		sock: sock,
+	}
+
+	return c, nil
 }
 
 func (c *conn) LocalAddr() net.Addr {
