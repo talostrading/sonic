@@ -14,12 +14,22 @@ func main() {
 		panic(err)
 	}
 
-	b := make([]byte, 20)
-	conn.AsyncRead(b, func(err error, n int) {
+	b := []byte("hello, sonic!")
+
+	conn.AsyncWrite(b, func(err error, n int) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("read", n, "bytes:", string(b))
+
+		fmt.Println("wrote:", string(b))
+
+		b = make([]byte, 32)
+		conn.AsyncRead(b, func(err error, n int) {
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println("read:", string(b))
+		})
 	})
 
 	ioc.RunPending()

@@ -12,11 +12,25 @@ func onAccept(err error, conn sonic.Conn) {
 		panic(err)
 	}
 
-	conn.AsyncWrite([]byte("hello, sonic!"), func(err error, n int) {
+	fmt.Printf("accepted connection remote=%s local=%s\n",
+		conn.RemoteAddr().String(),
+		conn.LocalAddr().String())
+
+	b := make([]byte, 32)
+	conn.AsyncRead(b, func(err error, n int) {
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println("wrote", n, "bytes")
+
+		b = b[:n]
+		fmt.Println("read:", string(b))
+
+		conn.AsyncWrite(b, func(err error, n int) {
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println("echoed")
+		})
 	})
 }
 
