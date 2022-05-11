@@ -32,9 +32,9 @@ type File interface {
 	Close() error
 }
 
-// Stream is a stateful connection
-// Stream tries to match the semantics of net.Conn as much as possible
-type Stream interface {
+// Conn is a stateful connection
+// Conn tries to match the semantics of net.Conn as much as possible
+type Conn interface {
 	File
 
 	LocalAddr() net.Addr
