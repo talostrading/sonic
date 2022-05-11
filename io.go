@@ -77,28 +77,6 @@ func (ioc *IO) RunOne(timeout int) error {
 	return nil
 }
 
-// Poll runs the event processing loop to execute ready handlers
-func (ioc *IO) Poll() error {
-	for {
-		if err := ioc.PollOne(); err != nil && err != internal.ErrTimeout {
-			return err
-		}
-	}
-}
-
-// PollOne runs the event processing loop to execute one ready handler
-// note: this will not block the calling goroutine
-func (ioc *IO) PollOne() error {
-	if err := ioc.poller.Poll(-1); err != nil {
-		if ioc.poller.Closed() {
-			return io.EOF
-		} else {
-			return err
-		}
-	}
-	return nil
-}
-
 // Dispatch schedules the provided handler to be run immediately by the event
 // processing loop in its own thread. This call is thread safe.
 // in its own thread.
