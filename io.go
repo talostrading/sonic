@@ -44,7 +44,7 @@ func MustIO(timeout int) *IO {
 // Run runs the event processing loop
 func (ioc *IO) Run() error {
 	for {
-		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
+		if err := ioc.RunOne(ioc.timeoutMs); err != nil && err != internal.ErrTimeout {
 			return err
 		}
 	}
@@ -57,7 +57,7 @@ func (ioc *IO) RunPending() error {
 			break
 		}
 
-		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
+		if err := ioc.RunOne(ioc.timeoutMs); err != nil && err != internal.ErrTimeout {
 			return err
 		}
 	}
@@ -66,8 +66,8 @@ func (ioc *IO) RunPending() error {
 
 // RunOne runs the event processing loop to execute at most one handler
 // note: this blocks the calling coroutine in case timeoutMs is positive
-func (ioc *IO) RunOne() error {
-	if err := ioc.poller.Poll(ioc.timeoutMs); err != nil {
+func (ioc *IO) RunOne(timeout int) error {
+	if err := ioc.poller.Poll(timeout); err != nil {
 		if ioc.poller.Closed() {
 			return io.EOF
 		} else {
