@@ -68,13 +68,20 @@ func (s *Socket) listenTCP(network, addr string) error {
 		return err
 	}
 
+	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+		syscall.Close(fd)
+		return os.NewSyscallError("setsockopt", err)
+	}
+
 	sockAddr := toSockaddr(localAddr)
 	if err := syscall.Bind(fd, sockAddr); err != nil {
-		return err
+		syscall.Close(fd)
+		return os.NewSyscallError("bind", err)
 	}
 
 	if err := syscall.Listen(fd, 2048); err != nil {
-		return err
+		syscall.Close(fd)
+		return os.NewSyscallError("listen", err)
 	}
 
 	s.Fd = fd
@@ -93,6 +100,11 @@ func (s *Socket) Accept() (*Socket, error) {
 		Fd:         nfd,
 		LocalAddr:  s.LocalAddr,
 		RemoteAddr: fromSockaddr(remoteAddr),
+	}
+
+	if err := syscall.SetNonblock(nfd, true); err != nil {
+		syscall.Close(nfd)
+		return nil, os.NewSyscallError("set_nonblock", err)
 	}
 
 	return ns, nil
