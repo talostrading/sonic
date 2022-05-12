@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -172,11 +173,13 @@ func (p *Poller) Poll(timeoutMs int) error {
 
 		if flags&pd.Flags&ReadFlags == ReadFlags {
 			p.pending--
+			pd.Flags ^= ReadFlags
 			pd.Cbs[ReadEvent](nil)
 		}
 
 		if flags&pd.Flags&WriteFlags == WriteFlags {
 			p.pending--
+			pd.Flags ^= WriteFlags
 			pd.Cbs[WriteEvent](nil)
 		}
 	}
@@ -190,10 +193,14 @@ func (p *Poller) SetRead(fd int, pd *PollData) error {
 
 func (p *Poller) setRead(fd int, flags uint16, pd *PollData) error {
 	pdflags := &pd.Flags
+	fmt.Println("setting read")
 	if *pdflags&ReadFlags != ReadFlags {
+		fmt.Println("actually setting it")
 		p.pending++
 		*pdflags |= ReadFlags
 		return p.set(fd, createEvent(flags, -ReadFlags, pd, 0))
+	} else {
+		fmt.Println("read flags already set")
 	}
 	return nil
 }
