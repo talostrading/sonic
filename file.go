@@ -86,8 +86,8 @@ func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	n, err := f.Read(b[readBytes:])
 	readBytes += n
 
-	if err == nil && !(readAll && n != len(b)) {
-		cb(nil, n)
+	if err == nil && !(readAll && readBytes != len(b)) {
+		cb(nil, readBytes)
 		return
 	}
 
@@ -154,8 +154,8 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 	n, err := f.Write(b[writtenBytes:])
 	writtenBytes += n
 
-	if err == nil && !(writeAll && n != len(b)) {
-		cb(nil, n)
+	if err == nil && !(writeAll && writtenBytes != len(b)) {
+		cb(nil, writtenBytes)
 		return
 	}
 
