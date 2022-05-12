@@ -118,7 +118,6 @@ func (c *Conn) asyncRead() {
 
 func (c *Conn) onAsyncRead(err error, n int) {
 	if err != nil {
-		fmt.Println("conn: error", err)
 		if err == io.EOF {
 			c.conn.Close()
 			c.sink.OnConnClose(c.id)
