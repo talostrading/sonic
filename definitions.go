@@ -31,6 +31,7 @@ type File interface {
 	Cancel()
 
 	Close() error
+	Closed() bool
 }
 
 // Conn is a generic stream-oriented network connection.
@@ -74,6 +75,7 @@ var (
 	ErrWouldBlock = errors.New("operation would block")
 	ErrCancelled  = errors.New("operation cancelled")
 	ErrTimeout    = errors.New("operation timed out")
+	ErrEOF        = errors.New("end of file")
 )
 
 type SeekWhence int
