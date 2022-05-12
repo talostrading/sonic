@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicopts"
@@ -87,7 +86,7 @@ func (s *Server) OnConnError(id int, err error) {
 }
 
 func (s *Server) OnConnClose(id int) {
-	fmt.Printf("conn %d closed", id)
+	fmt.Printf("conn %d closed\n", id)
 	delete(s.conns, id)
 }
 
@@ -117,8 +116,8 @@ func (c *Conn) asyncRead() {
 }
 
 func (c *Conn) onAsyncRead(err error, n int) {
-	if err != nil {
-		if err == io.EOF {
+	if err != nil && err != sonic.ErrWouldBlock {
+		if err == sonic.ErrEOF {
 			c.conn.Close()
 			c.sink.OnConnClose(c.id)
 		} else {
