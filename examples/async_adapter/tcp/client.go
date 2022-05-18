@@ -49,9 +49,6 @@ func (c *Conn) onAsyncRead(err error, n int) {
 func main() {
 	flag.Parse()
 
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	stats := perf.NewStats("test", false, 100_000)
 
 	ioc := sonic.MustIO()
