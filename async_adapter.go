@@ -50,4 +50,8 @@ func (p *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 			cb(err, n)
 		}
 	})
+	p.ioc.poller.SetWrite(p.fd, &p.pd)
 }
+
+// TODO AsyncReadAll
+// TODO AsyncWriteAll

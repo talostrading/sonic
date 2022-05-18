@@ -3,7 +3,6 @@ package sonic
 import (
 	"io"
 	"runtime"
-	"time"
 
 	"github.com/talostrading/sonic/internal"
 )
@@ -77,8 +76,8 @@ func (ioc *IO) RunOne() error {
 // RunOneFor runs the event processing loop for a specified duration to execute at
 // most one handler.
 // note: this blocks the calling goroutine until one event is ready to process
-func (ioc *IO) RunOneFor(timeout time.Duration) error {
-	if err := ioc.poller.Poll(int(timeout.Milliseconds())); err != nil {
+func (ioc *IO) RunOneFor(timeoutMs int) error {
+	if err := ioc.poller.Poll(timeoutMs); err != nil {
 		if ioc.poller.Closed() {
 			return io.EOF
 		} else {
