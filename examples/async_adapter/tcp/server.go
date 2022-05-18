@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	ioc := sonic.MustIO(-1)
+	ioc := sonic.MustIO()
 
 	s, err := NewServer(ioc)
 	if err != nil {
@@ -18,7 +18,7 @@ func main() {
 	s.Run()
 
 	for {
-		ioc.RunOne(0)
+		ioc.RunOne()
 	}
 }
 

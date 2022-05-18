@@ -7,10 +7,20 @@ import (
 )
 
 func main() {
-	ioc := sonic.MustIO(-1)
-	s, err := sonic.Dial(ioc, "tcp", "google.com:80")
+	ioc := sonic.MustIO()
+	conn, err := sonic.Dial(ioc, "tcp", "google.com:80")
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(s)
+
+	buf := make([]byte, 4096)
+	conn.AsyncRead(buf, func(err error, n int) {
+		if err != nil {
+			panic(err)
+		} else {
+			fmt.Println(string(buf))
+		}
+	})
+
+	ioc.RunPending()
 }

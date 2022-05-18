@@ -35,7 +35,7 @@ func onAccept(err error, conn sonic.Conn) {
 }
 
 func main() {
-	ioc := sonic.MustIO(-1)
+	ioc := sonic.MustIO()
 
 	listener, err := sonic.Listen(ioc, "tcp", ":8080", sonicopts.Nonblocking(true))
 	if err != nil {

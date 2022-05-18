@@ -54,7 +54,7 @@ func main() {
 
 	stats := perf.NewStats("test", false, 100_000)
 
-	ioc := sonic.MustIO(-1)
+	ioc := sonic.MustIO()
 
 	var conns []*Conn
 
@@ -84,7 +84,7 @@ func main() {
 		}
 
 		start := time.Now()
-		ioc.RunOne(-1)
+		ioc.RunOne()
 		stats.Add(float64(time.Now().Sub(start).Milliseconds()))
 	}
 }

@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	ioc := sonic.MustIO(-1)
+	ioc := sonic.MustIO()
 
 	file, err := sonic.Open(ioc, "/tmp/tmp.log", os.O_RDWR|os.O_APPEND|os.O_TRUNC|os.O_CREATE, 0644)
 	if err != nil {

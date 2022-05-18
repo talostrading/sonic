@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	ioc := sonic.MustIO(-1)
+	ioc := sonic.MustIO()
 
 	conn, err := sonic.Dial(ioc, "tcp", "localhost:8080")
 	if err != nil {
