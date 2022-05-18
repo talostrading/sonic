@@ -61,8 +61,8 @@ func NewPoller() (*Poller, error) {
 	_, err = syscall.Kevent(kq, []syscall.Kevent_t{{
 		Ident:  uint64(kq),
 		Filter: syscall.EVFILT_USER,
-		Flags:  syscall.EV_ADD | syscall.EV_CLEAR, // TODO not sure about these flags
-	}}, nil, nil) // listen to user events by default (TODO i think that's how you listen to sig stuff)
+		Flags:  syscall.EV_ADD | syscall.EV_CLEAR,
+	}}, nil, nil)
 	if err != nil {
 		syscall.Close(kq)
 		return nil, err
