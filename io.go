@@ -19,6 +19,8 @@ type IO struct {
 }
 
 func NewIO() (*IO, error) {
+	runtime.LockOSThread()
+
 	poller, err := internal.NewPoller()
 	if err != nil {
 		return nil, err
@@ -42,9 +44,6 @@ func MustIO() *IO {
 
 // Run runs the event processing loop
 func (ioc *IO) Run() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	for {
 		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
 			return err
@@ -54,9 +53,6 @@ func (ioc *IO) Run() error {
 
 // RunPending runs the event processing loop to execute all the pending handlers
 func (ioc *IO) RunPending() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	for n := ioc.poller.Pending(); n >= 0; n-- {
 		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
 			return err
@@ -68,9 +64,6 @@ func (ioc *IO) RunPending() error {
 // RunOne runs the event processing loop to execute at most one handler
 // note: this blocks the calling goroutine until one event is ready to process
 func (ioc *IO) RunOne() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	if err := ioc.poller.Poll(-1); err != nil {
 		if ioc.poller.Closed() {
 			return io.EOF
@@ -85,9 +78,6 @@ func (ioc *IO) RunOne() error {
 // most one handler.
 // note: this blocks the calling goroutine until one event is ready to process
 func (ioc *IO) RunOneFor(timeout time.Duration) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	if err := ioc.poller.Poll(int(timeout.Milliseconds())); err != nil {
 		if ioc.poller.Closed() {
 			return io.EOF
@@ -101,9 +91,6 @@ func (ioc *IO) RunOneFor(timeout time.Duration) error {
 // Poll runs the event processing loop to execute ready handlers
 // note: this will return immediately in case there is no event to process
 func (ioc *IO) Poll() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	for {
 		if err := ioc.PollOne(); err != nil {
 			return err
@@ -114,9 +101,6 @@ func (ioc *IO) Poll() error {
 // PollOne runs the event processing loop to execute one ready handler
 // note: this will return immediately in case there is no event to process
 func (ioc *IO) PollOne() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
 	if err := ioc.poller.Poll(0); err != nil {
 		if ioc.poller.Closed() {
 			return io.EOF
@@ -134,5 +118,6 @@ func (ioc *IO) Dispatch(handler func()) error {
 }
 
 func (ioc *IO) Close() error {
+	runtime.UnlockOSThread()
 	return ioc.poller.Close()
 }
