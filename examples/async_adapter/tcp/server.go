@@ -53,6 +53,7 @@ func (s *Server) onAsyncAccept(err error, conn sonic.Conn) {
 		handler := NewHandler(conn)
 		handler.Run()
 		s.handlers = append(s.handlers, handler)
+		fmt.Println("accepted conn", len(s.handlers))
 		s.asyncAccept()
 	}
 }
@@ -80,6 +81,8 @@ func (h *Handler) asyncWrite() {
 
 func (h *Handler) onAsyncWrite(err error, n int) {
 	if err != nil {
+		h.conn.Close()
+
 		if err != sonic.ErrEOF {
 			fmt.Println("error on write")
 			panic(err)
