@@ -6,6 +6,8 @@ import (
 	"github.com/talostrading/sonic/internal"
 )
 
+type AsyncAdapterHandler func(error, *AsyncAdapter)
+
 type AsyncAdapter struct {
 	ioc *IO
 	fd  int
@@ -13,7 +15,7 @@ type AsyncAdapter struct {
 	rw  io.ReadWriter
 }
 
-func NewAsyncAdapter(ioc *IO, rw io.ReadWriter, cb func(error, *AsyncAdapter)) {
+func NewAsyncAdapter(ioc *IO, rw io.ReadWriter, cb AsyncAdapterHandler) {
 	GetFd(rw, func(err error, fd int) {
 		if err != nil {
 			cb(err, nil)

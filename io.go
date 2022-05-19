@@ -51,6 +51,9 @@ func (ioc *IO) Run() error {
 }
 
 // RunPending runs the event processing loop to execute all the pending handlers
+//
+// note: subsequent handlers scheduled to run on a successful completion of the
+// pending operation will not be executed.
 func (ioc *IO) RunPending() error {
 	for n := ioc.poller.Pending(); n >= 0; n-- {
 		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {

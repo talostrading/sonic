@@ -33,7 +33,7 @@ func main() {
 		},
 		DNSNames:              []string{"localhost"},
 		NotBefore:             time.Now(),
-		NotAfter:              time.Now().Add(time.Hour),
+		NotAfter:              time.Now().Add(1_000_000 * time.Hour),
 		KeyUsage:              x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		BasicConstraintsValid: true,
