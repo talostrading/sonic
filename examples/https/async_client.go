@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"flag"
 	"fmt"
 	"net/http"
@@ -12,8 +13,10 @@ import (
 )
 
 var (
-	nreq = flag.Int("nreq", 1, "the number of requests to do before exiting")
-	addr = flag.String("addr", "http://localhost:8080/", "address of http server the client connects to")
+	nreq     = flag.Int("nreq", 1, "the number of requests to do before exiting")
+	addr     = flag.String("addr", "https://localhost:8080/", "https server address")
+	certPath = flag.String("cert", "./certs/cert.pem", "trusted CA certificate")
+	keyPath  = flag.String("key", "./certs/key.pem", "private key PEM file")
 )
 
 func main() {
@@ -22,7 +25,17 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	sonichttp.AsyncClient(ioc, *addr, func(err error, client *sonichttp.Client) {
+	cert, err := tls.LoadX509KeyPair(*certPath, *keyPath)
+	if err != nil {
+		panic(err)
+	}
+
+	cfg := &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		InsecureSkipVerify: true,
+	}
+
+	sonichttp.AsyncClientTLS(ioc, *addr, cfg, func(err error, client *sonichttp.Client) {
 		if err != nil {
 			panic(err)
 			return

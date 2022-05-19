@@ -60,7 +60,7 @@ func NewAsyncClient(ioc *sonic.IO, cb func(error, *Client)) {
 	}
 
 	if !conn.ConnectionState().HandshakeComplete {
-		cb(fmt.Errorf("handshake not complete"), nil)
+		cb(fmt.Errorf("handshake failed"), nil)
 		return
 	}
 

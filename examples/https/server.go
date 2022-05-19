@@ -9,8 +9,8 @@ import (
 
 var (
 	addr     = flag.String("addr", ":8080", "https network address")
-	certFile = flag.String("cert", "./certs/cert.pem", "certificate PEM file")
-	keyFile  = flag.String("key", "./certs/key.pem", "private key PEM file")
+	certPath = flag.String("cert", "./certs/cert.pem", "certificate PEM file")
+	keyPath  = flag.String("key", "./certs/key.pem", "private key PEM file")
 )
 
 func main() {
@@ -35,7 +35,7 @@ func main() {
 	}
 
 	println("listening")
-	if err := srv.ListenAndServeTLS(*certFile, *keyFile); err != nil {
+	if err := srv.ListenAndServeTLS(*certPath, *keyPath); err != nil {
 		panic(err)
 	}
 }

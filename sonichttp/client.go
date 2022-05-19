@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,6 +27,7 @@ type Client struct {
 }
 
 func AsyncClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
+	// TODO make sure url starts in http
 	url, err := url.Parse(addr)
 	if err != nil {
 		cb(err, nil)
@@ -56,6 +59,47 @@ func AsyncClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
 			cb(nil, c)
 		}
 	})
+}
+
+func AsyncClientTLS(ioc *sonic.IO, addr string, cfg *tls.Config, cb AsyncClientHandler) {
+	// TODO make sure url starts in https
+	url, err := url.Parse(addr)
+	if err != nil {
+		cb(err, nil)
+		return
+	}
+
+	conn, err := tls.Dial("tcp", url.Host, cfg)
+	if err != nil {
+		cb(err, nil)
+		return
+	}
+
+	if !conn.ConnectionState().HandshakeComplete {
+		cb(fmt.Errorf("handshake failed"), nil)
+		return
+	}
+
+	c := &Client{
+		ioc:  ioc,
+		conn: conn,
+	}
+	c.client = &http.Client{
+		Transport: &http.Transport{
+			DialTLSContext:  c.dial,
+			TLSClientConfig: cfg,
+		},
+	}
+
+	sonic.NewAsyncAdapter(ioc, conn.NetConn().(syscall.Conn), conn, func(err error, async *sonic.AsyncAdapter) {
+		if err != nil {
+			cb(err, nil)
+		} else {
+			c.async = async
+			cb(nil, c)
+		}
+	})
+
 }
 
 func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, error) {
