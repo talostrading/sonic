@@ -24,8 +24,6 @@ type Poller struct {
 	changelist []syscall.Kevent_t
 	eventlist  []syscall.Kevent_t
 
-	pd PollData
-
 	lck      sync.Mutex
 	handlers []func()
 
@@ -95,8 +93,8 @@ func (p *Poller) Close() error {
 		return io.EOF
 	}
 
-	p.changelist = p.changelist[:0]
-	p.eventlist = p.eventlist[:0]
+	p.changelist = nil
+	p.eventlist = nil
 	p.pending = 0
 
 	p.pipe.Close()
@@ -129,6 +127,7 @@ func (p *Poller) dispatch() {
 		}
 	}
 
+	// TODO check pending
 	p.lck.Lock()
 	for _, handler := range p.handlers {
 		handler()
