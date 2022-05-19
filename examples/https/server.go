@@ -3,13 +3,14 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"net/http"
 )
 
 var (
 	addr     = flag.String("addr", ":8080", "https network address")
-	certFile = flag.String("cert", "cert.pem", "certificate PEM file")
-	keyFile  = flag.String("key", "key.pem", "private key PEM file")
+	certFile = flag.String("cert", "./certs/cert.pem", "certificate PEM file")
+	keyFile  = flag.String("key", "./certs/key.pem", "private key PEM file")
 )
 
 func main() {
@@ -21,6 +22,7 @@ func main() {
 			http.NotFound(w, req)
 			return
 		}
+		fmt.Fprintf(w, "hello")
 	})
 
 	srv := &http.Server{

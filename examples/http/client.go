@@ -21,7 +21,7 @@ func main() {
 
 	ioc := sonic.MustIO()
 
-	sonichttp.AsyncHttpClient(ioc, *addr, func(err error, client *sonichttp.Client) {
+	sonichttp.AsyncClient(ioc, *addr, func(err error, client *sonichttp.Client) {
 		if err != nil {
 			panic(err)
 			return

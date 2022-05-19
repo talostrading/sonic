@@ -22,7 +22,7 @@ type Client struct {
 	rbuf   []byte
 }
 
-func AsyncHttpClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
+func AsyncClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
 	url, err := url.Parse(addr)
 	if err != nil {
 		cb(err, nil)
