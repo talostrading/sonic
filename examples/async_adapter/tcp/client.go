@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"syscall"
 	"time"
 
 	"github.com/talostrading/sonic"
@@ -60,7 +61,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		sonic.NewAsyncAdapter(ioc, conn, func(err error, ad *sonic.AsyncAdapter) {
+		sonic.NewAsyncAdapter(ioc, conn.(syscall.Conn), conn, func(err error, ad *sonic.AsyncAdapter) {
 			if err != nil {
 				fmt.Println("could not make async adapter")
 			} else {

@@ -2,6 +2,7 @@ package sonic
 
 import (
 	"io"
+	"syscall"
 
 	"github.com/talostrading/sonic/internal"
 )
@@ -13,46 +14,52 @@ type AsyncAdapter struct {
 	fd  int
 	pd  internal.PollData
 	rw  io.ReadWriter
+	rc  syscall.RawConn
 }
 
-func NewAsyncAdapter(ioc *IO, rw io.ReadWriter, cb AsyncAdapterHandler) {
-	GetFd(rw, func(err error, fd int) {
-		if err != nil {
-			cb(err, nil)
-		} else {
-			f := &AsyncAdapter{
-				fd:  fd,
-				ioc: ioc,
-				rw:  rw,
-			}
-			f.pd.Fd = fd
-			cb(nil, f)
+func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapterHandler) {
+	rc, err := sc.SyscallConn()
+	if err != nil {
+		cb(err, nil)
+		return
+	}
+
+	rc.Control(func(fd uintptr) {
+		ifd := int(fd)
+		a := &AsyncAdapter{
+			fd:  ifd,
+			ioc: ioc,
+			rw:  rw,
+			rc:  rc,
 		}
+		a.pd.Fd = ifd
+
+		cb(nil, a)
 	})
 }
 
-func (p *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
-	p.pd.Set(internal.ReadEvent, func(err error) {
-		if err != nil {
-			cb(err, 0)
-		} else {
-			n, err := p.rw.Read(b)
-			cb(err, n)
-		}
-	})
-	p.ioc.poller.SetRead(p.fd, &p.pd)
-}
-
-func (p *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
-	p.pd.Set(internal.WriteEvent, func(err error) {
+func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
+	a.pd.Set(internal.ReadEvent, func(err error) {
 		if err != nil {
 			cb(err, 0)
 		} else {
-			n, err := p.rw.Write(b)
+			n, err := a.rw.Read(b)
 			cb(err, n)
 		}
 	})
-	p.ioc.poller.SetWrite(p.fd, &p.pd)
+	a.ioc.poller.SetRead(a.fd, &a.pd)
+}
+
+func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
+	a.pd.Set(internal.WriteEvent, func(err error) {
+		if err != nil {
+			cb(err, 0)
+		} else {
+			n, err := a.rw.Write(b)
+			cb(err, n)
+		}
+	})
+	a.ioc.poller.SetWrite(a.fd, &a.pd)
 }
 
 // TODO AsyncReadAll

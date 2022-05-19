@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"syscall"
 
 	"github.com/talostrading/sonic"
 )
@@ -28,6 +29,7 @@ func AsyncHttpClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
 		return
 	}
 
+	// TODO AsyncDial (can also fake it in a coroutine for now)
 	conn, err := net.Dial("tcp", url.Host)
 	if err != nil {
 		cb(err, nil)
@@ -44,7 +46,7 @@ func AsyncHttpClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
 		},
 	}
 
-	sonic.NewAsyncAdapter(ioc, conn, func(err error, async *sonic.AsyncAdapter) {
+	sonic.NewAsyncAdapter(ioc, conn.(syscall.Conn), conn, func(err error, async *sonic.AsyncAdapter) {
 		if err != nil {
 			cb(err, nil)
 		} else {
