@@ -3,6 +3,7 @@ package sonichttp
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"net"
 	"net/http"
 	"net/url"
@@ -15,6 +16,7 @@ const BufSize = 4096
 
 type Client struct {
 	ioc    *sonic.IO
+	ctx    context.Context
 	conn   net.Conn
 	client *http.Client
 	async  *sonic.AsyncAdapter
@@ -42,7 +44,7 @@ func AsyncClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
 	}
 	c.client = &http.Client{
 		Transport: &http.Transport{
-			Dial: c.dial,
+			DialContext: c.dial,
 		},
 	}
 
@@ -56,7 +58,8 @@ func AsyncClient(ioc *sonic.IO, addr string, cb AsyncClientHandler) {
 	})
 }
 
-func (c *Client) dial(network, addr string) (net.Conn, error) {
+func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, error) {
+	c.ctx = ctx
 	return c.conn, nil
 }
 
