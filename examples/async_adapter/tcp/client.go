@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/perf"
+	"github.com/talostrading/sonic/utils"
 )
 
 var n = flag.Int("n", 10, "number of connections")
@@ -50,7 +50,7 @@ func (c *Conn) onAsyncRead(err error, n int) {
 func main() {
 	flag.Parse()
 
-	stats := perf.NewStats("test", false, 100_000)
+	stats := utils.NewStats("test", false, 100_000)
 
 	ioc := sonic.MustIO()
 

@@ -2,6 +2,14 @@
 
 package internal
 
+import (
+	"io"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"unsafe"
+)
+
 type PollFlags uint32
 
 const (

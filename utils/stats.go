@@ -1,4 +1,4 @@
-package perf
+package utils
 
 import (
 	"fmt"
