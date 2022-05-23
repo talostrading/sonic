@@ -8,6 +8,10 @@ import (
 )
 
 type AsyncAdapterHandler func(error, *AsyncAdapter)
+type AsyncReaderHandler func(error, *AsyncReader)
+
+var _ AsyncReader = &AsyncAdapter{}
+var _ AsyncWriter = &AsyncAdapter{}
 
 type AsyncAdapter struct {
 	ioc *IO
@@ -50,6 +54,10 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 	a.ioc.poller.SetRead(a.fd, &a.pd)
 }
 
+func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
+	panic("implement me")
+}
+
 func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 	a.pd.Set(internal.WriteEvent, func(err error) {
 		if err != nil {
@@ -62,5 +70,6 @@ func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 	a.ioc.poller.SetWrite(a.fd, &a.pd)
 }
 
-// TODO AsyncReadAll
-// TODO AsyncWriteAll
+func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {
+	panic("implement me")
+}

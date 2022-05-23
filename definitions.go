@@ -9,6 +9,21 @@ import (
 type AsyncCallback func(error, int)
 type AcceptCallback func(error, Conn)
 
+type AsyncReader interface {
+	AsyncRead([]byte, AsyncCallback)
+	AsyncReadAll([]byte, AsyncCallback)
+}
+
+type AsyncWriter interface {
+	AsyncWrite([]byte, AsyncCallback)
+	AsyncWriteAll([]byte, AsyncCallback)
+}
+
+type AsyncReadWriter interface {
+	AsyncReader
+	AsyncWriter
+}
+
 type File interface {
 	Read([]byte) (int, error)
 	Write([]byte) (int, error)
