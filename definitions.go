@@ -24,6 +24,14 @@ type AsyncReadWriter interface {
 	AsyncWriter
 }
 
+type AsyncReaderFrom interface {
+	AsyncReadFrom(AsyncReader, AsyncCallback)
+}
+
+type AsyncWriterTo interface {
+	AsyncWriteTo(AsyncWriter, AsyncCallback)
+}
+
 type File interface {
 	Read([]byte) (int, error)
 	Write([]byte) (int, error)
