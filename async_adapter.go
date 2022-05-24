@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"fmt"
 	"io"
 	"syscall"
 
@@ -10,8 +11,7 @@ import (
 type AsyncAdapterHandler func(error, *AsyncAdapter)
 type AsyncReaderHandler func(error, *AsyncReader)
 
-var _ AsyncReader = &AsyncAdapter{}
-var _ AsyncWriter = &AsyncAdapter{}
+var _ AsyncReadWriter = &AsyncAdapter{}
 
 type AsyncAdapter struct {
 	ioc *IO
@@ -51,6 +51,7 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 			cb(err, n)
 		}
 	})
+	fmt.Println("reading from b", len(b))
 	a.ioc.poller.SetRead(a.fd, &a.pd)
 }
 

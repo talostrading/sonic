@@ -1,5 +1,7 @@
 package sonicwebsocket
 
+import "errors"
+
 type Opcode uint8
 
 const (
@@ -54,4 +56,11 @@ const (
 	rsv2Bit = byte(1 << 5)
 	rsv3Bit = byte(1 << 4)
 	maskBit = byte(1 << 7)
+)
+
+var (
+	ErrCannotUpgrade         = errors.New("cannot upgrade to websocket")
+	ErrReadingHeader         = errors.New("could not read header")
+	ErrReadingExtendedLength = errors.New("could not read extended length")
+	ErrReadingMask           = errors.New("could not read mask")
 )
