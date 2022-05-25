@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicopts"
@@ -83,7 +84,7 @@ func (h *Handler) onAsyncWrite(err error, n int) {
 	if err != nil {
 		h.conn.Close()
 
-		if err != sonic.ErrEOF {
+		if err != io.EOF {
 			fmt.Println("error on write")
 			panic(err)
 		}

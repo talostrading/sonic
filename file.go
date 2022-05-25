@@ -39,7 +39,7 @@ func (f *file) Read(b []byte) (int, error) {
 	if n == 0 || err != nil {
 		if n == 0 || (err != nil && err != syscall.EWOULDBLOCK && err != syscall.EAGAIN) {
 			if n == 0 {
-				return 0, ErrEOF
+				return 0, io.EOF
 			}
 		}
 		return 0, ErrWouldBlock
@@ -52,9 +52,7 @@ func (f *file) Write(b []byte) (int, error) {
 	if n == 0 || err != nil {
 		if n == 0 || (err != nil && err != syscall.EWOULDBLOCK && err != syscall.EAGAIN) {
 			if n == 0 {
-				return 0, ErrEOF
-			} else {
-				// nothing
+				return 0, io.EOF
 			}
 		}
 		return 0, ErrWouldBlock

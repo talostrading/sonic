@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/talostrading/sonic"
@@ -20,7 +21,7 @@ func main() {
 		fmt.Println("timer fired: ", time.Now())
 	})
 
-	if err := ioc.RunPending(); err != nil && err != sonic.ErrEOF {
+	if err := ioc.RunPending(); err != nil && err != io.EOF {
 		panic(err)
 	}
 }
