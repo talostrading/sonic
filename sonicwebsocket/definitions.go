@@ -51,6 +51,11 @@ func (c Opcode) String() string {
 }
 
 const (
+	DefaultFramePayloadSize uint64 = 4096    // 4Kb
+	MaxFramePayloadSize     uint64 = 1 << 32 // 4Gb
+)
+
+const (
 	finBit  = byte(1 << 7)
 	rsv1Bit = byte(1 << 6)
 	rsv2Bit = byte(1 << 5)
@@ -63,4 +68,5 @@ var (
 	ErrReadingHeader         = errors.New("could not read header")
 	ErrReadingExtendedLength = errors.New("could not read extended length")
 	ErrReadingMask           = errors.New("could not read mask")
+	ErrPayloadTooBig         = errors.New("payload too big")
 )

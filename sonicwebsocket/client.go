@@ -143,7 +143,7 @@ func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
 		if err != nil || n != 2 {
 			cb(ErrReadingHeader, -1)
 		} else {
-			m := c.frame.mustRead()
+			m := c.frame.readMore()
 			if m > 0 {
 				c.asyncReadLength(m, b, cb)
 			} else {

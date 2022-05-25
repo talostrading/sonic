@@ -3,7 +3,10 @@ package sonicwebsocket
 import (
 	"encoding/binary"
 	"fmt"
+	"io"
 	"sync"
+
+	"github.com/talostrading/sonic/util"
 )
 
 var (
@@ -26,11 +29,60 @@ func NewFrame() *Frame {
 	return &Frame{
 		header:  make([]byte, 10),
 		mask:    make([]byte, 4),
-		payload: make([]byte, 1<<20), // TODO maybe const payload size or set it beforehand?
+		payload: make([]byte, DefaultFramePayloadSize),
 	}
 }
 
-func (fr *Frame) mustRead() (n int) {
+func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
+	var n int
+	var err error
+
+	n, err = io.ReadFull(r, fr.header[:2])
+	if err == io.ErrUnexpectedEOF {
+		return int64(n), ErrReadingHeader
+	}
+
+	if err == nil {
+		m := fr.readMore()
+		if m > 0 {
+			n, err = io.ReadFull(r, fr.header[2:m+2])
+			if err == io.ErrUnexpectedEOF {
+				err = ErrReadingExtendedLength
+			}
+		}
+
+		if err == nil && fr.IsMasked() {
+			n, err = io.ReadFull(r, fr.mask[:4])
+			if err == io.ErrUnexpectedEOF {
+				err = ErrReadingMask
+			}
+		}
+
+		if err == nil {
+			if payloadLen := fr.Len(); payloadLen > MaxFramePayloadSize {
+				return int64(n), ErrPayloadTooBig
+			} else if payloadLen > 0 {
+				nn := int(payloadLen)
+				if nn < 0 {
+					panic("invalid uint64 to int conversion")
+				}
+
+				if nn > 0 {
+					fr.payload = util.ExtendByteSlice(fr.payload, nn)
+					n, err = io.ReadFull(r, fr.payload)
+				}
+			}
+		}
+	}
+
+	return int64(n), err
+}
+
+func (fr *Frame) WriteTo(w io.Writer) (n int64, err error) {
+	return
+}
+
+func (fr *Frame) readMore() (n int) {
 	switch fr.header[1] & 127 {
 	case 127:
 		n = 8

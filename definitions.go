@@ -98,7 +98,7 @@ var (
 	ErrWouldBlock = errors.New("operation would block")
 	ErrCancelled  = errors.New("operation cancelled")
 	ErrTimeout    = errors.New("operation timed out")
-	ErrEOF        = errors.New("end of file")
+	ErrEOF        = errors.New("end of file") // TODO get rid of this, return io.EOF
 )
 
 type SeekWhence int

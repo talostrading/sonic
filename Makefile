@@ -5,4 +5,7 @@ fmt:
 	gofmt -s -w .
 	goimports -w .
 
-.PHONY: fmt
+test: 
+	go test -v $$(go list ./... | grep -v /examples)
+
+.PHONY: all fmt test
