@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/talostrading/sonic"
 )
@@ -52,7 +51,8 @@ func asyncDial(ioc *sonic.IO, addr string, cnf *tls.Config, cb func(error, *Clie
 	reqURL := strings.Join([]string{scheme, "://", uri.Host, uri.Path}, "")
 
 	// yes this is horrible, but currently the only way to async dial, unless
-	// we have a TLS client implementation which can sit on top of sonic.Conn
+	// we have a TLS client implementation which can sit on top of sonic.Conn,
+	// which can dial asynchronously.
 	go func() {
 		var err error
 		var conn net.Conn
@@ -134,16 +134,12 @@ func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, erro
 	return c.conn, nil
 }
 
-// AsyncRead reads the next message into b
 func (c *Client) AsyncRead(b []byte, cb sonic.AsyncCallback) {
 	c.asyncReadHeader(b, cb)
 }
 
-var start time.Time
-
 func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
 	c.async.AsyncRead(c.frame.header[:2], func(err error, n int) {
-		start = time.Now()
 		if err != nil || n != 2 {
 			cb(ErrReadingHeader, -1)
 		} else {
@@ -192,7 +188,6 @@ func (c *Client) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 			cb(err, -1)
 		} else {
 			cb(nil, n)
-			fmt.Println("this read took", time.Now().Sub(start))
 		}
 	})
 }

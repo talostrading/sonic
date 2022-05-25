@@ -3,11 +3,17 @@ package sonicwebsocket
 import (
 	"encoding/binary"
 	"fmt"
-	"io"
+	"sync"
 )
 
 var (
-	_ io.ReadWriter = &Frame{}
+	zeroBytes = func() []byte {
+		b := make([]byte, 10)
+		for i := range b {
+			b[i] = 0
+		}
+		return b
+	}()
 )
 
 type Frame struct {
@@ -24,14 +30,6 @@ func NewFrame() *Frame {
 	}
 }
 
-func (fr *Frame) Read(b []byte) (n int, err error) {
-	panic("implement me")
-}
-
-func (fr *Frame) Write(b []byte) (n int, err error) {
-	panic("implement me")
-}
-
 func (fr *Frame) mustRead() (n int) {
 	switch fr.header[1] & 127 {
 	case 127:
@@ -40,6 +38,11 @@ func (fr *Frame) mustRead() (n int) {
 		n = 2
 	}
 	return
+}
+
+func (fr *Frame) Reset() {
+	copy(fr.header, zeroBytes)
+	copy(fr.mask, zeroBytes)
 }
 
 func (fr *Frame) IsFin() bool {
@@ -189,7 +192,8 @@ func (fr *Frame) Unmask() error {
 
 // String returns a representation of Frame in a human-readable string format.
 func (fr *Frame) String() string {
-	return fmt.Sprintf(`FIN: %v
+	return fmt.Sprintf(`
+FIN: %v
 RSV1: %v
 RSV2: %v
 RSV3: %v
@@ -204,4 +208,19 @@ MASK-KEY: %v`,
 		fr.IsFin(), fr.IsRSV1(), fr.IsRSV2(), fr.IsRSV3(),
 		fr.Opcode(), fr.IsMasked(), fr.Len(), fr.MaskKey(),
 	)
+}
+
+var framePool = sync.Pool{
+	New: func() interface{} {
+		return NewFrame()
+	},
+}
+
+func AcquireFrame() *Frame {
+	return framePool.Get().(*Frame)
+}
+
+func ReleaseFrame(f *Frame) {
+	f.Reset()
+	framePool.Put(f)
 }
