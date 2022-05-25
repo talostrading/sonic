@@ -18,6 +18,10 @@ const (
 	WriteFlags = -PollFlags(syscall.EVFILT_WRITE)
 )
 
+var (
+	oneByte = [1]byte{0}
+)
+
 type Poller struct {
 	fd int
 
@@ -29,12 +33,10 @@ type Poller struct {
 
 	pipe *Pipe
 
-	// pending is the number of pending handlers in the poller needs to execute
+	// pending is the number of pending handlers the poller needs to execute
 	pending int64
 
 	closed uint32
-
-	oneByte [1]byte
 }
 
 func NewPoller() (*Poller, error) {
@@ -109,25 +111,21 @@ func (p *Poller) Closed() bool {
 func (p *Poller) Dispatch(handler func()) error {
 	p.lck.Lock()
 	p.handlers = append(p.handlers, handler)
+	p.pending++
 	p.lck.Unlock()
 
-	p.pending++
-
-	// notify the operating system that the event processing loop
-	// should run the provided handler
-	_, err := p.pipe.Write([]byte{0})
+	_, err := p.pipe.Write(oneByte[:])
 	return err
 }
 
 func (p *Poller) dispatch() {
 	for {
-		_, err := p.pipe.Read(p.oneByte[:])
+		_, err := p.pipe.Read(oneByte[:])
 		if err != nil {
 			break
 		}
 	}
 
-	// TODO check pending
 	p.lck.Lock()
 	for _, handler := range p.handlers {
 		handler()
@@ -138,8 +136,6 @@ func (p *Poller) dispatch() {
 }
 
 func (p *Poller) Poll(timeoutMs int) error {
-	// 0 polls
-	// -1 waits indefinitely // TODO standardize timeouts
 	var timeout *syscall.Timespec
 	if timeoutMs >= 0 {
 		ts := syscall.NsecToTimespec(int64(timeoutMs) * 1e6)
