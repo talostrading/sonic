@@ -16,10 +16,13 @@ import (
 )
 
 type Client struct {
-	ioc   *sonic.IO
-	conn  net.Conn
-	async *sonic.AsyncAdapter
-	fr    *Frame
+	ioc        *sonic.IO
+	conn       net.Conn
+	async      *sonic.AsyncAdapter
+	fr         *Frame
+	fragmented bool
+
+	OnControlFrame func(c Opcode)
 }
 
 func AsyncDial(ioc *sonic.IO, addr string, cb func(error, *Client)) {
@@ -134,15 +137,16 @@ func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, erro
 	return c.conn, nil
 }
 
-func (c *Client) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+// AsyncReadMessage reads the next message asynchronously, taking care of fragmentation
+func (c *Client) AsyncReadMessage(b []byte, cb AsyncMessageCallback) {
 	// this mirrors the logic present in frame.ReadFrom(...)
 	c.asyncReadHeader(b, cb)
 }
 
-func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
+func (c *Client) asyncReadHeader(b []byte, cb AsyncMessageCallback) {
 	c.async.AsyncReadAll(c.fr.header[:2], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingHeader, -1)
+			cb(ErrReadingHeader, 0, c.fr.Opcode())
 		} else {
 			m := c.fr.readMore()
 			if m > 0 {
@@ -158,13 +162,13 @@ func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
 	})
 }
 
-func (c *Client) asyncReadLength(m int, b []byte, cb sonic.AsyncCallback) {
+func (c *Client) asyncReadLength(m int, b []byte, cb AsyncMessageCallback) {
 	c.async.AsyncReadAll(c.fr.header[2:m+2], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingExtendedLength, -1)
+			cb(ErrReadingExtendedLength, 0, c.fr.Opcode())
 		} else {
 			if c.fr.Len() > MaxFramePayloadLen {
-				cb(ErrPayloadTooBig, -1)
+				cb(ErrPayloadTooBig, 0, c.fr.Opcode())
 			} else {
 				if c.fr.IsMasked() {
 					c.asyncReadMask(b, cb)
@@ -176,33 +180,55 @@ func (c *Client) asyncReadLength(m int, b []byte, cb sonic.AsyncCallback) {
 	})
 }
 
-func (c *Client) asyncReadMask(b []byte, cb sonic.AsyncCallback) {
+func (c *Client) asyncReadMask(b []byte, cb AsyncMessageCallback) {
 	c.async.AsyncReadAll(c.fr.mask[:4], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingMask, -1)
+			cb(ErrReadingMask, 0, c.fr.Opcode())
 		} else {
 			c.asyncReadPayload(b, cb)
 		}
 	})
 }
 
-func (c *Client) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
+func (c *Client) asyncReadPayload(b []byte, cb AsyncMessageCallback) {
 	if payloadLen := int(c.fr.Len()); payloadLen > 0 {
 		if remaining := payloadLen - int(cap(b)); remaining > 0 {
-			cb(ErrPayloadTooBig, -1)
+			cb(ErrPayloadTooBig, 0, c.fr.Opcode())
 		} else {
 			b = b[:payloadLen]
 			c.async.AsyncReadAll(b, func(err error, n int) {
 				if err != nil {
-					cb(err, n)
+					cb(err, n, c.fr.Opcode())
 				} else {
-					cb(nil, n)
+					cb(nil, n, c.fr.Opcode())
 				}
 			})
 		}
 	} else {
 		panic("invalid uint64 to int conversion")
 	}
+}
+
+func (c *Client) AsyncWriteText(b []byte, cb sonic.AsyncCallback) {
+
+}
+
+func (c *Client) AsyncWriteBinary(b []byte, cb sonic.AsyncCallback) {
+
+}
+
+func (c *Client) AsyncWriteFrame(fr *Frame, cb sonic.AsyncCallback) {
+
+}
+
+func (c *Client) IsFragmented() bool {
+	// unfragmented: single frame with FIN bit set and an opcode other than 0 (opcode 0 denotes a continuation frame)
+	// fragmented message:
+	//	- single frame with FIN bit clear and an opcode other than 0
+	//	- followed by zero or more frames with the FIN bit clear and the opcode set to 0
+	//	- terminated by a single frame with the FIN bit set and an opcode of 0.
+	//	- payload data between fragments is then concatenated
+	return c.fragmented
 }
 
 func makeRandKey() []byte {

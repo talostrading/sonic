@@ -2,6 +2,8 @@ package sonicwebsocket
 
 import "errors"
 
+type AsyncMessageCallback func(err error, n int, messageType Opcode)
+
 type Opcode uint8
 
 const (
