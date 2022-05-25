@@ -42,8 +42,8 @@ func Test126Frame(t *testing.T) {
 }
 
 func Test127Frame(t *testing.T) {
-	raw := []byte{0x81, 127, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF}
-	raw = append(raw, genRandBytes(65535)...)
+	raw := []byte{0x81, 127, 0, 0, 0, 0, 0, 0x01, 0xFF, 0xFF}
+	raw = append(raw, genRandBytes(131071)...)
 
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
@@ -56,6 +56,37 @@ func Test127Frame(t *testing.T) {
 	}
 
 	checkFrame(t, fr, false, true, raw[10:])
+}
+
+func TestWriteFrame(t *testing.T) {
+	payload := []byte("heloo")
+
+	fr := AcquireFrame()
+	defer ReleaseFrame(fr)
+
+	fr.SetFin()
+	fr.SetPayload(payload)
+	fr.SetText()
+
+	b := bytes.NewBuffer(nil)
+	fr.WriteTo(b)
+
+	under := b.Bytes()
+	if under[0]&0x81 != under[0] {
+		t.Fatal("expected fin and text set in first byte of buffer header")
+	}
+
+	if under[1]|0x05 != under[1] {
+		t.Fatalf("expected length=5")
+	}
+
+	if len(under[2:]) != 5 {
+		t.Fatalf("expected frame payload length=5")
+	}
+
+	if !bytes.Equal(under[2:], payload) {
+		t.Fatalf("payload is not the same; given=%s expected=%s", under[2:], payload)
+	}
 }
 
 func checkFrame(t *testing.T, fr *Frame, c, fin bool, payload []byte) {

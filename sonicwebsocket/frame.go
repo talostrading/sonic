@@ -79,7 +79,42 @@ func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
 }
 
 func (fr *Frame) WriteTo(w io.Writer) (n int64, err error) {
+	var nn int
+
+	nn, err = w.Write(fr.header[:2+fr.payloadBytes()])
+	n += int64(nn)
+
+	if err == nil {
+		if fr.IsMasked() {
+			nn, err = w.Write(fr.mask)
+			n += int64(nn)
+		}
+
+		if err == nil && len(fr.payload) > 0 {
+			nn, err = w.Write(fr.payload)
+			n += int64(nn)
+		}
+	}
+
 	return
+}
+
+func (fr *Frame) payloadBytes() int {
+	n := len(fr.payload)
+
+	switch {
+	case n > 65535: // more than two bytes needed
+		fr.header[1] |= uint8(127)
+		binary.BigEndian.PutUint64(fr.header[2:], uint64(n))
+		return 8
+	case n > 125:
+		fr.header[1] |= uint8(125)
+		binary.BigEndian.PutUint16(fr.header[2:], uint16(n))
+		return 2
+	default:
+		fr.header[1] |= uint8(n)
+		return 0
+	}
 }
 
 func (fr *Frame) readMore() (n int) {
