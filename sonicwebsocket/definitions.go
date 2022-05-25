@@ -52,7 +52,7 @@ func (c Opcode) String() string {
 
 const (
 	DefaultFramePayloadSize uint64 = 4096    // 4Kb
-	MaxFramePayloadSize     uint64 = 1 << 32 // 4Gb
+	MaxFramePayloadLen      uint64 = 1 << 32 // 4Gb
 )
 
 const (

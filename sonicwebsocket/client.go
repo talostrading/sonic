@@ -19,7 +19,7 @@ type Client struct {
 	ioc   *sonic.IO
 	conn  net.Conn
 	async *sonic.AsyncAdapter
-	frame *Frame
+	fr    *Frame
 }
 
 func AsyncDial(ioc *sonic.IO, addr string, cb func(error, *Client)) {
@@ -73,9 +73,9 @@ func asyncDial(ioc *sonic.IO, addr string, cnf *tls.Config, cb func(error, *Clie
 		}
 
 		cl := &Client{
-			ioc:   ioc,
-			conn:  conn,
-			frame: NewFrame(),
+			ioc:  ioc,
+			conn: conn,
+			fr:   NewFrame(),
 		}
 
 		upgrader := &http.Client{
@@ -135,19 +135,20 @@ func (c *Client) dial(ctx context.Context, network, addr string) (net.Conn, erro
 }
 
 func (c *Client) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+	// this mirrors the logic present in frame.ReadFrom(...)
 	c.asyncReadHeader(b, cb)
 }
 
 func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
-	c.async.AsyncRead(c.frame.header[:2], func(err error, n int) {
-		if err != nil || n != 2 {
+	c.async.AsyncRead(c.fr.header[:2], func(err error, n int) {
+		if err != nil {
 			cb(ErrReadingHeader, -1)
 		} else {
-			m := c.frame.readMore()
+			m := c.fr.readMore()
 			if m > 0 {
 				c.asyncReadLength(m, b, cb)
 			} else {
-				if c.frame.IsMasked() {
+				if c.fr.IsMasked() {
 					c.asyncReadMask(b, cb)
 				} else {
 					c.asyncReadPayload(b, cb)
@@ -158,21 +159,25 @@ func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (c *Client) asyncReadLength(m int, b []byte, cb sonic.AsyncCallback) {
-	c.async.AsyncRead(c.frame.header[2:m+2], func(err error, n int) {
+	c.async.AsyncRead(c.fr.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, -1)
 		} else {
-			if c.frame.IsMasked() {
-				c.asyncReadMask(b, cb)
+			if c.fr.Len() > MaxFramePayloadLen {
+				cb(ErrPayloadTooBig, -1)
 			} else {
-				c.asyncReadPayload(b, cb)
+				if c.fr.IsMasked() {
+					c.asyncReadMask(b, cb)
+				} else {
+					c.asyncReadPayload(b, cb)
+				}
 			}
 		}
 	})
 }
 
 func (c *Client) asyncReadMask(b []byte, cb sonic.AsyncCallback) {
-	c.async.AsyncRead(c.frame.mask[:4], func(err error, n int) {
+	c.async.AsyncRead(c.fr.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, -1)
 		} else {
@@ -182,14 +187,22 @@ func (c *Client) asyncReadMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (c *Client) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
-	// TODO extend byteslice and err if not >= c.frame.Len()
-	c.async.AsyncRead(b[:c.frame.Len()], func(err error, n int) {
-		if err != nil {
-			cb(err, -1)
+	if payloadLen := int(c.fr.Len()); payloadLen > 0 {
+		if remaining := payloadLen - int(cap(b)); remaining > 0 {
+			cb(ErrPayloadTooBig, -1)
 		} else {
-			cb(nil, n)
+			b = b[:payloadLen]
+			c.async.AsyncRead(b, func(err error, n int) {
+				if err != nil {
+					cb(err, n)
+				} else {
+					cb(nil, n)
+				}
+			})
 		}
-	})
+	} else {
+		panic("invalid uint64 to int conversion")
+	}
 }
 
 func makeRandKey() []byte {

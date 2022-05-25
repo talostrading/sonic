@@ -49,6 +49,12 @@ func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
 			if err == io.ErrUnexpectedEOF {
 				err = ErrReadingExtendedLength
 			}
+
+			if err == nil {
+				if fr.Len() > MaxFramePayloadLen {
+					return int64(n), ErrPayloadTooBig
+				}
+			}
 		}
 
 		if err == nil && fr.IsMasked() {
@@ -59,18 +65,11 @@ func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
 		}
 
 		if err == nil {
-			if payloadLen := fr.Len(); payloadLen > MaxFramePayloadSize {
-				return int64(n), ErrPayloadTooBig
-			} else if payloadLen > 0 {
-				nn := int(payloadLen)
-				if nn < 0 {
-					panic("invalid uint64 to int conversion")
-				}
-
-				if nn > 0 {
-					fr.payload = util.ExtendByteSlice(fr.payload, nn)
-					n, err = io.ReadFull(r, fr.payload)
-				}
+			if payloadLen := int(fr.Len()); payloadLen > 0 {
+				fr.payload = util.ExtendByteSlice(fr.payload, payloadLen)
+				n, err = io.ReadFull(r, fr.payload[:payloadLen])
+			} else {
+				panic("invalid uint64 to int conversion")
 			}
 		}
 	}

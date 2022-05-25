@@ -1,7 +1,6 @@
 package sonic
 
 import (
-	"fmt"
 	"io"
 	"syscall"
 
@@ -51,7 +50,6 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 			cb(err, n)
 		}
 	})
-	fmt.Println("reading from b", len(b))
 	a.ioc.poller.SetRead(a.fd, &a.pd)
 }
 
