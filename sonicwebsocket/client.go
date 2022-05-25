@@ -140,7 +140,7 @@ func (c *Client) AsyncRead(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
-	c.async.AsyncRead(c.fr.header[:2], func(err error, n int) {
+	c.async.AsyncReadAll(c.fr.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, -1)
 		} else {
@@ -159,7 +159,7 @@ func (c *Client) asyncReadHeader(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (c *Client) asyncReadLength(m int, b []byte, cb sonic.AsyncCallback) {
-	c.async.AsyncRead(c.fr.header[2:m+2], func(err error, n int) {
+	c.async.AsyncReadAll(c.fr.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, -1)
 		} else {
@@ -177,7 +177,7 @@ func (c *Client) asyncReadLength(m int, b []byte, cb sonic.AsyncCallback) {
 }
 
 func (c *Client) asyncReadMask(b []byte, cb sonic.AsyncCallback) {
-	c.async.AsyncRead(c.fr.mask[:4], func(err error, n int) {
+	c.async.AsyncReadAll(c.fr.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, -1)
 		} else {
@@ -192,7 +192,7 @@ func (c *Client) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 			cb(ErrPayloadTooBig, -1)
 		} else {
 			b = b[:payloadLen]
-			c.async.AsyncRead(b, func(err error, n int) {
+			c.async.AsyncReadAll(b, func(err error, n int) {
 				if err != nil {
 					cb(err, n)
 				} else {
