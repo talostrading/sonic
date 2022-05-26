@@ -10,7 +10,10 @@ import (
 type AsyncAdapterHandler func(error, *AsyncAdapter)
 type AsyncReaderHandler func(error, *AsyncReader)
 
-var _ AsyncReadWriter = &AsyncAdapter{}
+var (
+	_ AsyncReadWriter = &AsyncAdapter{}
+	_ io.ReadWriter   = &AsyncAdapter{}
+)
 
 // TODO doc: AsyncAdapter operates on blocking fds, hence we schedule a lot
 type AsyncAdapter struct {
@@ -41,6 +44,14 @@ func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapter
 
 		cb(nil, a)
 	})
+}
+
+func (a *AsyncAdapter) Read(b []byte) (int, error) {
+	return a.rw.Read(b)
+}
+
+func (a *AsyncAdapter) Write(b []byte) (int, error) {
+	return a.rw.Write(b)
 }
 
 func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
