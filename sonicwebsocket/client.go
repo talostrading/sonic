@@ -21,8 +21,10 @@ type Client struct {
 	conn       net.Conn
 	async      *sonic.AsyncAdapter
 	fr         *Frame
-	buf        *bytes.Buffer
 	fragmented bool
+
+	// buf holds an entire frame
+	buf *bytes.Buffer
 
 	OnControlFrame func(c Opcode)
 }
@@ -81,7 +83,7 @@ func asyncDial(ioc *sonic.IO, addr string, cnf *tls.Config, cb func(error, *Clie
 			ioc:  ioc,
 			conn: conn,
 			fr:   NewFrame(),
-			buf:  bytes.NewBuffer(nil),
+			buf:  bytes.NewBuffer(make([]byte, 0, FrameHeaderSize+FrameMaskSize+DefaultFramePayloadSize)),
 		}
 
 		upgrader := &http.Client{
@@ -215,19 +217,46 @@ func (c *Client) asyncReadPayload(b []byte, cb AsyncMessageCallback) {
 func (c *Client) AsyncWriteText(b []byte, cb sonic.AsyncCallback) {
 	fr := AcquireFrame()
 
-	fr.SetText()
 	fr.SetFin()
-	fr.Mask()
+	fr.SetText()
 	fr.SetPayload(b)
 
+	fr.Mask()
+
+	c.AsyncWriteFrame(fr, func(err error, n int) {
+		cb(err, n)
+		ReleaseFrame(fr)
+	})
 }
 
 func (c *Client) AsyncWriteBinary(b []byte, cb sonic.AsyncCallback) {
+	fr := AcquireFrame()
 
+	fr.SetFin()
+	fr.SetBinary()
+	fr.SetPayload(b)
+
+	fr.Mask()
+
+	c.AsyncWriteFrame(fr, func(err error, n int) {
+		cb(err, n)
+		ReleaseFrame(fr)
+	})
 }
 
 func (c *Client) AsyncWriteFrame(fr *Frame, cb sonic.AsyncCallback) {
-
+	nn, err := fr.WriteTo(c.buf)
+	n := int(nn)
+	if err != nil {
+		cb(err, n)
+	} else {
+		b := c.buf.Bytes()
+		b = b[:n]
+		c.async.AsyncWriteAll(b, func(err error, n int) {
+			cb(err, n)
+			c.buf.Reset()
+		})
+	}
 }
 
 func (c *Client) IsFragmented() bool {

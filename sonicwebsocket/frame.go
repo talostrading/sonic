@@ -9,26 +9,16 @@ import (
 	"github.com/talostrading/sonic/util"
 )
 
-var (
-	zeroBytes = func() []byte {
-		b := make([]byte, 10)
-		for i := range b {
-			b[i] = 0
-		}
-		return b
-	}()
-)
+var zeroBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
 type Frame struct {
-	header  []byte
-	mask    []byte
+	header  [FrameHeaderSize]byte
+	mask    [FrameMaskSize]byte
 	payload []byte
 }
 
 func NewFrame() *Frame {
 	return &Frame{
-		header:  make([]byte, 10),
-		mask:    make([]byte, 4),
 		payload: make([]byte, DefaultFramePayloadSize),
 	}
 }
@@ -85,7 +75,7 @@ func (fr *Frame) WriteTo(w io.Writer) (n int64, err error) {
 
 	if err == nil {
 		if fr.IsMasked() {
-			nn, err = w.Write(fr.mask)
+			nn, err = w.Write(fr.mask[:])
 			n += int64(nn)
 		}
 
@@ -127,8 +117,8 @@ func (fr *Frame) readMore() (n int) {
 }
 
 func (fr *Frame) Reset() {
-	copy(fr.header, zeroBytes)
-	copy(fr.mask, zeroBytes)
+	copy(fr.header[:], zeroBytes)
+	copy(fr.mask[:], zeroBytes)
 }
 
 func (fr *Frame) IsFin() bool {
@@ -231,7 +221,7 @@ func (fr *Frame) SetPong() {
 
 func (fr *Frame) SetMask(b []byte) {
 	fr.header[1] |= maskBit
-	copy(fr.mask, b[:4])
+	copy(fr.mask[:], b[:4])
 }
 
 func (fr *Frame) UnsetMask() {
@@ -261,19 +251,27 @@ func (fr *Frame) Len() uint64 {
 }
 
 func (fr *Frame) MaskKey() []byte {
-	return fr.mask
+	return fr.mask[:]
 }
 
 func (fr *Frame) Payload() []byte {
 	return fr.payload // TODO might be different for close frames
 }
 
-func (fr *Frame) Mask() error {
-	panic("implement me")
+func (fr *Frame) Mask() {
+	fr.header[1] |= maskBit
+	genMask(fr.mask[:])
+	if len(fr.payload) > 0 {
+		mask(fr.mask[:], fr.payload)
+	}
 }
 
-func (fr *Frame) Unmask() error {
-	panic("implement me")
+func (fr *Frame) Unmask() {
+	if len(fr.payload) > 0 {
+		key := fr.MaskKey()
+		mask(key, fr.payload)
+	}
+	fr.UnsetMask()
 }
 
 // String returns a representation of Frame in a human-readable string format.

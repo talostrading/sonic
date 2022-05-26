@@ -15,13 +15,20 @@ func main() {
 		if err != nil {
 			panic(err)
 		} else {
-			buf := make([]byte, 128)
-			client.AsyncReadMessage(buf, func(err error, n int, binary bool) {
+			client.AsyncWriteText([]byte("hello"), func(err error, n int) {
 				if err != nil {
 					panic(err)
 				} else {
-					buf = buf[:n]
-					fmt.Println(string(buf))
+					fmt.Println("wrote", n, "bytes")
+					buf := make([]byte, 128)
+					client.AsyncReadMessage(buf, func(err error, n int, binary bool) {
+						if err != nil {
+							panic(err)
+						} else {
+							buf = buf[:n]
+							fmt.Println("read", n, "bytes", string(buf), err)
+						}
+					})
 				}
 			})
 		}

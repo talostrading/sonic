@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/websocket"
@@ -16,7 +17,13 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 
 	for {
-		err = c.WriteMessage(websocket.TextMessage, []byte("hello"))
+		msgType, buf, err := c.ReadMessage()
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("read message type:", msgType, "msg:", string(buf))
+
+		err = c.WriteMessage(websocket.TextMessage, buf)
 		if err != nil {
 			panic(err)
 		}
