@@ -1,6 +1,7 @@
 package sonicwebsocket
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/tls"
@@ -20,6 +21,7 @@ type Client struct {
 	conn       net.Conn
 	async      *sonic.AsyncAdapter
 	fr         *Frame
+	buf        *bytes.Buffer
 	fragmented bool
 
 	OnControlFrame func(c Opcode)
@@ -79,6 +81,7 @@ func asyncDial(ioc *sonic.IO, addr string, cnf *tls.Config, cb func(error, *Clie
 			ioc:  ioc,
 			conn: conn,
 			fr:   NewFrame(),
+			buf:  bytes.NewBuffer(nil),
 		}
 
 		upgrader := &http.Client{
@@ -146,7 +149,7 @@ func (c *Client) AsyncReadMessage(b []byte, cb AsyncMessageCallback) {
 func (c *Client) asyncReadHeader(b []byte, cb AsyncMessageCallback) {
 	c.async.AsyncReadAll(c.fr.header[:2], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingHeader, 0, c.fr.Opcode())
+			cb(ErrReadingHeader, 0, c.fr.IsBinary())
 		} else {
 			m := c.fr.readMore()
 			if m > 0 {
@@ -165,10 +168,10 @@ func (c *Client) asyncReadHeader(b []byte, cb AsyncMessageCallback) {
 func (c *Client) asyncReadLength(m int, b []byte, cb AsyncMessageCallback) {
 	c.async.AsyncReadAll(c.fr.header[2:m+2], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingExtendedLength, 0, c.fr.Opcode())
+			cb(ErrReadingExtendedLength, 0, c.fr.IsBinary())
 		} else {
 			if c.fr.Len() > MaxFramePayloadLen {
-				cb(ErrPayloadTooBig, 0, c.fr.Opcode())
+				cb(ErrPayloadTooBig, 0, c.fr.IsBinary())
 			} else {
 				if c.fr.IsMasked() {
 					c.asyncReadMask(b, cb)
@@ -183,7 +186,7 @@ func (c *Client) asyncReadLength(m int, b []byte, cb AsyncMessageCallback) {
 func (c *Client) asyncReadMask(b []byte, cb AsyncMessageCallback) {
 	c.async.AsyncReadAll(c.fr.mask[:4], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingMask, 0, c.fr.Opcode())
+			cb(ErrReadingMask, 0, c.fr.IsBinary())
 		} else {
 			c.asyncReadPayload(b, cb)
 		}
@@ -193,14 +196,14 @@ func (c *Client) asyncReadMask(b []byte, cb AsyncMessageCallback) {
 func (c *Client) asyncReadPayload(b []byte, cb AsyncMessageCallback) {
 	if payloadLen := int(c.fr.Len()); payloadLen > 0 {
 		if remaining := payloadLen - int(cap(b)); remaining > 0 {
-			cb(ErrPayloadTooBig, 0, c.fr.Opcode())
+			cb(ErrPayloadTooBig, 0, c.fr.IsBinary())
 		} else {
 			b = b[:payloadLen]
 			c.async.AsyncReadAll(b, func(err error, n int) {
 				if err != nil {
-					cb(err, n, c.fr.Opcode())
+					cb(err, n, c.fr.IsBinary())
 				} else {
-					cb(nil, n, c.fr.Opcode())
+					cb(nil, n, c.fr.IsBinary())
 				}
 			})
 		}
@@ -210,6 +213,12 @@ func (c *Client) asyncReadPayload(b []byte, cb AsyncMessageCallback) {
 }
 
 func (c *Client) AsyncWriteText(b []byte, cb sonic.AsyncCallback) {
+	fr := AcquireFrame()
+
+	fr.SetText()
+	fr.SetFin()
+	fr.Mask()
+	fr.SetPayload(b)
 
 }
 

@@ -16,7 +16,7 @@ func main() {
 			panic(err)
 		} else {
 			buf := make([]byte, 128)
-			client.AsyncReadMessage(buf, func(err error, n int, code sonicwebsocket.Opcode) {
+			client.AsyncReadMessage(buf, func(err error, n int, binary bool) {
 				if err != nil {
 					panic(err)
 				} else {
