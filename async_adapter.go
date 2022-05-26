@@ -63,6 +63,8 @@ func (a *AsyncAdapter) asyncReadNow(b []byte, readBytes int, readAll bool, cb As
 	if err != nil {
 		cb(err, readBytes)
 	}
+
+	a.scheduleRead(b, readBytes, readAll, cb)
 }
 
 func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
@@ -106,7 +108,7 @@ func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {
 }
 
 func (a *AsyncAdapter) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
-	n, err := a.rw.Read(b[writtenBytes:])
+	n, err := a.rw.Write(b[writtenBytes:])
 	writtenBytes += n
 
 	if err == nil && !(writeAll && writtenBytes != len(b)) {
@@ -117,6 +119,8 @@ func (a *AsyncAdapter) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, 
 	if err != nil {
 		cb(err, writtenBytes)
 	}
+
+	a.scheduleWrite(b, writtenBytes, writeAll, cb)
 }
 
 func (a *AsyncAdapter) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
