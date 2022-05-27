@@ -66,10 +66,36 @@ func asyncDial(ioc *sonic.IO, addr string, cnf *tls.Config, cb func(error, *Clie
 		var sc syscall.Conn
 
 		if scheme == "http" {
-			conn, err = net.Dial("tcp", uri.Host)
+			port := uri.Port()
+			if port == "" {
+				port = ":80"
+			}
+			conn, err = net.Dial("tcp", uri.Hostname()+port)
+			if err != nil {
+				ioc.Dispatch(func() {
+					cb(err, nil)
+				})
+				return
+			}
 			sc = conn.(syscall.Conn)
 		} else {
-			conn, err = tls.Dial("tcp", uri.Host, cnf)
+			if cnf == nil {
+				ioc.Dispatch(func() {
+					cb(fmt.Errorf("wss requested with nil tls config"), nil)
+				})
+				return
+			}
+			port := uri.Port()
+			if port == "" {
+				port = ":443"
+			}
+			conn, err = tls.Dial("tcp", uri.Hostname()+port, cnf)
+			if err != nil {
+				ioc.Dispatch(func() {
+					cb(err, nil)
+				})
+				return
+			}
 			sc = conn.(*tls.Conn).NetConn().(syscall.Conn)
 		}
 		if err != nil {
