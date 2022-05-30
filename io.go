@@ -2,8 +2,10 @@ package sonic
 
 import (
 	"io"
+	"os"
 	"runtime"
 	"sync/atomic"
+	"syscall"
 
 	"github.com/talostrading/sonic/internal"
 )
@@ -69,28 +71,14 @@ func (ioc *IO) RunPending() error {
 // RunOne runs the event processing loop to execute at most one handler
 // note: this blocks the calling goroutine until one event is ready to process
 func (ioc *IO) RunOne() error {
-	if err := ioc.poller.Poll(-1); err != nil {
-		if ioc.poller.Closed() {
-			return io.EOF
-		} else {
-			return err
-		}
-	}
-	return nil
+	return ioc.poll(-1)
 }
 
 // RunOneFor runs the event processing loop for a specified duration to execute at
 // most one handler.
 // note: this blocks the calling goroutine until one event is ready to process
 func (ioc *IO) RunOneFor(timeoutMs int) error {
-	if err := ioc.poller.Poll(timeoutMs); err != nil {
-		if ioc.poller.Closed() {
-			return io.EOF
-		} else {
-			return err
-		}
-	}
-	return nil
+	return ioc.poll(timeoutMs)
 }
 
 // Poll runs the event processing loop to execute ready handlers
@@ -106,13 +94,27 @@ func (ioc *IO) Poll() error {
 // PollOne runs the event processing loop to execute one ready handler
 // note: this will return immediately in case there is no event to process
 func (ioc *IO) PollOne() error {
-	if err := ioc.poller.Poll(0); err != nil {
-		if ioc.poller.Closed() {
-			return io.EOF
-		} else {
+	return ioc.poll(0)
+}
+
+func (ioc *IO) poll(timeoutMs int) error {
+	if err := ioc.poller.Poll(timeoutMs); err != nil {
+		if err == syscall.EINTR {
+			if timeoutMs >= 0 {
+				return internal.ErrTimeout
+			}
+
+			runtime.Gosched()
+			return nil
+		}
+
+		if err == internal.ErrTimeout {
 			return err
 		}
+
+		return os.NewSyscallError("poll_wait_indefinitely", err)
 	}
+
 	return nil
 }
 
