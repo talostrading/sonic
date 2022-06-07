@@ -23,8 +23,6 @@ type IO struct {
 }
 
 func NewIO() (*IO, error) {
-	runtime.LockOSThread()
-
 	poller, err := internal.NewPoller()
 	if err != nil {
 		return nil, err
@@ -129,6 +127,5 @@ func (ioc *IO) Close() error {
 		return io.EOF
 	}
 
-	runtime.UnlockOSThread()
 	return ioc.poller.Close()
 }
