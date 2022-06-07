@@ -3,7 +3,9 @@ package sonicwebsocket
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -30,23 +32,32 @@ type StreamImpl struct {
 	// ccb is the callback called when a control frame is received
 	ccb AsyncControlCallback
 
-	buf *bytes.Buffer
-	fr  *Frame
+	writeBuf *bytes.Buffer
+
+	// readFrame is the frame in which read data is deserialized into
+	readFrame *Frame
 
 	// conn is the underlying tcp stream connection
 	conn net.Conn
 
 	// async makes it possible to execute asynchronous operations on conn
 	async *sonic.AsyncAdapter
+
+	readLimit uint64
+
+	// make something nicer
+	binary bool
+	text   bool
 }
 
 func NewStreamImpl(ioc *sonic.IO, cb StateChangeCallback, tls *tls.Config) *StreamImpl {
 	s := &StreamImpl{
-		ioc:   ioc,
-		state: StateClosed,
-		tls:   tls,
-		fr:    NewFrame(),
-		buf:   bytes.NewBuffer(make([]byte, 0, FrameHeaderSize+FrameMaskSize+DefaultFramePayloadSize)),
+		ioc:       ioc,
+		state:     StateClosed,
+		tls:       tls,
+		readFrame: NewFrame(),
+		writeBuf:  bytes.NewBuffer(make([]byte, 0, FrameHeaderSize+FrameMaskSize+DefaultFramePayloadSize)),
+		readLimit: MaxPayloadSize,
 	}
 	return s
 }
@@ -55,23 +66,26 @@ func (s *StreamImpl) dial(ctx context.Context, network, addr string) (net.Conn, 
 	return s.conn, nil
 }
 
-func (s *StreamImpl) AsyncRead(b []byte, cb sonic.AsyncCallback) {
-	s.asyncReadFrame(b, cb)
+func (s *StreamImpl) Read(b []byte) error {
+	panic("implement me")
 }
 
-func (s *StreamImpl) AsyncReadAll(b []byte, cb sonic.AsyncCallback) {
-	read := 0
+func (s *StreamImpl) ReadSome(b []byte) error {
+	panic("implement me")
+}
+
+func (s *StreamImpl) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+	var read uint64 = 0
 	for {
-		if uint64(read) > MaxFramePayloadLen {
-			cb(ErrPayloadTooBig, read)
+		if read >= s.readLimit {
 			break
 		}
 
-		s.asyncReadFrame(b[read:], func(err error, n int) {
+		s.asyncReadFrame(b[read:s.readLimit], func(err error, n int) {
 			if err != nil {
 				cb(err, n)
 			} else {
-				read += n
+				read += uint64(n)
 			}
 		})
 
@@ -81,19 +95,23 @@ func (s *StreamImpl) AsyncReadAll(b []byte, cb sonic.AsyncCallback) {
 	}
 }
 
+func (s *StreamImpl) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
+	s.asyncReadFrame(b, cb)
+}
+
 func (s *StreamImpl) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
 	s.asyncReadFrameHeader(b, cb)
 }
 func (s *StreamImpl) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.fr.header[:2], func(err error, n int) {
+	s.async.AsyncReadAll(s.readFrame.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, 0)
 		} else {
-			m := s.fr.readMore()
+			m := s.readFrame.readMore()
 			if m > 0 {
 				s.asyncReadFrameExtraLength(m, b, cb)
 			} else {
-				if s.fr.IsMasked() {
+				if s.readFrame.IsMasked() {
 					s.asyncReadFrameMask(b, cb)
 				} else {
 					s.asyncReadPayload(b, cb)
@@ -104,14 +122,14 @@ func (s *StreamImpl) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *StreamImpl) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.fr.header[2:m+2], func(err error, n int) {
+	s.async.AsyncReadAll(s.readFrame.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, 0)
 		} else {
-			if s.fr.Len() > MaxFramePayloadLen {
+			if s.readFrame.Len() > s.readLimit {
 				cb(ErrPayloadTooBig, 0)
 			} else {
-				if s.fr.IsMasked() {
+				if s.readFrame.IsMasked() {
 					s.asyncReadFrameMask(b, cb)
 				} else {
 					s.asyncReadPayload(b, cb)
@@ -122,7 +140,7 @@ func (s *StreamImpl) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCa
 }
 
 func (s *StreamImpl) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.fr.mask[:4], func(err error, n int) {
+	s.async.AsyncReadAll(s.readFrame.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, 0)
 		} else {
@@ -132,7 +150,7 @@ func (s *StreamImpl) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *StreamImpl) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
-	if payloadLen := int(s.fr.Len()); payloadLen > 0 {
+	if payloadLen := int(s.readFrame.Len()); payloadLen > 0 {
 		if remaining := payloadLen - int(cap(b)); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
 		} else {
@@ -150,12 +168,88 @@ func (s *StreamImpl) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 	}
 }
 
-func (s *StreamImpl) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
-
+func (s *StreamImpl) Write(b []byte) error {
+	panic("implement me")
 }
 
-func (s *StreamImpl) AsyncWriteAll(b []byte, cb sonic.AsyncCallback) {
+// WriteSome writes some message data.
+func (s *StreamImpl) WriteSome(fin bool, b []byte) error {
+	panic("implement me")
+}
 
+// AsyncWrite writes a complete message asynchronously.
+func (s *StreamImpl) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
+	fr := AcquireFrame()
+
+	// TODO For a full fledged server, we would want the caller
+	// to set the payload size per frame as an option first. Then
+	// this function will break up the message into multiple frames is necessary.
+	// For now, this works fine. We send everything in one frame.
+	fr.SetFin()
+
+	if s.binary {
+		fr.SetBinary()
+	} else if s.text {
+		fr.SetText()
+	}
+
+	fr.SetPayload(b)
+
+	// TODO introduce websocket role (only clients should mask the data, servers not)
+	fr.Mask()
+
+	s.asyncWriteFrame(fr, func(err error, n int) {
+		cb(err, n)
+		ReleaseFrame(fr)
+	})
+}
+
+// AsyncWriteSome writes some message data asynchronously.
+func (s *StreamImpl) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback) {
+	fr := AcquireFrame()
+
+	if fin {
+		fr.SetFin()
+	}
+
+	if s.binary {
+		fr.SetBinary()
+	} else if s.text {
+		fr.SetText()
+	}
+
+	fr.SetPayload(b)
+
+	// TODO introduce websocket role (only clients should mask the data, servers not)
+	fr.Mask()
+
+	s.asyncWriteFrame(fr, func(err error, n int) {
+		cb(err, n)
+		ReleaseFrame(fr)
+	})
+}
+
+func (s *StreamImpl) asyncWriteFrame(fr *Frame, cb sonic.AsyncCallback) {
+	s.writeBuf.Reset()
+
+	nn, err := fr.WriteTo(s.writeBuf)
+	n := int(nn)
+	if err != nil {
+		cb(err, n)
+	} else {
+		b := s.writeBuf.Bytes()
+		b = b[:n]
+		s.async.AsyncWriteAll(b, cb)
+	}
+}
+
+// SetReadLimit sets the maximum read size. If 0, the max size is used.
+func (s *StreamImpl) SetReadLimit(limit uint64) {
+	if limit == 0 {
+		s.readLimit = MaxPayloadSize
+	} else {
+		s.readLimit = limit
+	}
 }
 
 func (s *StreamImpl) State() StreamState {
@@ -163,35 +257,43 @@ func (s *StreamImpl) State() StreamState {
 }
 
 func (s *StreamImpl) GotText() bool {
-	return s.fr.IsText()
+	return s.readFrame.IsText()
 }
 
 func (s *StreamImpl) GotBinary() bool {
-	return s.fr.IsBinary()
+	return s.readFrame.IsBinary()
 }
 
 func (s *StreamImpl) IsMessageDone() bool {
-	return s.fr.IsContinuation()
+	return s.readFrame.IsContinuation()
 }
 
 func (s *StreamImpl) SendBinary(v bool) {
 	if v {
-		s.fr.SetBinary()
+		s.binary = true
+		s.text = false
+	} else {
+		s.binary = false
+		s.text = true
 	}
 }
 
 func (s *StreamImpl) SentBinary() bool {
-	return s.fr.IsBinary()
+	return s.binary
 }
 
 func (s *StreamImpl) SendText(v bool) {
 	if v {
-		s.fr.SetText()
+		s.binary = false
+		s.text = true
+	} else {
+		s.binary = true
+		s.text = false
 	}
 }
 
 func (s *StreamImpl) SentText() bool {
-	return s.fr.IsText()
+	return s.readFrame.IsText()
 }
 
 func (s *StreamImpl) SetControlCallback(ccb AsyncControlCallback) {
@@ -370,4 +472,13 @@ func (s *StreamImpl) Pong(PingPongPayload) error {
 
 func (s *StreamImpl) AsyncPong(PingPongPayload, func(error)) {
 	// TODO
+}
+
+func makeRandKey() []byte {
+	b := make([]byte, 16)
+	rand.Read(b[:])
+	n := base64.StdEncoding.EncodedLen(16)
+	key := make([]byte, n)
+	base64.StdEncoding.Encode(key, b)
+	return key
 }

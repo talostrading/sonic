@@ -17,11 +17,11 @@ type Stream interface {
 	// Reads reads a complete message.
 	Read(b []byte) error
 
-	// AsyncRead reads a complete message asynchronously.
-	AsyncRead(b []byte, cb sonic.AsyncCallback)
-
 	// ReadSome reads some part of a message.
 	ReadSome(b []byte) error
+
+	// AsyncRead reads a complete message asynchronously.
+	AsyncRead(b []byte, cb sonic.AsyncCallback)
 
 	// AsyncReadSome reads some part of a message asynchronously.
 	AsyncReadSome(b []byte, cb sonic.AsyncCallback)
@@ -29,18 +29,19 @@ type Stream interface {
 	// Write writes a complete message.
 	Write(b []byte) error
 
-	// AsyncWrite writes a complete message asynchronously.
-	AsyncWrite(b []byte, cb sonic.AsyncCallback)
-
 	// WriteSome writes some message data.
 	WriteSome(fin bool, b []byte) error
+
+	// AsyncWrite writes a complete message asynchronously.
+	AsyncWrite(b []byte, cb sonic.AsyncCallback)
 
 	// AsyncWriteSome writes some message data asynchronously.
 	AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback)
 
 	// SetReadLimit sets the maximum read size. If 0, the max size is used.
-	SetReadLimit(int)
+	SetReadLimit(uint64)
 
+	// State returns the state of the WebSocket connection.
 	State() StreamState
 
 	// GotText returns true if the latest message data indicates text.
