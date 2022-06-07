@@ -1,37 +1,40 @@
 package sonicwebsocket
 
-import "errors"
+type AsyncControlCallback func(FrameType, []byte)
 
-type AsyncMessageCallback func(err error, n int, binary bool)
+type FrameType uint8
+
+const (
+	Close FrameType = iota
+	Ping
+	Pong
+)
 
 type Opcode uint8
 
+// No `iota` here for clarity.
 const (
 	OpcodeContinuation Opcode = 0x0
 	OpcodeText         Opcode = 0x1
 	OpcodeBinary       Opcode = 0x2
+	OpcodeRsv3         Opcode = 0x3
+	OpcodeRsv4         Opcode = 0x4
+	OpcodeRsv5         Opcode = 0x5
+	OpcodeRsv6         Opcode = 0x6
+	OpcodeRsv7         Opcode = 0x7
 	OpcodeClose        Opcode = 0x8
 	OpcodePing         Opcode = 0x9
 	OpcodePong         Opcode = 0xA
+	OpcodeCrsvb        Opcode = 0xB
+	OpcodeCrsvc        Opcode = 0xC
+	OpcodeCrsvd        Opcode = 0xD
+	OpcodeCrsve        Opcode = 0xE
+	OpcodeCrsvf        Opcode = 0xF
 )
 
-type Status uint16
-
-const (
-	StatusNone             Status = 1000
-	StatusGoAway           Status = 1001
-	StatusProtocolError    Status = 1002
-	StatusNotAcceptable    Status = 1003
-	StatusReserved         Status = 1004
-	StatusNotPresent       Status = 1005
-	StatusClosedAbnormally Status = 1006
-	StatusInconsistentType Status = 1007
-	StatusViolation        Status = 1008
-	StatusTooBig           Status = 1009
-	StatusExtensionNeeded  Status = 1010
-	StatusUnexpected       Status = 1011
-	StatusFailedTLS        Status = 1015
-)
+func IsReserved(op Opcode) bool {
+	return (op >= OpcodeRsv3 && op <= OpcodeRsv7) || (op >= OpcodeCrsvb && op <= OpcodeCrsvf)
+}
 
 func (c Opcode) String() string {
 	switch c {
@@ -41,12 +44,32 @@ func (c Opcode) String() string {
 		return "text"
 	case OpcodeBinary:
 		return "binary"
+	case OpcodeRsv3:
+		return "rsv3"
+	case OpcodeRsv4:
+		return "rsv4"
+	case OpcodeRsv5:
+		return "rsv5"
+	case OpcodeRsv6:
+		return "rsv6"
+	case OpcodeRsv7:
+		return "rsv7"
 	case OpcodeClose:
 		return "close"
 	case OpcodePing:
 		return "ping"
 	case OpcodePong:
 		return "pong"
+	case OpcodeCrsvb:
+		return "crsvb"
+	case OpcodeCrsvc:
+		return "crsvc"
+	case OpcodeCrsvd:
+		return "crsvd"
+	case OpcodeCrsve:
+		return "crsve"
+	case OpcodeCrsvf:
+		return "crsvf"
 	default:
 		return "unknown"
 	}
@@ -66,12 +89,4 @@ const (
 	rsv2Bit = byte(1 << 5)
 	rsv3Bit = byte(1 << 4)
 	maskBit = byte(1 << 7)
-)
-
-var (
-	ErrCannotUpgrade         = errors.New("cannot upgrade to websocket")
-	ErrReadingHeader         = errors.New("could not read header")
-	ErrReadingExtendedLength = errors.New("could not read extended length")
-	ErrReadingMask           = errors.New("could not read mask")
-	ErrPayloadTooBig         = errors.New("payload too big")
 )
