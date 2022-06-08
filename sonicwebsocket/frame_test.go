@@ -89,7 +89,7 @@ func TestWriteFrame(t *testing.T) {
 	}
 }
 
-func checkFrame(t *testing.T, fr *Frame, c, fin bool, payload []byte) {
+func checkFrame(t *testing.T, fr *frame, c, fin bool, payload []byte) {
 	if c && !fr.IsContinuation() {
 		t.Fatal("expected continuation")
 	}

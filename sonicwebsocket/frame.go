@@ -11,19 +11,19 @@ import (
 
 var zeroBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
-type Frame struct {
-	header  [FrameHeaderSize]byte
-	mask    [FrameMaskSize]byte
+type frame struct {
+	header  [frameHeaderSize]byte
+	mask    [frameMaskSize]byte
 	payload []byte
 }
 
-func NewFrame() *Frame {
-	return &Frame{
-		payload: make([]byte, DefaultFramePayloadSize),
+func newFrame() *frame {
+	return &frame{
+		payload: make([]byte, DefaultPayloadSize),
 	}
 }
 
-func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
+func (fr *frame) ReadFrom(r io.Reader) (int64, error) {
 	var n int
 	var err error
 
@@ -67,7 +67,7 @@ func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
 	return int64(n), err
 }
 
-func (fr *Frame) WriteTo(w io.Writer) (n int64, err error) {
+func (fr *frame) WriteTo(w io.Writer) (n int64, err error) {
 	var nn int
 
 	nn, err = w.Write(fr.header[:2+fr.payloadBytes()])
@@ -88,7 +88,7 @@ func (fr *Frame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (fr *Frame) payloadBytes() int {
+func (fr *frame) payloadBytes() int {
 	n := len(fr.payload)
 
 	switch {
@@ -106,7 +106,7 @@ func (fr *Frame) payloadBytes() int {
 	}
 }
 
-func (fr *Frame) readMore() (n int) {
+func (fr *frame) readMore() (n int) {
 	switch fr.header[1] & 127 {
 	case 127:
 		n = 8
@@ -116,119 +116,119 @@ func (fr *Frame) readMore() (n int) {
 	return
 }
 
-func (fr *Frame) Reset() {
+func (fr *frame) Reset() {
 	copy(fr.header[:], zeroBytes)
 	copy(fr.mask[:], zeroBytes)
 }
 
-func (fr *Frame) IsFin() bool {
+func (fr *frame) IsFin() bool {
 	return fr.header[0]&finBit != 0
 }
 
-func (fr *Frame) IsRSV1() bool {
+func (fr *frame) IsRSV1() bool {
 	return fr.header[0]&rsv1Bit != 0
 }
 
-func (fr *Frame) IsRSV2() bool {
+func (fr *frame) IsRSV2() bool {
 	return fr.header[0]&rsv2Bit != 0
 }
 
-func (fr *Frame) IsRSV3() bool {
+func (fr *frame) IsRSV3() bool {
 	return fr.header[0]&rsv3Bit != 0
 }
 
-func (fr *Frame) Opcode() Opcode {
+func (fr *frame) Opcode() Opcode {
 	return Opcode(fr.header[0] & 15)
 }
 
-func (fr *Frame) IsContinuation() bool {
+func (fr *frame) IsContinuation() bool {
 	return fr.Opcode() == OpcodeContinuation
 }
 
-func (fr *Frame) IsText() bool {
+func (fr *frame) IsText() bool {
 	return fr.Opcode() == OpcodeText
 }
 
-func (fr *Frame) IsBinary() bool {
+func (fr *frame) IsBinary() bool {
 	return fr.Opcode() == OpcodeBinary
 }
 
-func (fr *Frame) IsClose() bool {
+func (fr *frame) IsClose() bool {
 	return fr.Opcode() == OpcodeClose
 }
 
-func (fr *Frame) IsPing() bool {
+func (fr *frame) IsPing() bool {
 	return fr.Opcode() == OpcodePing
 }
 
-func (fr *Frame) IsPong() bool {
+func (fr *frame) IsPong() bool {
 	return fr.Opcode() == OpcodePong
 }
 
-func (fr *Frame) IsControl() bool {
+func (fr *frame) IsControl() bool {
 	return fr.IsClose() || fr.IsPing() || fr.IsPong()
 }
 
-func (fr *Frame) IsMasked() bool {
+func (fr *frame) IsMasked() bool {
 	return fr.header[1]&maskBit != 0
 }
 
-func (fr *Frame) SetFin() {
+func (fr *frame) SetFin() {
 	fr.header[0] |= finBit
 }
 
-func (fr *Frame) SetRSV1() {
+func (fr *frame) SetRSV1() {
 	fr.header[0] |= rsv1Bit
 }
 
-func (fr *Frame) SetRSV2() {
+func (fr *frame) SetRSV2() {
 	fr.header[0] |= rsv2Bit
 }
 
-func (fr *Frame) SetRSV3() {
+func (fr *frame) SetRSV3() {
 	fr.header[0] |= rsv3Bit
 }
 
-func (fr *Frame) SetOpcode(c Opcode) {
+func (fr *frame) SetOpcode(c Opcode) {
 	c &= 15
 	fr.header[0] &= 15 << 4
 	fr.header[0] |= uint8(c)
 }
 
-func (fr *Frame) SetContinuation() {
+func (fr *frame) SetContinuation() {
 	fr.SetOpcode(OpcodeContinuation)
 }
 
-func (fr *Frame) SetText() {
+func (fr *frame) SetText() {
 	fr.SetOpcode(OpcodeText)
 }
 
-func (fr *Frame) SetBinary() {
+func (fr *frame) SetBinary() {
 	fr.SetOpcode(OpcodeBinary)
 }
 
-func (fr *Frame) SetClose() {
+func (fr *frame) SetClose() {
 	fr.SetOpcode(OpcodeClose)
 }
 
-func (fr *Frame) SetPing() {
+func (fr *frame) SetPing() {
 	fr.SetOpcode(OpcodePing)
 }
 
-func (fr *Frame) SetPong() {
+func (fr *frame) SetPong() {
 	fr.SetOpcode(OpcodePong)
 }
 
-func (fr *Frame) SetMask(b []byte) {
+func (fr *frame) SetMask(b []byte) {
 	fr.header[1] |= maskBit
 	copy(fr.mask[:], b[:4])
 }
 
-func (fr *Frame) UnsetMask() {
+func (fr *frame) UnsetMask() {
 	fr.header[1] ^= maskBit
 }
 
-func (fr *Frame) SetPayload(b []byte) {
+func (fr *frame) SetPayload(b []byte) {
 	n := 0
 	if fr.IsClose() {
 		n = 2
@@ -239,7 +239,7 @@ func (fr *Frame) SetPayload(b []byte) {
 	fr.payload = append(fr.payload[:n], b...)
 }
 
-func (fr *Frame) Len() uint64 {
+func (fr *frame) Len() uint64 {
 	length := uint64(fr.header[1] & 127)
 	switch length {
 	case 126:
@@ -250,15 +250,15 @@ func (fr *Frame) Len() uint64 {
 	return length
 }
 
-func (fr *Frame) MaskKey() []byte {
+func (fr *frame) MaskKey() []byte {
 	return fr.mask[:]
 }
 
-func (fr *Frame) Payload() []byte {
+func (fr *frame) Payload() []byte {
 	return fr.payload // TODO might be different for close frames
 }
 
-func (fr *Frame) Mask() {
+func (fr *frame) Mask() {
 	fr.header[1] |= maskBit
 	genMask(fr.mask[:])
 	if len(fr.payload) > 0 {
@@ -266,7 +266,7 @@ func (fr *Frame) Mask() {
 	}
 }
 
-func (fr *Frame) Unmask() {
+func (fr *frame) Unmask() {
 	if len(fr.payload) > 0 {
 		key := fr.MaskKey()
 		mask(key, fr.payload)
@@ -275,7 +275,7 @@ func (fr *Frame) Unmask() {
 }
 
 // String returns a representation of Frame in a human-readable string format.
-func (fr *Frame) String() string {
+func (fr *frame) String() string {
 	return fmt.Sprintf(`
 FIN: %v
 RSV1: %v
@@ -296,15 +296,15 @@ MASK-KEY: %v`,
 
 var framePool = sync.Pool{
 	New: func() interface{} {
-		return NewFrame()
+		return newFrame()
 	},
 }
 
-func AcquireFrame() *Frame {
-	return framePool.Get().(*Frame)
+func AcquireFrame() *frame {
+	return framePool.Get().(*frame)
 }
 
-func ReleaseFrame(f *Frame) {
+func ReleaseFrame(f *frame) {
 	f.Reset()
 	framePool.Put(f)
 }

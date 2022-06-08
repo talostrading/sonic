@@ -41,7 +41,7 @@ type WebsocketStream struct {
 	writeBuf *bytes.Buffer
 
 	// readFrame is the frame in which read data is deserialized into
-	readFrame *Frame
+	readFrame *frame
 
 	// conn is the underlying tcp stream connection
 	conn net.Conn
@@ -61,8 +61,8 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config) Stream {
 		ioc:       ioc,
 		state:     StateClosed,
 		tls:       tls,
-		readFrame: NewFrame(),
-		writeBuf:  bytes.NewBuffer(make([]byte, 0, FrameHeaderSize+FrameMaskSize+DefaultFramePayloadSize)),
+		readFrame: newFrame(),
+		writeBuf:  bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
 		readLimit: MaxPayloadSize,
 		text:      true,
 		binary:    false,
@@ -237,7 +237,7 @@ func (s *WebsocketStream) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallb
 	})
 }
 
-func (s *WebsocketStream) asyncWriteFrame(fr *Frame, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncWriteFrame(fr *frame, cb sonic.AsyncCallback) {
 	s.writeBuf.Reset()
 
 	nn, err := fr.WriteTo(s.writeBuf)
