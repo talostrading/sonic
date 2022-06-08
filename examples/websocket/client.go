@@ -11,17 +11,18 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	sonicwebsocket.AsyncDial(ioc, "ws://localhost:8080/", func(err error, client *sonicwebsocket.Client) {
+	client := sonicwebsocket.NewStreamImpl(ioc, nil)
+	client.AsyncHandshake("ws://localhost:8080", func(err error) {
 		if err != nil {
 			panic(err)
 		} else {
-			client.AsyncWriteText([]byte("hello"), func(err error, n int) {
+			client.AsyncWrite([]byte("hello"), func(err error, n int) {
 				if err != nil {
 					panic(err)
 				} else {
 					fmt.Println("wrote", n, "bytes")
 					buf := make([]byte, 128)
-					client.AsyncReadMessage(buf, func(err error, n int, binary bool) {
+					client.AsyncReadSome(buf, func(err error, n int) {
 						if err != nil {
 							panic(err)
 						} else {

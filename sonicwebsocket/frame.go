@@ -41,7 +41,7 @@ func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
 			}
 
 			if err == nil {
-				if fr.Len() > MaxFramePayloadLen {
+				if fr.Len() > MaxPayloadSize {
 					return int64(n), ErrPayloadTooBig
 				}
 			}

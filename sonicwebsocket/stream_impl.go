@@ -50,7 +50,7 @@ type StreamImpl struct {
 	text   bool
 }
 
-func NewStreamImpl(ioc *sonic.IO, cb StateChangeCallback, tls *tls.Config) *StreamImpl {
+func NewStreamImpl(ioc *sonic.IO, tls *tls.Config) Stream {
 	s := &StreamImpl{
 		ioc:       ioc,
 		state:     StateClosed,
@@ -58,12 +58,10 @@ func NewStreamImpl(ioc *sonic.IO, cb StateChangeCallback, tls *tls.Config) *Stre
 		readFrame: NewFrame(),
 		writeBuf:  bytes.NewBuffer(make([]byte, 0, FrameHeaderSize+FrameMaskSize+DefaultFramePayloadSize)),
 		readLimit: MaxPayloadSize,
+		text:      true,
+		binary:    false,
 	}
 	return s
-}
-
-func (s *StreamImpl) dial(ctx context.Context, network, addr string) (net.Conn, error) {
-	return s.conn, nil
 }
 
 func (s *StreamImpl) Read(b []byte) error {
@@ -304,121 +302,49 @@ func (s *StreamImpl) ControlCallback() AsyncControlCallback {
 	return s.ccb
 }
 
-func (s *StreamImpl) Handshake(addr string) error {
-	s.state = StateHandshake
-
-	conn, sc, err := s.handshake(addr)
-	if err != nil {
-		return err
-	}
-
-	s.conn = conn
-
+func (s *StreamImpl) Handshake(addr string) (err error) {
 	done := make(chan struct{}, 1)
-	sonic.NewAsyncAdapter(s.ioc, sc, s.conn, func(asyncErr error, async *sonic.AsyncAdapter) {
-		if asyncErr != nil {
-			err = asyncErr
-		} else {
-			err = nil
-			s.async = async
-		}
-		done <- struct{}{}
+	s.handshake(addr, func(herr error) {
+		err = herr
 	})
 	<-done
-
-	return err
+	return
 }
 
 func (s *StreamImpl) AsyncHandshake(addr string, cb func(error)) {
-	s.state = StateHandshake
-
+	// I know, this is horrible, but if you help me write a TLS client for sonic
+	// we can asynchronously dial endpoints and remove the need for a goroutine.
 	go func() {
-		conn, sc, err := s.handshake(addr)
-		if err != nil {
-			cb(err)
-			return
-		}
-
-		s.conn = conn
-
-		sonic.NewAsyncAdapter(s.ioc, sc, s.conn, func(err error, async *sonic.AsyncAdapter) {
-			if err != nil {
+		s.handshake(addr, func(err error) {
+			s.ioc.Dispatch(func() {
 				cb(err)
-			} else {
-				s.async = async
-				cb(nil)
-			}
+			})
 		})
 	}()
 }
 
-func (s *StreamImpl) handshake(addr string) (conn net.Conn, sc syscall.Conn, err error) {
-	uri, err := s.resolveUpgrader(addr)
-	if err != nil {
-		return nil, nil, err
-	}
+func (s *StreamImpl) handshake(addr string, cb func(error)) {
+	s.state = StateHandshake
 
-	if uri.Scheme == "http" {
-		port := uri.Port()
-		if port == "" {
-			port = ":80"
-		}
-		conn, err = net.Dial("tcp", uri.Hostname()+port)
-		if err != nil {
-			return nil, nil, err
-		}
-		sc = conn.(syscall.Conn)
+	uri, err := s.resolve(addr)
+	if err != nil {
+		cb(err)
 	} else {
-		if s.tls == nil {
-			return nil, nil, fmt.Errorf("wss requested with nil tls config")
-		}
-		port := uri.Port()
-		if port == "" {
-			port = ":443"
-		}
-
-		conn, err = tls.Dial("tcp", uri.Hostname()+port, s.tls)
-		if err != nil {
-			return nil, nil, err
-		}
-		sc = conn.(*tls.Conn).NetConn().(syscall.Conn)
+		s.dial(uri, func(err error) {
+			if err != nil {
+				cb(err)
+			} else {
+				err = s.upgrade(uri)
+				if err != nil {
+					s.state = StateOpen
+				}
+				cb(err)
+			}
+		})
 	}
-	if err != nil {
-		return nil, nil, err
-	}
-
-	upgrader := &http.Client{
-		Transport: &http.Transport{
-			DialContext:     s.dial,
-			DialTLSContext:  s.dial,
-			TLSClientConfig: s.tls,
-		},
-	}
-
-	req, err := http.NewRequest("GET", uri.String(), nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	req.Header.Set("Upgrade", "websocket")
-	req.Header.Set("Connection", "Upgrade")
-	req.Header.Set("Sec-WebSocket-Key", string(makeRandKey()))
-	req.Header.Set("Sec-Websocket-Version", "13")
-
-	res, err := upgrader.Do(req)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	if res.StatusCode != 101 || res.Header.Get("Upgrade") != "websocket" {
-		// TODO check the Sec-Websocket-Accept header as well
-		return nil, nil, ErrCannotUpgrade
-	}
-
-	return conn, sc, nil
 }
 
-func (s *StreamImpl) resolveUpgrader(addr string) (*url.URL, error) {
+func (s *StreamImpl) resolve(addr string) (*url.URL, error) {
 	uri, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -436,6 +362,88 @@ func (s *StreamImpl) resolveUpgrader(addr string) (*url.URL, error) {
 	}
 
 	return url.Parse(strings.Join([]string{scheme, "://", uri.Host, uri.Path}, ""))
+}
+
+func (s *StreamImpl) dial(uri *url.URL, cb func(err error)) {
+	var conn net.Conn
+	var sc syscall.Conn
+	var err error
+
+	if uri.Scheme == "http" {
+		port := uri.Port()
+		if port == "" {
+			port = "80"
+		}
+		conn, err = net.Dial("tcp", uri.Hostname()+":"+port)
+		if err != nil {
+			cb(err)
+			return
+		}
+		sc = conn.(syscall.Conn)
+	} else {
+		if s.tls == nil {
+			cb(fmt.Errorf("wss requested with nil tls config"))
+			return
+		}
+		port := uri.Port()
+		if port == "" {
+			port = "443"
+		}
+
+		conn, err = tls.Dial("tcp", uri.Hostname()+":"+port, s.tls)
+		if err != nil {
+			cb(err)
+			return
+		}
+		sc = conn.(*tls.Conn).NetConn().(syscall.Conn)
+	}
+
+	s.conn = conn
+
+	sonic.NewAsyncAdapter(s.ioc, sc, s.conn, func(err error, async *sonic.AsyncAdapter) {
+		if err != nil {
+			cb(err)
+		} else {
+			s.async = async
+			cb(nil)
+		}
+	})
+}
+
+func (s *StreamImpl) upgrade(uri *url.URL) error {
+	upgrader := &http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return s.conn, nil
+			},
+			DialTLSContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return s.conn, nil
+			},
+			TLSClientConfig: s.tls,
+		},
+	}
+
+	req, err := http.NewRequest("GET", uri.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Sec-WebSocket-Key", string(makeRandKey()))
+	req.Header.Set("Sec-Websocket-Version", "13")
+
+	res, err := upgrader.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode != 101 || res.Header.Get("Upgrade") != "websocket" {
+		// TODO check the Sec-Websocket-Accept header as well
+		return ErrCannotUpgrade
+	}
+
+	return nil
 }
 
 func (s *StreamImpl) Accept() error {
