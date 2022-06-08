@@ -18,6 +18,12 @@ import (
 
 var _ Stream = &WebsocketStream{}
 
+// WebsocketStream is a stateful full-duplex connection between two endpoints which
+// adheres to the WebSocket protocol.
+//
+// The WebsocketStream implements Stream and can be used by both clients and servers.
+//
+// The underlying layer through which all IO is done is non-blocking.
 type WebsocketStream struct {
 	// ioc is the object which executes async operations on behalf of StreamImpl
 	ioc *sonic.IO
