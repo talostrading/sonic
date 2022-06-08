@@ -210,9 +210,8 @@ func (f *file) Closed() bool {
 	return atomic.LoadUint32(&f.closed) == 1
 }
 
-func (f *file) Seek(offset int64, whence SeekWhence) error {
-	_, err := syscall.Seek(f.fd, offset, int(whence))
-	return err
+func (f *file) Seek(offset int64, whence int) (int64, error) {
+	return syscall.Seek(f.fd, offset, whence)
 }
 
 func (f *file) Cancel() {

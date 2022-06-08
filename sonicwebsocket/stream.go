@@ -13,11 +13,26 @@ const (
 
 type StateChangeCallback func(err error, state StreamState)
 
+// Stream is an interface for representing a stateful WebSocket connection
+// on the server or client side.
+//
+// The interface uses the layered stream model. A WebSocket stream object contains
+// another stream object, called the "next layer", which it uses to perform IO.
 type Stream interface {
-	// Reads reads a complete message.
+	// NextLayer returns the underlying stream object.
+	//
+	// The returned object is constructed by the Stream and maintained throughout its
+	// entire lifetime. All reads and writes will go through the next layer.
+	NextLayer() sonic.Stream
+
+	// TODO: DeflateSupported (https://datatracker.ietf.org/doc/html/rfc7692)
+
+	// Reads reads a complete message into b.
+	//
+	// If b cannot hold the message, TODO error is returned
 	Read(b []byte) error
 
-	// ReadSome reads some part of a message.
+	// ReadSome reads some part of a message into b.
 	ReadSome(b []byte) error
 
 	// AsyncRead reads a complete message asynchronously.

@@ -22,7 +22,7 @@ func main() {
 		}
 		fmt.Println("wrote", n, "bytes")
 
-		if err := file.Seek(0, sonic.SeekStart); err != nil {
+		if _, err := file.Seek(0, 0); err != nil {
 			panic(err)
 		}
 

@@ -64,6 +64,10 @@ func NewStreamImpl(ioc *sonic.IO, tls *tls.Config) Stream {
 	return s
 }
 
+func (s *StreamImpl) NextLayer() sonic.Stream {
+	return s.async
+}
+
 func (s *StreamImpl) Read(b []byte) error {
 	panic("implement me")
 }

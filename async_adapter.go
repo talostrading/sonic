@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"fmt"
 	"io"
 	"syscall"
 
@@ -11,8 +12,7 @@ type AsyncAdapterHandler func(error, *AsyncAdapter)
 type AsyncReaderHandler func(error, *AsyncReader)
 
 var (
-	_ AsyncReadWriter = &AsyncAdapter{}
-	_ io.ReadWriter   = &AsyncAdapter{}
+	_ FileDescriptor = &AsyncAdapter{}
 )
 
 // TODO doc: AsyncAdapter operates on blocking fds, hence we schedule a lot
@@ -166,10 +166,40 @@ func (a *AsyncAdapter) setWrite() error {
 	return a.ioc.poller.SetWrite(a.fd, &a.pd)
 }
 
-func (a *AsyncAdapter) Close() {
-	a.closed = true
+func (a *AsyncAdapter) Close() error {
+	if a.closed {
+		return fmt.Errorf("already closed")
+	} else {
+		a.closed = true
+		return nil
+	}
 }
 
 func (a *AsyncAdapter) Closed() bool {
 	return a.closed
+}
+
+func (a *AsyncAdapter) Cancel() {
+	a.cancelReads()
+	a.cancelWrites()
+}
+
+func (a *AsyncAdapter) cancelReads() {
+	if a.pd.Flags&internal.ReadFlags == internal.ReadFlags {
+		err := a.ioc.poller.DelRead(a.fd, &a.pd)
+		if err == nil {
+			err = ErrCancelled
+		}
+		a.pd.Cbs[internal.ReadEvent](err)
+	}
+}
+
+func (a *AsyncAdapter) cancelWrites() {
+	if a.pd.Flags&internal.WriteFlags == internal.WriteFlags {
+		err := a.ioc.poller.DelWrite(a.fd, &a.pd)
+		if err == nil {
+			err = ErrCancelled
+		}
+		a.pd.Cbs[internal.WriteEvent](err)
+	}
 }
