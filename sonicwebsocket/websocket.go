@@ -16,9 +16,9 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-var _ Stream = &StreamImpl{}
+var _ Stream = &WebsocketStream{}
 
-type StreamImpl struct {
+type WebsocketStream struct {
 	// ioc is the object which executes async operations on behalf of StreamImpl
 	ioc *sonic.IO
 
@@ -50,8 +50,8 @@ type StreamImpl struct {
 	text   bool
 }
 
-func NewStreamImpl(ioc *sonic.IO, tls *tls.Config) Stream {
-	s := &StreamImpl{
+func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config) Stream {
+	s := &WebsocketStream{
 		ioc:       ioc,
 		state:     StateClosed,
 		tls:       tls,
@@ -64,19 +64,19 @@ func NewStreamImpl(ioc *sonic.IO, tls *tls.Config) Stream {
 	return s
 }
 
-func (s *StreamImpl) NextLayer() sonic.Stream {
+func (s *WebsocketStream) NextLayer() sonic.Stream {
 	return s.async
 }
 
-func (s *StreamImpl) Read(b []byte) error {
+func (s *WebsocketStream) Read(b []byte) error {
 	panic("implement me")
 }
 
-func (s *StreamImpl) ReadSome(b []byte) error {
+func (s *WebsocketStream) ReadSome(b []byte) error {
 	panic("implement me")
 }
 
-func (s *StreamImpl) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
 	var read uint64 = 0
 	for {
 		if read >= s.readLimit {
@@ -97,14 +97,14 @@ func (s *StreamImpl) AsyncRead(b []byte, cb sonic.AsyncCallback) {
 	}
 }
 
-func (s *StreamImpl) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
 	s.asyncReadFrame(b, cb)
 }
 
-func (s *StreamImpl) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
 	s.asyncReadFrameHeader(b, cb)
 }
-func (s *StreamImpl) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
 	s.async.AsyncReadAll(s.readFrame.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, 0)
@@ -123,7 +123,7 @@ func (s *StreamImpl) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
 	})
 }
 
-func (s *StreamImpl) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
 	s.async.AsyncReadAll(s.readFrame.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, 0)
@@ -141,7 +141,7 @@ func (s *StreamImpl) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCa
 	})
 }
 
-func (s *StreamImpl) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 	s.async.AsyncReadAll(s.readFrame.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, 0)
@@ -151,7 +151,7 @@ func (s *StreamImpl) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 	})
 }
 
-func (s *StreamImpl) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 	if payloadLen := int(s.readFrame.Len()); payloadLen > 0 {
 		if remaining := payloadLen - int(cap(b)); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
@@ -170,17 +170,17 @@ func (s *StreamImpl) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 	}
 }
 
-func (s *StreamImpl) Write(b []byte) error {
+func (s *WebsocketStream) Write(b []byte) error {
 	panic("implement me")
 }
 
 // WriteSome writes some message data.
-func (s *StreamImpl) WriteSome(fin bool, b []byte) error {
+func (s *WebsocketStream) WriteSome(fin bool, b []byte) error {
 	panic("implement me")
 }
 
 // AsyncWrite writes a complete message asynchronously.
-func (s *StreamImpl) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
 	fr := AcquireFrame()
 
 	// TODO For a full fledged server, we would want the caller
@@ -207,7 +207,7 @@ func (s *StreamImpl) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
 }
 
 // AsyncWriteSome writes some message data asynchronously.
-func (s *StreamImpl) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback) {
 	fr := AcquireFrame()
 
 	if fin {
@@ -231,7 +231,7 @@ func (s *StreamImpl) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback) 
 	})
 }
 
-func (s *StreamImpl) asyncWriteFrame(fr *Frame, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncWriteFrame(fr *Frame, cb sonic.AsyncCallback) {
 	s.writeBuf.Reset()
 
 	nn, err := fr.WriteTo(s.writeBuf)
@@ -246,7 +246,7 @@ func (s *StreamImpl) asyncWriteFrame(fr *Frame, cb sonic.AsyncCallback) {
 }
 
 // SetReadLimit sets the maximum read size. If 0, the max size is used.
-func (s *StreamImpl) SetReadLimit(limit uint64) {
+func (s *WebsocketStream) SetReadLimit(limit uint64) {
 	if limit == 0 {
 		s.readLimit = MaxPayloadSize
 	} else {
@@ -254,23 +254,23 @@ func (s *StreamImpl) SetReadLimit(limit uint64) {
 	}
 }
 
-func (s *StreamImpl) State() StreamState {
+func (s *WebsocketStream) State() StreamState {
 	return s.state
 }
 
-func (s *StreamImpl) GotText() bool {
+func (s *WebsocketStream) GotText() bool {
 	return s.readFrame.IsText()
 }
 
-func (s *StreamImpl) GotBinary() bool {
+func (s *WebsocketStream) GotBinary() bool {
 	return s.readFrame.IsBinary()
 }
 
-func (s *StreamImpl) IsMessageDone() bool {
+func (s *WebsocketStream) IsMessageDone() bool {
 	return s.readFrame.IsContinuation()
 }
 
-func (s *StreamImpl) SendBinary(v bool) {
+func (s *WebsocketStream) SendBinary(v bool) {
 	if v {
 		s.binary = true
 		s.text = false
@@ -280,11 +280,11 @@ func (s *StreamImpl) SendBinary(v bool) {
 	}
 }
 
-func (s *StreamImpl) SentBinary() bool {
+func (s *WebsocketStream) SentBinary() bool {
 	return s.binary
 }
 
-func (s *StreamImpl) SendText(v bool) {
+func (s *WebsocketStream) SendText(v bool) {
 	if v {
 		s.binary = false
 		s.text = true
@@ -294,19 +294,19 @@ func (s *StreamImpl) SendText(v bool) {
 	}
 }
 
-func (s *StreamImpl) SentText() bool {
+func (s *WebsocketStream) SentText() bool {
 	return s.readFrame.IsText()
 }
 
-func (s *StreamImpl) SetControlCallback(ccb AsyncControlCallback) {
+func (s *WebsocketStream) SetControlCallback(ccb AsyncControlCallback) {
 	s.ccb = ccb
 }
 
-func (s *StreamImpl) ControlCallback() AsyncControlCallback {
+func (s *WebsocketStream) ControlCallback() AsyncControlCallback {
 	return s.ccb
 }
 
-func (s *StreamImpl) Handshake(addr string) (err error) {
+func (s *WebsocketStream) Handshake(addr string) (err error) {
 	done := make(chan struct{}, 1)
 	s.handshake(addr, func(herr error) {
 		err = herr
@@ -315,7 +315,7 @@ func (s *StreamImpl) Handshake(addr string) (err error) {
 	return
 }
 
-func (s *StreamImpl) AsyncHandshake(addr string, cb func(error)) {
+func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine.
 	go func() {
@@ -327,7 +327,7 @@ func (s *StreamImpl) AsyncHandshake(addr string, cb func(error)) {
 	}()
 }
 
-func (s *StreamImpl) handshake(addr string, cb func(error)) {
+func (s *WebsocketStream) handshake(addr string, cb func(error)) {
 	s.state = StateHandshake
 
 	uri, err := s.resolve(addr)
@@ -348,7 +348,7 @@ func (s *StreamImpl) handshake(addr string, cb func(error)) {
 	}
 }
 
-func (s *StreamImpl) resolve(addr string) (*url.URL, error) {
+func (s *WebsocketStream) resolve(addr string) (*url.URL, error) {
 	uri, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -368,7 +368,7 @@ func (s *StreamImpl) resolve(addr string) (*url.URL, error) {
 	return url.Parse(strings.Join([]string{scheme, "://", uri.Host, uri.Path}, ""))
 }
 
-func (s *StreamImpl) dial(uri *url.URL, cb func(err error)) {
+func (s *WebsocketStream) dial(uri *url.URL, cb func(err error)) {
 	var conn net.Conn
 	var sc syscall.Conn
 	var err error
@@ -414,7 +414,7 @@ func (s *StreamImpl) dial(uri *url.URL, cb func(err error)) {
 	})
 }
 
-func (s *StreamImpl) upgrade(uri *url.URL) error {
+func (s *WebsocketStream) upgrade(uri *url.URL) error {
 	upgrader := &http.Client{
 		Transport: &http.Transport{
 			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
@@ -450,39 +450,39 @@ func (s *StreamImpl) upgrade(uri *url.URL) error {
 	return nil
 }
 
-func (s *StreamImpl) Accept() error {
+func (s *WebsocketStream) Accept() error {
 	// TODO
 	return nil
 }
 
-func (s *StreamImpl) AsyncAccept(func(error)) {
+func (s *WebsocketStream) AsyncAccept(func(error)) {
 	// TODO
 }
 
-func (s *StreamImpl) Close(*CloseReason) error {
-	// TODO
-	return nil
-}
-
-func (s *StreamImpl) AsyncClose(*CloseReason, func(error)) {
-	// TODO
-}
-
-func (s *StreamImpl) Ping(payload PingPongPayload) error {
+func (s *WebsocketStream) Close(*CloseReason) error {
 	// TODO
 	return nil
 }
 
-func (s *StreamImpl) AsyncPing(PingPongPayload, func(error)) {
+func (s *WebsocketStream) AsyncClose(*CloseReason, func(error)) {
 	// TODO
 }
 
-func (s *StreamImpl) Pong(PingPongPayload) error {
+func (s *WebsocketStream) Ping(payload PingPongPayload) error {
 	// TODO
 	return nil
 }
 
-func (s *StreamImpl) AsyncPong(PingPongPayload, func(error)) {
+func (s *WebsocketStream) AsyncPing(PingPongPayload, func(error)) {
+	// TODO
+}
+
+func (s *WebsocketStream) Pong(PingPongPayload) error {
+	// TODO
+	return nil
+}
+
+func (s *WebsocketStream) AsyncPong(PingPongPayload, func(error)) {
 	// TODO
 }
 
