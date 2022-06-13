@@ -6,22 +6,22 @@ import "net/http"
 //
 // This function returns true when the passed HTTP request indicates
 // a WebSocket Upgrade. It does not validate the contents of the fields.
-func IsUpgrade(req *http.Request) bool {
+func IsUpgrade(req *http.Request) bool { // TODO use this
 	// TODO
 	return false
 }
 
+// The max size of the ping/pong control frame payload.
+const PingPongPayloadSize = 125
+
 // The type representing the reason string in a close frame.
 type ReasonString [123]byte
-
-// The type representing the payload of ping and pong messages.
-type PingPongPayload [125]byte
-
-type CloseCode uint16
 
 // Close status codes.
 //
 // These codes accompany close frames.
+type CloseCode uint16
+
 const (
 	// Normal signifies normal closure; the connection successfully
 	// completed whatever purpose for which it was created.
@@ -98,12 +98,3 @@ const (
 	// This code is reserved and may not be sent.
 	Reserved3 = 1015
 )
-
-type CloseReason struct {
-	Code   CloseCode
-	Reason string
-}
-
-func (c *CloseReason) HasCode() bool {
-	return c.Code != None
-}

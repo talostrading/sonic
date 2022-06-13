@@ -306,7 +306,7 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 
 func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	// I know, this is horrible, but if you help me write a TLS client for sonic
-	// we can asynchronously dial endpoints and remove the need for a goroutine.
+	// we can asynchronously dial endpoints and remove the need for a goroutine here
 	go func() {
 		s.handshake(addr, func(err error) {
 			s.ioc.Dispatch(func() {
@@ -383,7 +383,7 @@ func (s *WebsocketStream) dial(uri *url.URL, cb func(err error)) {
 			port = "443"
 		}
 
-		conn, err = tls.Dial("tcp", uri.Hostname()+":"+port, s.tls)
+		conn, err = tls.Dial("tcp", uri.Hostname()+":"+port, s.tls) // TODO dial timeout
 		if err != nil {
 			cb(err)
 			return
@@ -448,31 +448,39 @@ func (s *WebsocketStream) AsyncAccept(func(error)) {
 	// TODO
 }
 
-func (s *WebsocketStream) Close(*CloseReason) error {
+func (s *WebsocketStream) Close(cc CloseCode, reason ...string) error {
 	// TODO
 	return nil
 }
 
-func (s *WebsocketStream) AsyncClose(*CloseReason, func(error)) {
+func (s *WebsocketStream) AsyncClose(cc CloseCode, cb func(error), reason ...string) {
 	// TODO
 }
 
-func (s *WebsocketStream) Ping(payload PingPongPayload) error {
-	// TODO
+func (s *WebsocketStream) Ping(b []byte) error {
+	if len(b) > PingPongPayloadSize {
+		return ErrPayloadTooBig
+	}
 	return nil
 }
 
-func (s *WebsocketStream) AsyncPing(PingPongPayload, func(error)) {
-	// TODO
+func (s *WebsocketStream) AsyncPing(b []byte, cb func(error)) {
+	if len(b) > PingPongPayloadSize {
+		cb(ErrPayloadTooBig)
+	}
 }
 
-func (s *WebsocketStream) Pong(PingPongPayload) error {
-	// TODO
+func (s *WebsocketStream) Pong(b []byte) error {
+	if len(b) > PingPongPayloadSize {
+		return ErrPayloadTooBig
+	}
 	return nil
 }
 
-func (s *WebsocketStream) AsyncPong(PingPongPayload, func(error)) {
-	// TODO
+func (s *WebsocketStream) AsyncPong(b []byte, cb func(error)) {
+	if len(b) > PingPongPayloadSize {
+		cb(ErrPayloadTooBig)
+	}
 }
 
 func makeRandKey() []byte {

@@ -147,7 +147,7 @@ type Stream interface {
 	// After beginning the closing handshake, the program should not write further message data,
 	// pings, or pongs. Instead, the program should continue reading message data until
 	// an error occurs.
-	Close(*CloseReason) error
+	Close(cc CloseCode, reason ...string) error
 
 	// AsyncClose sends a websocket close control frame asynchronously.
 	//
@@ -162,14 +162,14 @@ type Stream interface {
 	// After beginning the closing handshake, the program should not write further message data,
 	// pings, or pongs. Instead, the program should continue reading message data until
 	// an error occurs.
-	AsyncClose(*CloseReason, func(error))
+	AsyncClose(cc CloseCode, cb func(error), reason ...string)
 
 	// Ping sends a websocket ping control frame.
 	//
 	// The call blocks until one of the following conditions is true:
 	//  - the ping frame is written
 	//  - an error occurs
-	Ping(PingPongPayload) error
+	Ping([]byte) error
 
 	// AsyncPing sends a websocket ping control frame asynchronously.
 	//
@@ -177,14 +177,14 @@ type Stream interface {
 	// one of the following conditions is true:
 	//	- the ping frame finishes sending
 	//	- an error occurs
-	AsyncPing(PingPongPayload, func(error))
+	AsyncPing([]byte, func(error))
 
 	// Pong sends a websocket pong control frame.
 	//
 	// The call blocks until one of the following conditions is true:
 	//  - the pong frame is written
 	//  - an error occurs
-	Pong(PingPongPayload) error
+	Pong([]byte) error
 
 	// AsyncPong sends a websocket pong control frame asynchronously.
 	//
@@ -192,7 +192,7 @@ type Stream interface {
 	// one of the following conditions is true:
 	//	- the pong frame finishes sending
 	//	- an error occurs
-	AsyncPong(PingPongPayload, func(error))
+	AsyncPong([]byte, func(error))
 
 	Options() *Options
 }
