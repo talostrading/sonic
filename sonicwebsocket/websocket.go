@@ -51,12 +51,20 @@ type WebsocketStream struct {
 
 	readLimit uint64
 
-	// make something nicer
-	binary bool
-	text   bool
+	// role of the WebsocketStream (client or server)
+	role Role
+
+	opts Options
 }
 
-func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config) Stream {
+func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role, options ...Options) (Stream, error) {
+	var opts Options
+	for _, opt := range options {
+		opts.Set(opt)
+	}
+
+	opts.validate()
+
 	s := &WebsocketStream{
 		ioc:       ioc,
 		state:     StateClosed,
@@ -64,10 +72,15 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config) Stream {
 		readFrame: newFrame(),
 		writeBuf:  bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
 		readLimit: MaxPayloadSize,
-		text:      true,
-		binary:    false,
+		opts:      opts,
+		role:      role,
 	}
-	return s
+
+	return s, nil
+}
+
+func (s *WebsocketStream) Options() *Options {
+	return &s.opts
 }
 
 func (s *WebsocketStream) NextLayer() sonic.Stream {
@@ -187,24 +200,7 @@ func (s *WebsocketStream) WriteSome(fin bool, b []byte) error {
 
 // AsyncWrite writes a complete message asynchronously.
 func (s *WebsocketStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
-	fr := AcquireFrame()
-
-	// TODO For a full fledged server, we would want the caller
-	// to set the payload size per frame as an option first. Then
-	// this function will break up the message into multiple frames is necessary.
-	// For now, this works fine. We send everything in one frame.
-	fr.SetFin()
-
-	if s.binary {
-		fr.SetBinary()
-	} else if s.text {
-		fr.SetText()
-	}
-
-	fr.SetPayload(b)
-
-	// TODO introduce websocket role (only clients should mask the data, servers not)
-	fr.Mask()
+	fr := s.makeFrame(true, b)
 
 	s.asyncWriteFrame(fr, func(err error, n int) {
 		cb(err, n)
@@ -214,27 +210,34 @@ func (s *WebsocketStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
 
 // AsyncWriteSome writes some message data asynchronously.
 func (s *WebsocketStream) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback) {
+	fr := s.makeFrame(fin, b)
+
+	s.asyncWriteFrame(fr, func(err error, n int) {
+		cb(err, n)
+		ReleaseFrame(fr)
+	})
+}
+
+func (s *WebsocketStream) makeFrame(fin bool, payload []byte) *frame {
 	fr := AcquireFrame()
 
 	if fin {
 		fr.SetFin()
 	}
 
-	if s.binary {
-		fr.SetBinary()
-	} else if s.text {
+	if s.opts.IsSet(OptionText) {
 		fr.SetText()
+	} else if s.opts.IsSet(OptionBinary) {
+		fr.SetBinary()
 	}
 
-	fr.SetPayload(b)
+	fr.SetPayload(payload)
 
-	// TODO introduce websocket role (only clients should mask the data, servers not)
-	fr.Mask()
+	if s.role == RoleClient {
+		fr.Mask()
+	}
 
-	s.asyncWriteFrame(fr, func(err error, n int) {
-		cb(err, n)
-		ReleaseFrame(fr)
-	})
+	return fr
 }
 
 func (s *WebsocketStream) asyncWriteFrame(fr *frame, cb sonic.AsyncCallback) {
@@ -276,32 +279,12 @@ func (s *WebsocketStream) IsMessageDone() bool {
 	return s.readFrame.IsContinuation()
 }
 
-func (s *WebsocketStream) SendBinary(v bool) {
-	if v {
-		s.binary = true
-		s.text = false
-	} else {
-		s.binary = false
-		s.text = true
-	}
-}
-
 func (s *WebsocketStream) SentBinary() bool {
-	return s.binary
-}
-
-func (s *WebsocketStream) SendText(v bool) {
-	if v {
-		s.binary = false
-		s.text = true
-	} else {
-		s.binary = true
-		s.text = false
-	}
+	return s.opts.IsSet(OptionBinary)
 }
 
 func (s *WebsocketStream) SentText() bool {
-	return s.readFrame.IsText()
+	return s.opts.IsSet(OptionText)
 }
 
 func (s *WebsocketStream) SetControlCallback(ccb AsyncControlCallback) {

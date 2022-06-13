@@ -11,7 +11,11 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	client := sonicwebsocket.NewWebsocketStream(ioc, nil)
+	client, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient, sonicwebsocket.OptionText)
+	if err != nil {
+		panic(err)
+	}
+
 	client.AsyncHandshake("ws://localhost:8080", func(err error) {
 		if err != nil {
 			panic(err)

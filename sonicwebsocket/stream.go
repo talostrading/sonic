@@ -82,32 +82,10 @@ type Stream interface {
 	// IsMessageDone returns true if the last completed read finished the current message.
 	IsMessageDone() bool
 
-	// SendBinary sets the binary write option.
-	//
-	// This controls whether or not outgoing message opcodes
-	// are set to binary or text. The setting is only applied
-	// at the start when a caller begins a new message. Changing
-	// the opcode after a message is started will only take effect
-	// after the current message being sent is complete.
-	//
-	// The default settings is to send text messages.
-	SendBinary(bool)
-
-	// SentBinary returns true if the binary message write option is set.
+	// SentBinary returns true if the last sent frame was binary.
 	SentBinary() bool
 
-	// SendText sets the binary write option.
-	//
-	// This controls whether or not outgoing message opcodes
-	// are set to binary or text. The setting is only applied
-	// at the start when a caller begins a new message. Changing
-	// the opcode after a message is started will only take effect
-	// after the current message being sent is complete.
-	//
-	// The default settings is to send text messages.
-	SendText(bool)
-
-	// SentText returns true if the binary message write option is set.
+	// SentText returns true if the last sent frame was text.
 	SentText() bool
 
 	// SetControlCallback sets a callback to be invoked on each incoming control frame.
@@ -215,4 +193,6 @@ type Stream interface {
 	//	- the pong frame finishes sending
 	//	- an error occurs
 	AsyncPong(PingPongPayload, func(error))
+
+	Options() *Options
 }

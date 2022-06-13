@@ -1,5 +1,12 @@
 package sonicwebsocket
 
+type Role uint8
+
+const (
+	RoleClient Role = iota
+	RoleServer
+)
+
 type AsyncControlCallback func(FrameType, []byte)
 
 type FrameType uint8
@@ -14,22 +21,22 @@ type Opcode uint8
 
 // No `iota` here for clarity.
 const (
-	OpcodeContinuation Opcode = 0x0
-	OpcodeText         Opcode = 0x1
-	OpcodeBinary       Opcode = 0x2
-	OpcodeRsv3         Opcode = 0x3
-	OpcodeRsv4         Opcode = 0x4
-	OpcodeRsv5         Opcode = 0x5
-	OpcodeRsv6         Opcode = 0x6
-	OpcodeRsv7         Opcode = 0x7
-	OpcodeClose        Opcode = 0x8
-	OpcodePing         Opcode = 0x9
-	OpcodePong         Opcode = 0xA
-	OpcodeCrsvb        Opcode = 0xB
-	OpcodeCrsvc        Opcode = 0xC
-	OpcodeCrsvd        Opcode = 0xD
-	OpcodeCrsve        Opcode = 0xE
-	OpcodeCrsvf        Opcode = 0xF
+	OpcodeContinuation Opcode = 0x00
+	OpcodeText         Opcode = 0x01
+	OpcodeBinary       Opcode = 0x02
+	OpcodeRsv3         Opcode = 0x03
+	OpcodeRsv4         Opcode = 0x04
+	OpcodeRsv5         Opcode = 0x05
+	OpcodeRsv6         Opcode = 0x06
+	OpcodeRsv7         Opcode = 0x07
+	OpcodeClose        Opcode = 0x08
+	OpcodePing         Opcode = 0x09
+	OpcodePong         Opcode = 0x0A
+	OpcodeCrsvb        Opcode = 0x0B
+	OpcodeCrsvc        Opcode = 0x0C
+	OpcodeCrsvd        Opcode = 0x0D
+	OpcodeCrsve        Opcode = 0x0E
+	OpcodeCrsvf        Opcode = 0x0F
 )
 
 func IsReserved(op Opcode) bool {
