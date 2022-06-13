@@ -165,8 +165,8 @@ func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
-	if payloadLen := int(s.readFrame.Len()); payloadLen > 0 {
-		if remaining := payloadLen - int(cap(b)); remaining > 0 {
+	if payloadLen := int64(s.readFrame.Len()); payloadLen > 0 {
+		if remaining := payloadLen - int64(cap(b)); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
 		} else {
 			s.async.AsyncReadAll(b[:payloadLen], func(err error, n int) {
@@ -178,7 +178,7 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 			})
 		}
 	} else {
-		panic("invalid uint64 to int conversion")
+		panic(fmt.Errorf("invalid uint64 to int conversion uint64(payloadLen)=%v", s.readFrame.Len()))
 	}
 }
 
