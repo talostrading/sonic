@@ -54,17 +54,11 @@ type WebsocketStream struct {
 	// role of the WebsocketStream (client or server)
 	role Role
 
-	opts Options
+	// text indicates whether we are sending text or binary data frames
+	text bool
 }
 
-func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role, options ...Options) (Stream, error) {
-	var opts Options
-	for _, opt := range options {
-		opts.Set(opt)
-	}
-
-	opts.validate()
-
+func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, error) {
 	s := &WebsocketStream{
 		ioc:       ioc,
 		state:     StateClosed,
@@ -72,15 +66,11 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role, options ...Op
 		readFrame: newFrame(),
 		writeBuf:  bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
 		readLimit: MaxPayloadSize,
-		opts:      opts,
+		text:      true,
 		role:      role,
 	}
 
 	return s, nil
-}
-
-func (s *WebsocketStream) Options() *Options {
-	return &s.opts
 }
 
 func (s *WebsocketStream) NextLayer() sonic.Stream {
@@ -96,23 +86,27 @@ func (s *WebsocketStream) ReadSome(b []byte) error {
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
-	var read uint64 = 0
-	for {
-		if read >= s.readLimit {
-			break
-		}
+	s.asyncRead(b, 0, cb)
+}
 
-		s.asyncReadFrame(b[read:s.readLimit], func(err error, n int) {
-			if err != nil {
-				cb(err, n)
-			} else {
-				read += uint64(n)
-			}
-		})
-
-		if s.IsMessageDone() {
-			break
+func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
+	s.AsyncReadSome(b[readBytes:], func(err error, n int) {
+		readBytes += n
+		if err != nil {
+			cb(err, readBytes)
+		} else {
+			s.onAsyncRead(b, readBytes, cb)
 		}
+	})
+}
+
+func (s *WebsocketStream) onAsyncRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
+	if s.IsMessageDone() {
+		cb(nil, readBytes)
+	} else if readBytes >= len(b) {
+		cb(ErrPayloadTooBig, readBytes)
+	} else {
+		s.asyncRead(b, readBytes, cb) // continue reading frames to complete the current message
 	}
 }
 
@@ -175,8 +169,7 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 		if remaining := payloadLen - int(cap(b)); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
 		} else {
-			b = b[:payloadLen]
-			s.async.AsyncReadAll(b, func(err error, n int) {
+			s.async.AsyncReadAll(b[:payloadLen], func(err error, n int) {
 				if err != nil {
 					cb(err, n)
 				} else {
@@ -225,9 +218,9 @@ func (s *WebsocketStream) makeFrame(fin bool, payload []byte) *frame {
 		fr.SetFin()
 	}
 
-	if s.opts.IsSet(OptionText) {
+	if s.text {
 		fr.SetText()
-	} else if s.opts.IsSet(OptionBinary) {
+	} else {
 		fr.SetBinary()
 	}
 
@@ -276,15 +269,23 @@ func (s *WebsocketStream) GotBinary() bool {
 }
 
 func (s *WebsocketStream) IsMessageDone() bool {
-	return s.readFrame.IsContinuation()
+	return !s.readFrame.IsContinuation()
 }
 
 func (s *WebsocketStream) SentBinary() bool {
-	return s.opts.IsSet(OptionBinary)
+	return !s.text
 }
 
 func (s *WebsocketStream) SentText() bool {
-	return s.opts.IsSet(OptionText)
+	return s.text
+}
+
+func (s *WebsocketStream) SendText(v bool) {
+	s.text = v
+}
+
+func (s *WebsocketStream) SendBinary(v bool) {
+	s.text = !v
 }
 
 func (s *WebsocketStream) SetControlCallback(ccb AsyncControlCallback) {
@@ -449,12 +450,15 @@ func (s *WebsocketStream) AsyncAccept(func(error)) {
 }
 
 func (s *WebsocketStream) Close(cc CloseCode, reason ...string) error {
-	// TODO
+	if s.state != StateClosed {
+		s.state = StateClosed
+		return s.async.Close()
+	}
 	return nil
 }
 
-func (s *WebsocketStream) AsyncClose(cc CloseCode, cb func(error), reason ...string) {
-	// TODO
+func (s *WebsocketStream) Closed() bool {
+	return s.state == StateClosed
 }
 
 func (s *WebsocketStream) Ping(b []byte) error {

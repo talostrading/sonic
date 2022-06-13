@@ -88,6 +88,12 @@ type Stream interface {
 	// SentText returns true if the last sent frame was text.
 	SentText() bool
 
+	// SendBinary TODO doc
+	SendBinary(bool)
+
+	// SendText TODO doc
+	SendText(bool)
+
 	// SetControlCallback sets a callback to be invoked on each incoming control frame.
 	//
 	// Sets the callback to be invoked whenever a ping, pong, or close control frame
@@ -149,20 +155,8 @@ type Stream interface {
 	// an error occurs.
 	Close(cc CloseCode, reason ...string) error
 
-	// AsyncClose sends a websocket close control frame asynchronously.
-	//
-	// This function is used to send a close frame which begins the WebSocket closing handshake.
-	// The session ends when both ends of the connection have sent and received a close frame.
-	//
-	// This call always returns immediately. The asynchronous operation will continue until
-	// one of the following conditions is true:
-	//	- the close frame finishes sending
-	//	- an error occurs
-	//
-	// After beginning the closing handshake, the program should not write further message data,
-	// pings, or pongs. Instead, the program should continue reading message data until
-	// an error occurs.
-	AsyncClose(cc CloseCode, cb func(error), reason ...string)
+	// Closed indicates whether the underlying connection is closed.
+	Closed() bool
 
 	// Ping sends a websocket ping control frame.
 	//
@@ -193,6 +187,4 @@ type Stream interface {
 	//	- the pong frame finishes sending
 	//	- an error occurs
 	AsyncPong([]byte, func(error))
-
-	Options() *Options
 }
