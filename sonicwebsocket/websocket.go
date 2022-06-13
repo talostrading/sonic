@@ -309,7 +309,7 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	// we can asynchronously dial endpoints and remove the need for a goroutine here
 	go func() {
 		s.handshake(addr, func(err error) {
-			s.ioc.Dispatch(func() {
+			s.ioc.Post(func() {
 				cb(err)
 			})
 		})

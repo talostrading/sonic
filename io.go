@@ -116,9 +116,9 @@ func (ioc *IO) poll(timeoutMs int) error {
 	return nil
 }
 
-// Dispatch schedules the provided handler to be run immediately by the event
+// Post schedules the provided handler to be run immediately by the event
 // processing loop in its own thread. It is safe to call this concurrently.
-func (ioc *IO) Dispatch(handler func()) error {
+func (ioc *IO) Post(handler func()) error {
 	return ioc.poller.Dispatch(handler)
 }
 
