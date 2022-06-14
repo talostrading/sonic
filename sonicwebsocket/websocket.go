@@ -166,18 +166,17 @@ func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 
 func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 	if pl := s.readFrame.Len(); pl > 0 {
-		if payloadLen := int64(pl); payloadLen > 0 {
-			if remaining := payloadLen - int64(cap(b)); remaining > 0 {
-				cb(ErrPayloadTooBig, 0)
-			} else {
-				s.async.AsyncReadAll(b[:payloadLen], func(err error, n int) {
-					if err != nil {
-						cb(err, n)
-					} else {
-						cb(nil, n)
-					}
-				})
-			}
+		payloadLen := int64(pl)
+		if remaining := payloadLen - int64(cap(b)); remaining > 0 {
+			cb(ErrPayloadTooBig, 0)
+		} else {
+			s.async.AsyncReadAll(b[:payloadLen], func(err error, n int) {
+				if err != nil {
+					cb(err, n)
+				} else {
+					cb(nil, n)
+				}
+			})
 		}
 	}
 }
