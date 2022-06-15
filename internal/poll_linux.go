@@ -4,10 +4,13 @@ package internal
 
 import (
 	"io"
+	"os"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/sys/unix"
 )
 
 var oneByte = [1]byte{0}
@@ -28,7 +31,7 @@ func createEvent(flags PollFlags, pd *PollData) Event {
 	ev := Event{
 		Flags: uint32(flags),
 	}
-	(*PollData)(unsafe.Pointer(ev.Data)) = pd
+	*(**PollData)(unsafe.Pointer(&ev.Data)) = pd
 
 	return ev
 }
@@ -80,7 +83,7 @@ func NewPoller() (*Poller, error) {
 		events: make([]Event, 128),
 	}
 
-	err := p.SetRead(p.waker, p.waker.PollData())
+	err = p.SetRead(p.waker.Fd(), p.waker.PollData())
 	if err != nil {
 		p.waker.Close()
 		syscall.Close(p.fd)
@@ -138,11 +141,11 @@ func (p *Poller) Poll(timeoutMs int) error {
 		return ErrTimeout
 	}
 
-	for i := 0; i < int(x); i++ {
+	for i := 0; i < int(n); i++ {
 		event := &p.events[i]
 
 		flags := PollFlags(event.Flags)
-		pd := (*PollData)(unsafe.Pointer(event.Data))
+		pd := *(**PollData)(unsafe.Pointer(&event.Data))
 
 		if pd.Fd == p.waker.Fd() {
 			p.dispatch()
@@ -159,6 +162,8 @@ func (p *Poller) Poll(timeoutMs int) error {
 			pd.Cbs[WriteEvent](nil)
 		}
 	}
+
+	return nil
 }
 
 func (p *Poller) dispatch() {
@@ -190,14 +195,15 @@ func (p *Poller) setRW(fd int, pd *PollData, flag PollFlags) error {
 	if *pdflags&flag != flag {
 		p.pending++
 
-		old := *pdflags
+		oldFlags := *pdflags
 		*pdflags |= flag
 
-		if *old == 0 {
+		if oldFlags == 0 {
 			return p.add(fd, createEvent(*pdflags, pd))
 		}
 		return p.modify(fd, createEvent(*pdflags, pd))
 	}
+	return nil
 }
 
 func (p *Poller) add(fd int, event Event) error {
@@ -249,6 +255,7 @@ func (p *Poller) DelRead(fd int, pd *PollData) error {
 		}
 		return p.del(fd)
 	}
+	return nil
 }
 
 func (p *Poller) DelWrite(fd int, pd *PollData) error {
@@ -261,6 +268,7 @@ func (p *Poller) DelWrite(fd int, pd *PollData) error {
 		}
 		return p.del(fd)
 	}
+	return nil
 }
 
 func (p *Poller) del(fd int) error {

@@ -13,15 +13,15 @@ type EventFd struct {
 }
 
 func NewEventFd(nonBlocking bool) (*EventFd, error) {
-	nonBlock := 0
+	var nonBlock uintptr = 0
 	if nonBlocking {
 		nonBlock = syscall.O_NONBLOCK
 	}
 
 	fd, _, err := syscall.Syscall(syscall.SYS_EVENTFD2, 0, nonBlock, 0)
 	if err != 0 {
-		syscall.Close(fd)
-		return os.NewSyscallError("eventfd", err)
+		syscall.Close(int(fd))
+		return nil, os.NewSyscallError("eventfd", err)
 	}
 	e := &EventFd{
 		fd: int(fd),
