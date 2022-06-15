@@ -58,7 +58,11 @@ func (ioc *IO) Run() error {
 // note: subsequent handlers scheduled to run on a successful completion of the
 // pending operation will not be executed.
 func (ioc *IO) RunPending() error {
-	for n := ioc.poller.Pending(); n >= 0; n-- {
+	for {
+		if ioc.poller.Pending() <= 0 {
+			break
+		}
+
 		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
 			return err
 		}
