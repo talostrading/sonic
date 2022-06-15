@@ -274,7 +274,6 @@ func (fr *frame) Unmask() {
 	fr.UnsetMask()
 }
 
-// String returns a representation of Frame in a human-readable string format.
 func (fr *frame) String() string {
 	return fmt.Sprintf(`
 FIN: %v
