@@ -41,8 +41,6 @@ func (s *Socket) ConnectTimeout(network, addr string, timeout time.Duration) err
 	default:
 		return fmt.Errorf("unsupported protocol: %s", network)
 	}
-
-	return nil
 }
 
 func (s *Socket) Listen(network, addr string) error {
@@ -54,7 +52,6 @@ func (s *Socket) Listen(network, addr string) error {
 	default:
 		return fmt.Errorf("unsupported protocol: %s", network)
 	}
-	return nil
 }
 
 func (s *Socket) listenTCP(network, addr string) error {
