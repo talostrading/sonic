@@ -35,14 +35,12 @@ func (p *Pipe) SetWriteNonblock() error {
 	return nil
 }
 
-func (p *Pipe) Write(b []byte) (n int, err error) {
-	n, err = syscall.Write(p.pipe[1], b)
-	return
+func (p *Pipe) Write(b []byte) (int, error) {
+	return syscall.Write(p.pipe[1], b)
 }
 
-func (p *Pipe) Read(b []byte) (n int, err error) {
-	n, err = syscall.Read(p.pipe[0], b)
-	return
+func (p *Pipe) Read(b []byte) (int, error) {
+	return syscall.Read(p.pipe[0], b)
 }
 
 func (p *Pipe) ReadFd() int {
@@ -53,7 +51,14 @@ func (p *Pipe) WriteFd() int {
 	return p.pipe[1]
 }
 
-func (p *Pipe) Close() {
-	syscall.Close(p.pipe[0])
-	syscall.Close(p.pipe[1])
+func (p *Pipe) PollData() *PollData {
+	return &p.pd
+}
+
+func (p *Pipe) Close() error {
+	if err := syscall.Close(p.pipe[0]); err != nil {
+		return err
+	}
+
+	return syscall.Close(p.pipe[1])
 }

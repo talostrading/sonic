@@ -11,6 +11,8 @@ import (
 	"unsafe"
 )
 
+var oneByte = [1]byte{0}
+
 type PollFlags int16
 
 const (
@@ -18,24 +20,36 @@ const (
 	WriteFlags = -PollFlags(syscall.EVFILT_WRITE)
 )
 
-var (
-	oneByte = [1]byte{0}
-)
-
 type Poller struct {
+	// fd is the file descriptor returned by calling kqueue().
 	fd int
 
-	changelist []syscall.Kevent_t
-	eventlist  []syscall.Kevent_t
+	// changes contains events we want to watch for
+	changes []syscall.Kevent_t
 
-	lck      sync.Mutex
+	// events contains the events which occured.
+	// events is a subset of changelist.
+	events []syscall.Kevent_t
+
+	// waker is used to wake up the process when the client
+	// calls ioc.Post(...), thus dispatching the provided handler.
+	// The read end of the pipe is registered for reads with kqueue.
+	waker *Pipe
+
+	// handlers maintains the handlers set by the client to be
+	// executed in the Poller's goroutine. Adding a handler
+	// entails writing a single byte to the write end of the wakeupPipe.
 	handlers []func()
 
-	pipe *Pipe
+	// lck synchronizes access to the handlers slice.
+	// This is needed because multiple goroutines can call ioc.Post(...)
+	// on the same IO object.
+	lck sync.Mutex
 
 	// pending is the number of pending handlers the poller needs to execute
 	pending int64
 
+	// closed is true if the close() has been called on fd
 	closed uint32
 }
 
@@ -53,32 +67,32 @@ func NewPoller() (*Poller, error) {
 		return nil, err
 	}
 
-	kq, err := syscall.Kqueue()
+	kqueueFd, err := syscall.Kqueue()
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = syscall.Kevent(kq, []syscall.Kevent_t{{
-		Ident:  uint64(kq),
+	_, err = syscall.Kevent(kqueueFd, []syscall.Kevent_t{{
+		Ident:  uint64(kqueueFd),
 		Filter: syscall.EVFILT_USER,
 		Flags:  syscall.EV_ADD | syscall.EV_CLEAR,
 	}}, nil, nil)
 	if err != nil {
-		syscall.Close(kq)
+		syscall.Close(kqueueFd)
 		return nil, err
 	}
 
 	p := &Poller{
-		pipe:       pipe,
-		fd:         kq,
-		changelist: make([]syscall.Kevent_t, 0, 8),
-		eventlist:  make([]syscall.Kevent_t, 128),
+		waker:   pipe,
+		fd:      kqueueFd,
+		changes: make([]syscall.Kevent_t, 0, 128),
+		events:  make([]syscall.Kevent_t, 128),
 	}
 
-	err = p.setRead(p.pipe.ReadFd(), syscall.EV_ADD, &p.pipe.pd)
+	err = p.setRead(p.waker.ReadFd(), syscall.EV_ADD, &p.waker.pd)
 	if err != nil {
-		p.pipe.Close()
-		syscall.Close(kq)
+		p.waker.Close()
+		syscall.Close(kqueueFd)
 		return nil, err
 	}
 	p.pending-- // ignore the pipe read
@@ -95,12 +109,11 @@ func (p *Poller) Close() error {
 		return io.EOF
 	}
 
-	p.changelist = nil
-	p.eventlist = nil
+	p.changes = nil
+	p.events = nil
 	p.pending = 0
 
-	p.pipe.Close()
-
+	p.waker.Close()
 	return syscall.Close(p.fd)
 }
 
@@ -108,31 +121,14 @@ func (p *Poller) Closed() bool {
 	return atomic.LoadUint32(&p.closed) == 1
 }
 
-func (p *Poller) Dispatch(handler func()) error {
+func (p *Poller) Post(handler func()) error {
 	p.lck.Lock()
 	p.handlers = append(p.handlers, handler)
 	p.pending++
 	p.lck.Unlock()
 
-	_, err := p.pipe.Write(oneByte[:])
+	_, err := p.waker.Write(oneByte[:])
 	return err
-}
-
-func (p *Poller) dispatch() {
-	for {
-		_, err := p.pipe.Read(oneByte[:])
-		if err != nil {
-			break
-		}
-	}
-
-	p.lck.Lock()
-	for _, handler := range p.handlers {
-		handler()
-		p.pending--
-	}
-	p.handlers = p.handlers[:0]
-	p.lck.Unlock()
 }
 
 func (p *Poller) Poll(timeoutMs int) error {
@@ -142,10 +138,10 @@ func (p *Poller) Poll(timeoutMs int) error {
 		timeout = &ts
 	}
 
-	changelist := p.changelist
-	p.changelist = p.changelist[:0]
+	changelist := p.changes
+	p.changes = p.changes[:0]
 
-	n, err := syscall.Kevent(p.fd, changelist, p.eventlist, timeout)
+	n, err := syscall.Kevent(p.fd, changelist, p.events, timeout)
 	if err != nil {
 		return err
 	}
@@ -155,12 +151,12 @@ func (p *Poller) Poll(timeoutMs int) error {
 	}
 
 	for i := 0; i < n; i++ {
-		event := &p.eventlist[i]
+		event := &p.events[i]
 
 		flags := -PollFlags(event.Filter)
 		pd := (*PollData)(unsafe.Pointer(event.Udata))
 
-		if pd.Fd == p.pipe.ReadFd() {
+		if pd.Fd == p.waker.ReadFd() {
 			p.dispatch()
 			continue
 		}
@@ -179,6 +175,23 @@ func (p *Poller) Poll(timeoutMs int) error {
 	}
 
 	return nil
+}
+
+func (p *Poller) dispatch() {
+	for {
+		_, err := p.waker.Read(oneByte[:])
+		if err != nil {
+			break
+		}
+	}
+
+	p.lck.Lock()
+	for _, handler := range p.handlers {
+		handler()
+		p.pending--
+	}
+	p.handlers = p.handlers[:0]
+	p.lck.Unlock()
 }
 
 func (p *Poller) SetRead(fd int, pd *PollData) error {
@@ -235,7 +248,7 @@ func (p *Poller) Del(fd int, pd *PollData) error {
 
 func (p *Poller) set(fd int, ev syscall.Kevent_t) error {
 	ev.Ident = uint64(fd)
-	p.changelist = append(p.changelist, ev)
+	p.changes = append(p.changes, ev)
 	return nil
 }
 

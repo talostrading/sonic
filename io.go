@@ -119,7 +119,7 @@ func (ioc *IO) poll(timeoutMs int) error {
 // Post schedules the provided handler to be run immediately by the event
 // processing loop in its own thread. It is safe to call this concurrently.
 func (ioc *IO) Post(handler func()) error {
-	return ioc.poller.Dispatch(handler)
+	return ioc.poller.Post(handler)
 }
 
 func (ioc *IO) Close() error {
