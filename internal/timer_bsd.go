@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-// TODO the Timer might be garbage collected so you have to prolong the lifetime of pd in that case to exist
-// beyond the timer's lifetime.
 type Timer struct {
 	fd     int
 	poller *Poller
