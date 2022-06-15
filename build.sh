@@ -1,22 +1,29 @@
 #!/bin/bash
 
-build () {
-  echo $0
+OS=$1
 
-  dir="$(dirname -- $0)"
-  file="$(basename -- $0)"
-  built="${file%".go"}"
+build () {
+  echo "building" $1 $2
+
+  dir="$(dirname -- $1)"
+  file="$(basename -- $1)"
+  binary="${file%".go"}"
 
   cd $dir
-  go build -o $built $file
+
+  if [[ $2 == "linux" ]]; then
+    GOOS=linux GOARCH=amd64 go build -o $binary $file
+  else
+    go build -o $binary $file
+  fi
 }
 
-printf "\nbuilding examples\n"
+printf "\nbuilding examples ${OS}\n"
 
 rm -rf ./bin/;
 mkdir -p bin;
 cp -R ./examples ./bin;
 export -f build;
-find ./bin/examples -name "*.go" -exec bash -c 'build "$0"' {} \;
+os=$OS find ./bin/examples -name "*.go" -exec bash -c 'build {} "${os}"' \;
 
 printf "done\n"
