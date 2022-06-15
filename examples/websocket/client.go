@@ -11,7 +11,7 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	client, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient, sonicwebsocket.OptionText)
+	client, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
 	if err != nil {
 		panic(err)
 	}
