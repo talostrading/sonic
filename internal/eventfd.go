@@ -5,6 +5,7 @@ package internal
 import (
 	"os"
 	"syscall"
+	"unsafe"
 )
 
 type EventFd struct {
@@ -26,7 +27,7 @@ func NewEventFd(nonBlocking bool) (*EventFd, error) {
 	e := &EventFd{
 		fd: int(fd),
 	}
-	e.pd.Fd = fd
+	e.pd.Fd = e.fd
 	return e, nil
 }
 
