@@ -123,6 +123,7 @@ func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
+	s.frame.Reset()
 	s.asyncReadFrameHeader(b, cb)
 }
 func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
