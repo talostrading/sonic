@@ -134,7 +134,7 @@ func (p *Poller) Poll(timeoutMs int) error {
 		0, 0,
 	)
 	if errno != 0 {
-		return os.NewSyscallError("epoll_wait", errno)
+		return errno
 	}
 
 	if n == 0 && timeoutMs >= 0 {

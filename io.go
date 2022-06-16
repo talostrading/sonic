@@ -84,7 +84,8 @@ func (ioc *IO) RunOne() error {
 //
 // This blocks the calling goroutine until one event is ready to process
 func (ioc *IO) RunOneFor(dur time.Duration) error {
-	return ioc.poll(int(dur.Milliseconds()))
+	ms := int(dur.Milliseconds())
+	return ioc.poll(ms)
 }
 
 // Poll runs the event processing loop to execute ready handlers.

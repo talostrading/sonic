@@ -48,15 +48,15 @@ func TestEmptyPoll(t *testing.T) {
 	}
 }
 
-func TestPollFor(t *testing.T) {
+func TestRunOneFor(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
 	start := time.Now()
 
-	expected := 100 * time.Millisecond
+	expected := 5 * time.Millisecond
 	if err := ioc.RunOneFor(expected); err != internal.ErrTimeout {
-		t.Fatalf("expected timeout as no operations are scheduled")
+		t.Fatalf("expected timeout as no operations are scheduled received=%v", err)
 	}
 
 	end := time.Now()
