@@ -18,6 +18,11 @@ type StateChangeCallback func(err error, state StreamState)
 //
 // The interface uses the layered stream model. A WebSocket stream object contains
 // another stream object, called the "next layer", which it uses to perform IO.
+//
+// The smallest unit of data for a WebSocket stream is a frame. A message may be composed
+// from multiple frames. Clients will never get a partial frame after executing a read.
+// They might get partial messages, if a message is fragmented, after a call
+// to ReadSome(...) or AsyncReadSome(...).
 type Stream interface {
 	// NextLayer returns the underlying stream object.
 	//
@@ -29,28 +34,54 @@ type Stream interface {
 
 	// Reads reads a complete message into b.
 	//
-	// If b cannot hold the message, TODO error is returned
-	Read(b []byte) error
+	// If b cannot hold the message, ErrPayloadTooBig is returned.
+	Read(b []byte) (n int, err error)
 
 	// ReadSome reads some part of a message into b.
-	ReadSome(b []byte) error
+	//
+	// The chunk of the message should come from a valid WebSocket frame.
+	//
+	// If b cannot hold the message, ErrPayloadTooBig is returned
+	ReadSome(b []byte) (n int, err error)
 
-	// AsyncRead reads a complete message asynchronously.
+	// AsyncRead reads a complete message into b asynchronously.
+	//
+	// If b cannot hold the message, ErrPayloadTooBig is provided in the handler invocation.
 	AsyncRead(b []byte, cb sonic.AsyncCallback)
 
-	// AsyncReadSome reads some part of a message asynchronously.
+	// AsyncReadSome reads some part of a message into b asynchronously.
+	//
+	// The chunk of the message should come from a valid WebSocket frame.
+	//
+	// If b cannot hold the message, ErrPayloadTooBig is provided in the handler invocation.
 	AsyncReadSome(b []byte, cb sonic.AsyncCallback)
 
-	// Write writes a complete message.
-	Write(b []byte) error
+	// Write writes a complete message from b.
+	//
+	// The message can be composed of one or several frames.
+	Write(b []byte) (n int, err error)
 
-	// WriteSome writes some message data.
-	WriteSome(fin bool, b []byte) error
+	// WriteSome writes some part of a message from b.
+	//
+	// A caller should expect this function to write frames with the provided buffer
+	// as payload. If the payload is too big, the caller has the option of breaking
+	// up the message into multiple frames through multiple calls to AsyncWriteSome.
+	// In this case, fin should be set to false on all calls but the last one, where
+	// it should be set to true.
+	WriteSome(fin bool, b []byte) (n int, err error)
 
-	// AsyncWrite writes a complete message asynchronously.
+	// AsyncWrite writes a complete message from b asynchronously.
+	//
+	// The message can be composed of one or several frames.
 	AsyncWrite(b []byte, cb sonic.AsyncCallback)
 
-	// AsyncWriteSome writes some message data asynchronously.
+	// AsyncWriteSome writes some part of a message from b asynchronously.
+	//
+	// A caller should expect this function to write frames with the provided buffer
+	// as payload. If the payload is too big, the caller has the option of breaking
+	// up the message into multiple frames through multiple calls to AsyncWriteSome.
+	// In this case, fin should be set to false on all calls but the last one, where
+	// it should be set to true.
 	AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback)
 
 	// SetReadLimit sets the maximum read size. If 0, the max size is used.

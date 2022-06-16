@@ -40,8 +40,8 @@ type WebsocketStream struct {
 
 	writeBuf *bytes.Buffer
 
-	// readFrame is the frame in which read data is deserialized into
-	readFrame *frame
+	// frame is the frame in which read data is deserialized into
+	frame *frame
 
 	// conn is the underlying tcp stream connection
 	conn net.Conn
@@ -63,7 +63,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		ioc:       ioc,
 		state:     StateClosed,
 		tls:       tls,
-		readFrame: newFrame(),
+		frame:     newFrame(),
 		writeBuf:  bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
 		readLimit: MaxPayloadSize,
 		text:      true,
@@ -77,12 +77,20 @@ func (s *WebsocketStream) NextLayer() sonic.Stream {
 	return s.async
 }
 
-func (s *WebsocketStream) Read(b []byte) error {
-	panic("implement me")
+func (s *WebsocketStream) Read(b []byte) (n int, err error) {
+	for {
+		n, err = s.ReadSome(b)
+
+		if s.IsMessageDone() {
+			return
+		}
+	}
 }
 
-func (s *WebsocketStream) ReadSome(b []byte) error {
-	panic("implement me")
+func (s *WebsocketStream) ReadSome(b []byte) (n int, err error) {
+	s.frame.Reset()
+	nn, err := s.frame.ReadFrom(s.async)
+	return int(nn), err
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
@@ -118,15 +126,15 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
 	s.asyncReadFrameHeader(b, cb)
 }
 func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.readFrame.header[:2], func(err error, n int) {
+	s.async.AsyncReadAll(s.frame.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, 0)
 		} else {
-			m := s.readFrame.readMore()
+			m := s.frame.readMore()
 			if m > 0 {
 				s.asyncReadFrameExtraLength(m, b, cb)
 			} else {
-				if s.readFrame.IsMasked() {
+				if s.frame.IsMasked() {
 					s.asyncReadFrameMask(b, cb)
 				} else {
 					s.asyncReadPayload(b, cb)
@@ -137,14 +145,14 @@ func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback)
 }
 
 func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.readFrame.header[2:m+2], func(err error, n int) {
+	s.async.AsyncReadAll(s.frame.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, 0)
 		} else {
-			if s.readFrame.Len() > s.readLimit {
+			if s.frame.Len() > s.readLimit {
 				cb(ErrPayloadTooBig, 0)
 			} else {
-				if s.readFrame.IsMasked() {
+				if s.frame.IsMasked() {
 					s.asyncReadFrameMask(b, cb)
 				} else {
 					s.asyncReadPayload(b, cb)
@@ -155,7 +163,7 @@ func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.As
 }
 
 func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.readFrame.mask[:4], func(err error, n int) {
+	s.async.AsyncReadAll(s.frame.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, 0)
 		} else {
@@ -165,7 +173,7 @@ func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
-	if pl := s.readFrame.Len(); pl > 0 {
+	if pl := s.frame.Len(); pl > 0 {
 		payloadLen := int64(pl)
 		if remaining := payloadLen - int64(cap(b)); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
@@ -181,13 +189,19 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 	}
 }
 
-func (s *WebsocketStream) Write(b []byte) error {
-	panic("implement me")
+func (s *WebsocketStream) Write(b []byte) (n int, err error) {
+	fr := s.makeFrame(true, b)
+	nn, err := fr.WriteTo(s.async)
+	ReleaseFrame(fr)
+	return int(nn), err
 }
 
 // WriteSome writes some message data.
-func (s *WebsocketStream) WriteSome(fin bool, b []byte) error {
-	panic("implement me")
+func (s *WebsocketStream) WriteSome(fin bool, b []byte) (n int, err error) {
+	fr := s.makeFrame(fin, b)
+	nn, err := fr.WriteTo(s.async)
+	ReleaseFrame(fr)
+	return int(nn), err
 }
 
 // AsyncWrite writes a complete message asynchronously.
@@ -260,15 +274,15 @@ func (s *WebsocketStream) State() StreamState {
 }
 
 func (s *WebsocketStream) GotText() bool {
-	return s.readFrame.IsText()
+	return s.frame.IsText()
 }
 
 func (s *WebsocketStream) GotBinary() bool {
-	return s.readFrame.IsBinary()
+	return s.frame.IsBinary()
 }
 
 func (s *WebsocketStream) IsMessageDone() bool {
-	return !s.readFrame.IsContinuation()
+	return !s.frame.IsContinuation()
 }
 
 func (s *WebsocketStream) SentBinary() bool {
