@@ -9,8 +9,6 @@ import (
 	"sync/atomic"
 	"syscall"
 	"unsafe"
-
-	"golang.org/x/sys/unix"
 )
 
 type PollFlags uint32
@@ -68,7 +66,7 @@ type Poller struct {
 }
 
 func NewPoller() (*Poller, error) {
-	epollFd, err := unix.EpollCreate1(0)
+	epollFd, err := syscall.EpollCreate1(0)
 	if err != nil {
 		return nil, err
 	}
