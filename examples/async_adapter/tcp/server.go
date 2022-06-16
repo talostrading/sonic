@@ -19,7 +19,9 @@ func main() {
 	s.Run()
 
 	for {
-		ioc.RunOne()
+		if err := ioc.RunOne(); err != nil {
+			panic(err)
+		}
 	}
 }
 

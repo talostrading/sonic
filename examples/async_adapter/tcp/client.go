@@ -14,39 +14,6 @@ import (
 
 var n = flag.Int("n", 10, "number of connections")
 
-type Conn struct {
-	buf  []byte
-	ad   *sonic.AsyncAdapter
-	conn net.Conn
-	id   int
-}
-
-func NewConn(id int, conn net.Conn, ad *sonic.AsyncAdapter) *Conn {
-	c := &Conn{
-		buf: make([]byte, 4096),
-		ad:  ad,
-		id:  id,
-	}
-	return c
-}
-
-func (c *Conn) Run() {
-	c.asyncRead()
-}
-
-func (c *Conn) asyncRead() {
-	c.ad.AsyncRead(c.buf, c.onAsyncRead)
-}
-
-func (c *Conn) onAsyncRead(err error, n int) {
-	if err != nil {
-		panic(err)
-	} else {
-		c.buf = c.buf[:n]
-		c.asyncRead()
-	}
-}
-
 func main() {
 	flag.Parse()
 
@@ -82,7 +49,43 @@ func main() {
 		}
 
 		start := time.Now()
-		ioc.RunOne()
+		if err := ioc.RunOne(); err != nil {
+			panic(err)
+		}
+
 		stats.Add(float64(time.Now().Sub(start).Milliseconds()))
+	}
+}
+
+type Conn struct {
+	buf  []byte
+	ad   *sonic.AsyncAdapter
+	conn net.Conn
+	id   int
+}
+
+func NewConn(id int, conn net.Conn, ad *sonic.AsyncAdapter) *Conn {
+	c := &Conn{
+		buf: make([]byte, 4096),
+		ad:  ad,
+		id:  id,
+	}
+	return c
+}
+
+func (c *Conn) Run() {
+	c.asyncRead()
+}
+
+func (c *Conn) asyncRead() {
+	c.ad.AsyncRead(c.buf, c.onAsyncRead)
+}
+
+func (c *Conn) onAsyncRead(err error, n int) {
+	if err != nil {
+		panic(err)
+	} else {
+		c.buf = c.buf[:n]
+		c.asyncRead()
 	}
 }

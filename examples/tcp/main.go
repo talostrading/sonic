@@ -22,5 +22,7 @@ func main() {
 		}
 	})
 
-	ioc.RunPending()
+	if err := ioc.RunPending(); err != nil {
+		panic(err)
+	}
 }
