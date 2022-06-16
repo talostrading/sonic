@@ -283,7 +283,7 @@ func (s *WebsocketStream) GotBinary() bool {
 }
 
 func (s *WebsocketStream) IsMessageDone() bool {
-	return !s.frame.IsContinuation()
+	return !s.frame.IsFin()
 }
 
 func (s *WebsocketStream) SentBinary() bool {
