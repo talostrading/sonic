@@ -101,6 +101,7 @@ type File interface {
 type Stream interface {
 	AsyncStream
 	SyncStream
+	io.Closer
 }
 
 type AsyncStream interface {

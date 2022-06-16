@@ -7,11 +7,13 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/talostrading/sonic"
 )
@@ -35,13 +37,16 @@ type WebsocketStream struct {
 	// with the `wss` scheme
 	tls *tls.Config
 
-	// ccb is the callback called when a control frame is received
-	ccb AsyncControlCallback
+	// controlcb is the callback called when a control frame is received
+	controlcb AsyncControlCallback
 
 	writeBuf *bytes.Buffer
 
-	// frame is the frame in which read data is deserialized into
+	// frame is the data frame in which read data is deserialized into.
 	frame *frame
+
+	// controlFramePaylaod contains the payload of the last read control frame.
+	controlFramePayload []byte
 
 	// conn is the underlying tcp stream connection
 	conn net.Conn
@@ -56,18 +61,30 @@ type WebsocketStream struct {
 
 	// text indicates whether we are sending text or binary data frames
 	text bool
+
+	// closeTimer is a timer which closes the underlying stream on expiry in the client role.
+	// The expected behaviour is for the server to close the connection such that the client receives an io.EOF.
+	// If that does not happen, this timer does it for the client.
+	closeTimer *sonic.Timer
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, error) {
+	closeTimer, err := sonic.NewTimer(ioc)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &WebsocketStream{
-		ioc:       ioc,
-		state:     StateClosed,
-		tls:       tls,
-		frame:     newFrame(),
-		writeBuf:  bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
-		readLimit: MaxPayloadSize,
-		text:      true,
-		role:      role,
+		ioc:                 ioc,
+		state:               StateClosed,
+		tls:                 tls,
+		writeBuf:            bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
+		readLimit:           MaxPayloadSize,
+		text:                true,
+		role:                role,
+		frame:               newFrame(),
+		controlFramePayload: make([]byte, MaxControlFramePayloadSize),
+		closeTimer:          closeTimer,
 	}
 
 	return s, nil
@@ -78,6 +95,10 @@ func (s *WebsocketStream) NextLayer() sonic.Stream {
 }
 
 func (s *WebsocketStream) Read(b []byte) (n int, err error) {
+	if s.state == StateClosed {
+		return 0, io.EOF
+	}
+
 	for {
 		n, err = s.ReadSome(b)
 
@@ -88,12 +109,21 @@ func (s *WebsocketStream) Read(b []byte) (n int, err error) {
 }
 
 func (s *WebsocketStream) ReadSome(b []byte) (n int, err error) {
+	if s.state == StateClosed {
+		return 0, io.EOF
+	}
+
 	s.frame.Reset()
 	nn, err := s.frame.ReadFrom(s.async)
 	return int(nn), err
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+	if s.state == StateClosed {
+		cb(io.EOF, 0)
+		return
+	}
+
 	s.asyncRead(b, 0, cb)
 }
 
@@ -114,11 +144,17 @@ func (s *WebsocketStream) onAsyncRead(b []byte, readBytes int, cb sonic.AsyncCal
 	} else if readBytes >= len(b) {
 		cb(ErrPayloadTooBig, readBytes)
 	} else {
-		s.asyncRead(b, readBytes, cb) // continue reading frames to complete the current message
+		// continue reading frames to complete the current message
+		s.asyncRead(b, readBytes, cb)
 	}
 }
 
 func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
+	if s.state == StateClosed {
+		cb(io.EOF, 0)
+		return
+	}
+
 	s.asyncReadFrame(b, cb)
 }
 
@@ -131,18 +167,156 @@ func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback)
 		if err != nil {
 			cb(ErrReadingHeader, 0)
 		} else {
-			m := s.frame.readMore()
-			if m > 0 {
-				s.asyncReadFrameExtraLength(m, b, cb)
+			if s.frame.IsControl() {
+				// Note that b and cb are meant to be used when handling data frames.
+				// As such, we forward the arguments in all subsequent functions which handle
+				// the control frame. The argument is transparent to all the subsequent functions.
+				// After successful handling of the control frame, we reschedule an async read
+				// with b and cb as arguments.
+				s.asyncReadControlFrame(b, cb)
 			} else {
-				if s.frame.IsMasked() {
-					s.asyncReadFrameMask(b, cb)
-				} else {
-					s.asyncReadPayload(b, cb)
-				}
+				s.asyncReadDataFrame(b, cb)
 			}
 		}
 	})
+}
+
+func (s *WebsocketStream) asyncReadControlFrame(bTransparent []byte, cbTransparent sonic.AsyncCallback) {
+	// TODO all these panics should dissapear
+
+	if !s.IsMessageDone() {
+		panic(fmt.Errorf(
+			"sonic-websocket: invalid control frame - FIN not set, control frame is fragmented frame=%s",
+			s.frame.String()))
+	}
+
+	m := s.frame.readMore()
+	if m > 0 {
+		panic(fmt.Errorf(
+			"sonic-websocket: invalid control frame - length is more than 125 bytes frame=%s",
+			s.frame.String()))
+	} else {
+		var ft FrameType
+		switch s.frame.Opcode() {
+		case OpcodePing:
+			ft = Ping
+		case OpcodePong:
+			ft = Pong
+		case OpcodeClose:
+			ft = Close
+		default:
+			panic(fmt.Errorf(
+				"sonic-websocket: invalid control frame - unknown opcode (not ping/pong/close) frame=%s",
+				s.frame.String()))
+		}
+
+		s.asyncReadPayload(s.controlFramePayload, func(err error, n int) {
+			if err != nil {
+				panic("sonic-websocket: could not read control frame payload")
+			} else {
+				s.controlFramePayload = s.controlFramePayload[:n]
+				s.handleControlFrame(ft, bTransparent, cbTransparent)
+			}
+		})
+	}
+}
+
+func (s *WebsocketStream) handleControlFrame(ft FrameType, bTransparent []byte, cbTransparent sonic.AsyncCallback) {
+	switch ft {
+	case Close:
+		s.handleClose()
+	case Ping:
+		s.handlePing()
+	case Pong:
+		s.handlePong()
+	}
+
+	s.AsyncRead(bTransparent, cbTransparent)
+}
+
+func (s *WebsocketStream) handleClose() {
+	switch s.state {
+	case StateHandshake:
+		// Not possible.
+	case StateOpen:
+		// Received a close frame - MUST send a close frame back.
+		// Note that there is no guarantee that any in-flight
+		// writes will complete at this point.
+		s.state = StateClosing
+
+		closeFrame := AcquireFrame()
+		closeFrame.SetPayload(s.frame.Payload())
+		closeFrame.SetOpcode(OpcodeClose)
+		closeFrame.SetFin()
+		if s.role == RoleClient {
+			closeFrame.Mask()
+		}
+
+		s.asyncWriteFrame(closeFrame, func(err error, _ int) {
+			if err != nil {
+				panic(fmt.Errorf("sonic-websocket: could not send close reply err=%v", err))
+			} else {
+				s.state = StateClosed
+
+				if s.role == RoleServer {
+					s.NextLayer().Close()
+				} else {
+					s.closeTimer.Arm(5*time.Second, func() {
+						s.NextLayer().Close()
+						s.state = StateClosed
+					})
+				}
+			}
+			ReleaseFrame(closeFrame)
+		})
+	case StateClosing:
+		// TODO need a helper function or change handler signature to parse the reason for close which is in the first 2 bytes of the frame.
+		s.controlcb(Close, s.frame.Payload())
+		s.NextLayer().Close()
+		s.state = StateClosed
+	case StateClosed:
+		// nothing
+	default:
+		panic(fmt.Errorf("sonic-websocket: unhandled state %s", s.state.String()))
+	}
+}
+
+func (s *WebsocketStream) handlePing() {
+	if s.state == StateOpen {
+		pongFrame := AcquireFrame()
+		pongFrame.SetOpcode(OpcodePong)
+		pongFrame.SetFin()
+		pongFrame.SetPayload(s.frame.Payload())
+
+		s.asyncWriteFrame(pongFrame, func(err error, n int) {
+			if err != nil {
+				// TODO retry timer?
+				panic("sonic-websocket: could not send pong frame")
+			}
+			ReleaseFrame(pongFrame)
+		})
+
+		s.controlcb(Ping, s.frame.Payload())
+	}
+}
+
+func (s *WebsocketStream) handlePong() {
+	if s.state == StateOpen {
+		s.controlcb(Pong, s.frame.Payload())
+	}
+}
+
+func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
+	m := s.frame.readMore()
+	if m > 0 {
+		s.asyncReadFrameExtraLength(m, b, cb)
+	} else {
+		if s.frame.IsMasked() {
+			s.asyncReadFrameMask(b, cb)
+		} else {
+			s.asyncReadPayload(b, cb)
+		}
+	}
 }
 
 func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
@@ -191,6 +365,10 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) Write(b []byte) (n int, err error) {
+	if s.state != StateOpen {
+		return 0, io.EOF
+	}
+
 	fr := s.makeFrame(true, b)
 	nn, err := fr.WriteTo(s.async)
 	ReleaseFrame(fr)
@@ -199,6 +377,10 @@ func (s *WebsocketStream) Write(b []byte) (n int, err error) {
 
 // WriteSome writes some message data.
 func (s *WebsocketStream) WriteSome(fin bool, b []byte) (n int, err error) {
+	if s.state != StateOpen {
+		return 0, io.EOF
+	}
+
 	fr := s.makeFrame(fin, b)
 	nn, err := fr.WriteTo(s.async)
 	ReleaseFrame(fr)
@@ -207,6 +389,11 @@ func (s *WebsocketStream) WriteSome(fin bool, b []byte) (n int, err error) {
 
 // AsyncWrite writes a complete message asynchronously.
 func (s *WebsocketStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
+	if s.state != StateOpen {
+		cb(io.EOF, 0)
+		return
+	}
+
 	fr := s.makeFrame(true, b)
 
 	s.asyncWriteFrame(fr, func(err error, n int) {
@@ -217,6 +404,11 @@ func (s *WebsocketStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
 
 // AsyncWriteSome writes some message data asynchronously.
 func (s *WebsocketStream) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback) {
+	if s.state != StateOpen {
+		cb(io.EOF, 0)
+		return
+	}
+
 	fr := s.makeFrame(fin, b)
 
 	s.asyncWriteFrame(fr, func(err error, n int) {
@@ -303,11 +495,11 @@ func (s *WebsocketStream) SendBinary(v bool) {
 }
 
 func (s *WebsocketStream) SetControlCallback(ccb AsyncControlCallback) {
-	s.ccb = ccb
+	s.controlcb = ccb
 }
 
 func (s *WebsocketStream) ControlCallback() AsyncControlCallback {
-	return s.ccb
+	return s.controlcb
 }
 
 func (s *WebsocketStream) Handshake(addr string) (err error) {
@@ -464,6 +656,7 @@ func (s *WebsocketStream) AsyncAccept(func(error)) {
 }
 
 func (s *WebsocketStream) Close(cc CloseCode, reason ...string) error {
+	// TODO not correct
 	if s.state != StateClosed {
 		s.state = StateClosed
 		return s.async.Close()
@@ -476,27 +669,27 @@ func (s *WebsocketStream) Closed() bool {
 }
 
 func (s *WebsocketStream) Ping(b []byte) error {
-	if len(b) > PingPongPayloadSize {
+	if len(b) > MaxControlFramePayloadSize {
 		return ErrPayloadTooBig
 	}
 	return nil
 }
 
 func (s *WebsocketStream) AsyncPing(b []byte, cb func(error)) {
-	if len(b) > PingPongPayloadSize {
+	if len(b) > MaxControlFramePayloadSize {
 		cb(ErrPayloadTooBig)
 	}
 }
 
 func (s *WebsocketStream) Pong(b []byte) error {
-	if len(b) > PingPongPayloadSize {
+	if len(b) > MaxControlFramePayloadSize {
 		return ErrPayloadTooBig
 	}
 	return nil
 }
 
 func (s *WebsocketStream) AsyncPong(b []byte, cb func(error)) {
-	if len(b) > PingPongPayloadSize {
+	if len(b) > MaxControlFramePayloadSize {
 		cb(ErrPayloadTooBig)
 	}
 }

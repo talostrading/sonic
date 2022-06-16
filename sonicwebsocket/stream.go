@@ -11,6 +11,21 @@ const (
 	StateClosed
 )
 
+func (s StreamState) String() string {
+	switch s {
+	case StateHandshake:
+		return "state_handshake"
+	case StateOpen:
+		return "state_open"
+	case StateClosing:
+		return "state_closing"
+	case StateClosed:
+		return "state_closed"
+	default:
+		return "state_unknown"
+	}
+}
+
 type StateChangeCallback func(err error, state StreamState)
 
 // Stream is an interface for representing a stateful WebSocket connection

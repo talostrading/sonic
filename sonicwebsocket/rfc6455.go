@@ -12,7 +12,7 @@ func IsUpgrade(req *http.Request) bool { // TODO use this
 }
 
 // The max size of the ping/pong control frame payload.
-const PingPongPayloadSize = 125
+const MaxControlFramePayloadSize = 125
 
 // The type representing the reason string in a close frame.
 type ReasonString [123]byte

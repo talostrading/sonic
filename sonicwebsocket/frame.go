@@ -229,14 +229,7 @@ func (fr *frame) UnsetMask() {
 }
 
 func (fr *frame) SetPayload(b []byte) {
-	n := 0
-	if fr.IsClose() {
-		n = 2
-		if cap(fr.payload) < 2 {
-			fr.payload = append(fr.payload, make([]byte, 2)...)
-		}
-	}
-	fr.payload = append(fr.payload[:n], b...)
+	fr.payload = append(fr.payload[:0], b...)
 }
 
 func (fr *frame) Len() uint64 {
