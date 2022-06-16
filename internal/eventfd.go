@@ -26,11 +26,12 @@ func NewEventFd(nonBlocking bool) (*EventFd, error) {
 	e := &EventFd{
 		fd: int(fd),
 	}
+	e.pd.Fd = fd
 	return e, nil
 }
 
-func (e *EventFd) Write(b []byte) (int, error) {
-	return syscall.Write(e.fd, b)
+func (e *EventFd) Write(x uint64) (int, error) {
+	return syscall.Write(e.fd, (*(*[8]byte)(unsafe.Pointer(&x)))[:])
 }
 
 func (e *EventFd) Read(b []byte) (int, error) {

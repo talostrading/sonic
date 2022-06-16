@@ -13,8 +13,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var oneByte = [1]byte{0}
-
 type PollFlags uint32
 
 const (
@@ -64,6 +62,9 @@ type Poller struct {
 
 	// closed is true if the close() has been called on fd
 	closed uint32
+
+	// TODO proper waker interface
+	wakerBytes [8]byte
 }
 
 func NewPoller() (*Poller, error) {
@@ -87,6 +88,7 @@ func NewPoller() (*Poller, error) {
 	if err != nil {
 		p.waker.Close()
 		syscall.Close(p.fd)
+		return nil, err
 	}
 	// ignore the waker
 	p.pending--
@@ -120,7 +122,7 @@ func (p *Poller) Post(handler func()) error {
 	p.pending++
 	p.lck.Unlock()
 
-	_, err := p.waker.Write(oneByte[:])
+	_, err := p.waker.Write(1)
 	return err
 }
 
@@ -168,7 +170,7 @@ func (p *Poller) Poll(timeoutMs int) error {
 
 func (p *Poller) dispatch() {
 	for {
-		_, err := p.waker.Read(oneByte[:])
+		_, err := p.waker.Read(p.wakerBytes[:])
 		if err != nil {
 			break
 		}
