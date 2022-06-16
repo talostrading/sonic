@@ -13,7 +13,6 @@ var (
 )
 
 type AsyncAdapterHandler func(error, *AsyncAdapter)
-type AsyncReaderHandler func(error, *AsyncReader)
 
 // AsyncAdapter is a wrapper around syscall.Conn which enables
 // clients to schedule async read and write operations on the
@@ -27,6 +26,12 @@ type AsyncAdapter struct {
 	closed uint32
 }
 
+// NewAsyncAdapter takes in an IO instance and an interface of syscall.Conn and io.ReadWriter
+// pertaining to the same object and invokes a completion handler which:
+//   - provides the async adapter on successful completion
+//   - provides an error if any occured when async-adapting the provided object
+//
+// See async_adapter_test.go for examples on how to setup an AsyncAdapter.
 func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapterHandler) {
 	rc, err := sc.SyscallConn()
 	if err != nil {
