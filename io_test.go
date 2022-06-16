@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"runtime"
 	"testing"
 	"time"
 
@@ -63,5 +64,19 @@ func TestRunOneFor(t *testing.T) {
 
 	if given := end.Sub(start); given.Milliseconds() < expected.Milliseconds() {
 		t.Fatalf("invalid timeout ioc.RunOneFor(...) expected=%v given=%v", expected, given)
+	}
+}
+
+func BenchmarkPollOne(b *testing.B) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	runtime.GOMAXPROCS(1)
+
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	for i := 0; i < b.N; i++ {
+		ioc.PollOne()
 	}
 }
