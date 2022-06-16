@@ -39,6 +39,7 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 		},
 		sock: sock,
 	}
+	c.pd.Fd = c.fd
 
 	return c, nil
 }
@@ -51,14 +52,11 @@ func (c *conn) RemoteAddr() net.Addr {
 }
 
 func (c *conn) SetDeadline(t time.Time) error {
-	// TODO
-	return nil
+	panic("not supported")
 }
 func (c *conn) SetReadDeadline(t time.Time) error {
-	// TODO
-	return nil
+	panic("not supported")
 }
 func (c *conn) SetWriteDeadline(t time.Time) error {
-	// TODO
-	return nil
+	panic("not supported")
 }

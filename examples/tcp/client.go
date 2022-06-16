@@ -8,7 +8,9 @@ import (
 
 func main() {
 	ioc := sonic.MustIO()
-	conn, err := sonic.Dial(ioc, "tcp", "google.com:80")
+	defer ioc.Close()
+
+	conn, err := sonic.Dial(ioc, "tcp", "localhost:8080")
 	if err != nil {
 		panic(err)
 	}
