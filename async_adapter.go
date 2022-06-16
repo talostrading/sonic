@@ -188,7 +188,7 @@ func (a *AsyncAdapter) cancelReads() {
 	if a.pd.Flags&internal.ReadFlags == internal.ReadFlags {
 		err := a.ioc.poller.DelRead(a.fd, &a.pd)
 		if err == nil {
-			err = ErrCancelled
+			err = internal.ErrCancelled
 		}
 		a.pd.Cbs[internal.ReadEvent](err)
 	}
@@ -198,7 +198,7 @@ func (a *AsyncAdapter) cancelWrites() {
 	if a.pd.Flags&internal.WriteFlags == internal.WriteFlags {
 		err := a.ioc.poller.DelWrite(a.fd, &a.pd)
 		if err == nil {
-			err = ErrCancelled
+			err = internal.ErrCancelled
 		}
 		a.pd.Cbs[internal.WriteEvent](err)
 	}

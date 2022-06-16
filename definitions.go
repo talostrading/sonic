@@ -1,7 +1,6 @@
 package sonic
 
 import (
-	"errors"
 	"io"
 	"net"
 )
@@ -164,10 +163,4 @@ const (
 	MaxReadDispatch   int = 512
 	MaxWriteDispatch  int = 512
 	MaxAcceptDispatch int = 512
-)
-
-var (
-	ErrWouldBlock = errors.New("operation would block")
-	ErrCancelled  = errors.New("operation cancelled")
-	ErrTimeout    = errors.New("operation timed out")
 )

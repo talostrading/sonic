@@ -65,7 +65,7 @@ func (l *listener) AsyncAccept(cb AcceptCallback) {
 		l.asyncAccept(cb)
 	} else {
 		conn, err := l.accept()
-		if err != nil && (err == ErrWouldBlock) {
+		if err != nil && (err == internal.ErrWouldBlock) {
 			l.asyncAccept(cb)
 		} else {
 			l.acceptDispatch++
@@ -103,7 +103,7 @@ func (l *listener) accept() (Conn, error) {
 
 	if err != nil {
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-			return nil, ErrWouldBlock
+			return nil, internal.ErrWouldBlock
 		}
 		return nil, os.NewSyscallError("accept", err)
 	}

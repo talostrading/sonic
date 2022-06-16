@@ -1,11 +1,13 @@
 package sonic
 
 import (
+	"fmt"
 	"io"
 	"os"
 	"runtime"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/talostrading/sonic/internal"
 )
@@ -15,7 +17,7 @@ type IO struct {
 
 	// pending* prevents the PollData owned by an object to be garbage
 	// collected while an async operation is in-flight on the object's file descriptor,
-	// in case the object goes out of scope
+	// in case the object goes out of scope.
 	pendingReads, pendingWrites map[*internal.PollData]struct{}
 	pendingTimers               map[*Timer]struct{}
 
@@ -44,7 +46,7 @@ func MustIO() *IO {
 	return ioc
 }
 
-// Run runs the event processing loop
+// Run runs the event processing loop.
 func (ioc *IO) Run() error {
 	for {
 		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
@@ -53,9 +55,9 @@ func (ioc *IO) Run() error {
 	}
 }
 
-// RunPending runs the event processing loop to execute all the pending handlers
+// RunPending runs the event processing loop to execute all the pending handlers.
 //
-// note: subsequent handlers scheduled to run on a successful completion of the
+// Subsequent handlers scheduled to run on a successful completion of the
 // pending operation will not be executed.
 func (ioc *IO) RunPending() error {
 	for {
@@ -71,20 +73,23 @@ func (ioc *IO) RunPending() error {
 }
 
 // RunOne runs the event processing loop to execute at most one handler
-// note: this blocks the calling goroutine until one event is ready to process
+//
+// This blocks the calling goroutine until one event is ready to process
 func (ioc *IO) RunOne() error {
 	return ioc.poll(-1)
 }
 
 // RunOneFor runs the event processing loop for a specified duration to execute at
-// most one handler.
-// note: this blocks the calling goroutine until one event is ready to process
-func (ioc *IO) RunOneFor(timeoutMs int) error {
-	return ioc.poll(timeoutMs)
+// most one handler. The provided duration should not be lower than a millisecond.
+//
+// This blocks the calling goroutine until one event is ready to process
+func (ioc *IO) RunOneFor(dur time.Duration) error {
+	return ioc.poll(int(dur.Milliseconds()))
 }
 
-// Poll runs the event processing loop to execute ready handlers
-// note: this will return immediately in case there is no event to process
+// Poll runs the event processing loop to execute ready handlers.
+//
+// This will return immediately in case there is no event to process.
 func (ioc *IO) Poll() error {
 	for {
 		if err := ioc.PollOne(); err != nil {
@@ -93,8 +98,9 @@ func (ioc *IO) Poll() error {
 	}
 }
 
-// PollOne runs the event processing loop to execute one ready handler
-// note: this will return immediately in case there is no event to process
+// PollOne runs the event processing loop to execute one ready handler.
+//
+// This will return immediately in case there is no event to process.
 func (ioc *IO) PollOne() error {
 	return ioc.poll(0)
 }
@@ -114,16 +120,22 @@ func (ioc *IO) poll(timeoutMs int) error {
 			return err
 		}
 
-		return os.NewSyscallError("poll_wait_indefinitely", err)
+		return os.NewSyscallError(fmt.Sprintf("poll_wait timeout=%d", timeoutMs), err)
 	}
 
 	return nil
 }
 
 // Post schedules the provided handler to be run immediately by the event
-// processing loop in its own thread. It is safe to call this concurrently.
+// processing loop in its own thread.
+//
+// It is safe to call Post concurrently.
 func (ioc *IO) Post(handler func()) error {
 	return ioc.poller.Post(handler)
+}
+
+func (ioc *IO) Pending() int64 {
+	return ioc.poller.Pending()
 }
 
 func (ioc *IO) Close() error {

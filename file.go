@@ -42,7 +42,7 @@ func (f *file) Read(b []byte) (int, error) {
 				return 0, io.EOF
 			}
 		}
-		return 0, ErrWouldBlock
+		return 0, internal.ErrWouldBlock
 	}
 	return n, err
 }
@@ -55,7 +55,7 @@ func (f *file) Write(b []byte) (int, error) {
 				return 0, io.EOF
 			}
 		}
-		return 0, ErrWouldBlock
+		return 0, internal.ErrWouldBlock
 	}
 	return n, err
 }
@@ -89,7 +89,7 @@ func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallb
 		return
 	}
 
-	if err != nil && err != ErrWouldBlock {
+	if err != nil && err != internal.ErrWouldBlock {
 		cb(err, 0)
 		return
 	}
@@ -157,7 +157,7 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 		return
 	}
 
-	if err != nil && err != ErrWouldBlock {
+	if err != nil && err != internal.ErrWouldBlock {
 		cb(err, 0)
 	}
 
@@ -223,7 +223,7 @@ func (f *file) cancelReads() {
 	if f.pd.Flags&internal.ReadFlags == internal.ReadFlags {
 		err := f.ioc.poller.DelRead(f.fd, &f.pd)
 		if err == nil {
-			err = ErrCancelled
+			err = internal.ErrCancelled
 		}
 		f.pd.Cbs[internal.ReadEvent](err)
 	}
@@ -233,7 +233,7 @@ func (f *file) cancelWrites() {
 	if f.pd.Flags&internal.WriteFlags == internal.WriteFlags {
 		err := f.ioc.poller.DelWrite(f.fd, &f.pd)
 		if err == nil {
-			err = ErrCancelled
+			err = internal.ErrCancelled
 		}
 		f.pd.Cbs[internal.WriteEvent](err)
 	}

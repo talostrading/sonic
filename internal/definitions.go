@@ -1,9 +1,5 @@
 package internal
 
-import "errors"
-
-var ErrTimeout = errors.New("operation timed out")
-
 type EventType int8
 
 const (
