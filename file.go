@@ -201,9 +201,12 @@ func (f *file) Close() error {
 		return io.EOF
 	}
 
-	err := f.ioc.poller.Del(f.fd, &f.pd) // TODO don't pass the fd as it's already in the PollData instance
-	syscall.Close(f.fd)
-	return err
+	err := f.ioc.poller.Del(f.fd, &f.pd)
+	if err != nil {
+		return err
+	}
+
+	return syscall.Close(f.fd)
 }
 
 func (f *file) Closed() bool {

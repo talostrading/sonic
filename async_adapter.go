@@ -1,28 +1,30 @@
 package sonic
 
 import (
-	"fmt"
 	"io"
+	"sync/atomic"
 	"syscall"
 
 	"github.com/talostrading/sonic/internal"
 )
 
-type AsyncAdapterHandler func(error, *AsyncAdapter)
-type AsyncReaderHandler func(error, *AsyncReader)
-
 var (
 	_ FileDescriptor = &AsyncAdapter{}
 )
 
-// TODO doc: AsyncAdapter operates on blocking fds, hence we schedule a lot
+type AsyncAdapterHandler func(error, *AsyncAdapter)
+type AsyncReaderHandler func(error, *AsyncReader)
+
+// AsyncAdapter is a wrapper around syscall.Conn which enables
+// clients to schedule async read and write operations on the
+// underlying file descriptor.
 type AsyncAdapter struct {
 	ioc    *IO
 	fd     int
 	pd     internal.PollData
 	rw     io.ReadWriter
 	rc     syscall.RawConn
-	closed bool
+	closed uint32
 }
 
 func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapterHandler) {
@@ -46,18 +48,30 @@ func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapter
 	})
 }
 
+// Read reads data from the underlying file descriptor into b.
 func (a *AsyncAdapter) Read(b []byte) (int, error) {
 	return a.rw.Read(b)
 }
 
+// Write writes data from the supplied buffer to the underlying file descriptor.
 func (a *AsyncAdapter) Write(b []byte) (int, error) {
 	return a.rw.Write(b)
 }
 
+// AsyncRead reads data from the underlying file descriptor into b asynchronously.
+//
+// AsyncRead returns no error on short reads. If you want to ensure that the provided
+// buffer is completely filled, use AsyncReadAll.
 func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 	a.scheduleRead(b, 0, false, cb)
 }
 
+// AsyncReadAll reads data from the underlying file descriptor into b asynchronously.
+//
+// The provided handler is invoked in the following cases:
+//   - an error occured
+//   - the provided buffer has been fully filled after zero or several underlying
+//     read(...) operations.
 func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
 	a.scheduleRead(b, 0, true, cb)
 }
@@ -110,10 +124,20 @@ func (a *AsyncAdapter) setRead() error {
 	return a.ioc.poller.SetRead(a.fd, &a.pd)
 }
 
+// AsyncWrite writes data from the supplied buffer to the underlying file descriptor asynchronously.
+//
+// AsyncWrite returns no error on short writes. If you want to ensure that the provided
+// buffer is completely written, use AsyncWriteAll.
 func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 	a.scheduleWrite(b, 0, false, cb)
 }
 
+// AsyncWriteAll writes data from the supplied buffer to the underlying file descriptor asynchronously.
+//
+// The provided handler is invoked in the following cases:
+//   - an error occured
+//   - the provided buffer has been fully written after zero or several underlying
+//     write(...) operations.
 func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {
 	a.scheduleWrite(b, 0, true, cb)
 }
@@ -167,18 +191,23 @@ func (a *AsyncAdapter) setWrite() error {
 }
 
 func (a *AsyncAdapter) Close() error {
-	if a.closed {
-		return fmt.Errorf("already closed")
-	} else {
-		a.closed = true
-		return nil
+	if !atomic.CompareAndSwapUint32(&a.closed, 0, 1) {
+		return io.EOF
 	}
+
+	err := a.ioc.poller.Del(a.fd, &a.pd)
+	if err != nil {
+		return err
+	}
+
+	return syscall.Close(a.fd)
 }
 
 func (a *AsyncAdapter) Closed() bool {
-	return a.closed
+	return atomic.LoadUint32(&a.closed) == 1
 }
 
+// Cancel cancels any asynchronous operations scheduled on the underlying file descriptor.
 func (a *AsyncAdapter) Cancel() {
 	a.cancelReads()
 	a.cancelWrites()
