@@ -2,6 +2,8 @@ package sonicwebsocket
 
 import "net/http"
 
+var GUID = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+
 // IsUpgrade returns true if the HTTP request is a WebSocket upgrade.
 //
 // This function returns true when the passed HTTP request indicates

@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha1"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"hash"
 	"io"
 	"net"
 	"net/http"
@@ -66,6 +68,9 @@ type WebsocketStream struct {
 	// The expected behaviour is for the server to close the connection such that the client receives an io.EOF.
 	// If that does not happen, this timer does it for the client.
 	closeTimer *sonic.Timer
+
+	// hasher is used to hash the Sec-WebSocket-Key when establishing the handshake
+	hasher hash.Hash
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, error) {
@@ -85,6 +90,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		frame:               newFrame(),
 		controlFramePayload: make([]byte, MaxControlFramePayloadSize),
 		closeTimer:          closeTimer,
+		hasher:              sha1.New(),
 	}
 
 	return s, nil
@@ -638,9 +644,10 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 		return err
 	}
 
+	sentKey, expectedKey := s.makeKey()
 	req.Header.Set("Upgrade", "websocket")
 	req.Header.Set("Connection", "Upgrade")
-	req.Header.Set("Sec-WebSocket-Key", string(makeRandKey()))
+	req.Header.Set("Sec-WebSocket-Key", string(sentKey))
 	req.Header.Set("Sec-Websocket-Version", "13")
 
 	res, err := upgrader.Do(req)
@@ -648,8 +655,12 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 		return err
 	}
 
-	if res.StatusCode != 101 || res.Header.Get("Upgrade") != "websocket" {
-		// TODO check the Sec-Websocket-Accept header as well
+	if !(res.StatusCode == 101 && strings.EqualFold(res.Header.Get("Upgrade"), "websocket")) {
+		return ErrCannotUpgrade
+	}
+
+	if key := res.Header.Get("Sec-WebSocket-Accept"); key != expectedKey {
+		// TODO somehow wrap errors here so you can attach a message
 		return ErrCannotUpgrade
 	}
 
@@ -704,11 +715,21 @@ func (s *WebsocketStream) AsyncPong(b []byte, cb func(error)) {
 	}
 }
 
-func makeRandKey() []byte {
+// makeKey generates the key of Sec-WebSocket-Key header as well as the expected
+// response present in Sec-WebSocket-Accept header.
+func (s *WebsocketStream) makeKey() (req, res string) {
 	b := make([]byte, 16)
 	rand.Read(b[:])
 	n := base64.StdEncoding.EncodedLen(16)
-	key := make([]byte, n)
-	base64.StdEncoding.Encode(key, b)
-	return key
+	reqKey := make([]byte, n)
+	base64.StdEncoding.Encode(reqKey, b)
+
+	var resKey []byte
+	resKey = append(resKey, reqKey...)
+	resKey = append(resKey, GUID...)
+
+	s.hasher.Reset()
+	s.hasher.Write(resKey)
+
+	return string(reqKey), base64.StdEncoding.EncodeToString(s.hasher.Sum(nil))
 }
