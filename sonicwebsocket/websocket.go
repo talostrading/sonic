@@ -37,8 +37,8 @@ type WebsocketStream struct {
 	// with the `wss` scheme
 	tls *tls.Config
 
-	// controlcb is the callback called when a control frame is received
-	controlcb AsyncControlCallback
+	// ccb is the callback called when a control frame is received
+	ccb AsyncControlCallback
 
 	writeBuf *bytes.Buffer
 
@@ -271,7 +271,9 @@ func (s *WebsocketStream) handleClose() {
 		})
 	case StateClosing:
 		// TODO need a helper function or change handler signature to parse the reason for close which is in the first 2 bytes of the frame.
-		s.controlcb(Close, s.frame.Payload())
+		if s.ccb != nil {
+			s.ccb(Close, s.frame.Payload())
+		}
 		s.NextLayer().Close()
 		s.state = StateClosed
 	case StateClosed:
@@ -296,13 +298,17 @@ func (s *WebsocketStream) handlePing() {
 			ReleaseFrame(pongFrame)
 		})
 
-		s.controlcb(Ping, s.frame.Payload())
+		if s.ccb != nil {
+			s.ccb(Ping, s.frame.Payload())
+		}
 	}
 }
 
 func (s *WebsocketStream) handlePong() {
 	if s.state == StateOpen {
-		s.controlcb(Pong, s.frame.Payload())
+		if s.ccb != nil {
+			s.ccb(Pong, s.frame.Payload())
+		}
 	}
 }
 
@@ -495,11 +501,11 @@ func (s *WebsocketStream) SendBinary(v bool) {
 }
 
 func (s *WebsocketStream) SetControlCallback(ccb AsyncControlCallback) {
-	s.controlcb = ccb
+	s.ccb = ccb
 }
 
 func (s *WebsocketStream) ControlCallback() AsyncControlCallback {
-	return s.controlcb
+	return s.ccb
 }
 
 func (s *WebsocketStream) Handshake(addr string) (err error) {
