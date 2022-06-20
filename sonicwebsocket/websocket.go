@@ -529,13 +529,17 @@ func (s *WebsocketStream) handshake(addr string, cb func(error)) {
 	uri, err := s.resolve(addr)
 	if err != nil {
 		cb(err)
+		s.state = StateClosed
 	} else {
 		s.dial(uri, func(err error) {
 			if err != nil {
 				cb(err)
+				s.state = StateClosed
 			} else {
 				err = s.upgrade(uri)
 				if err != nil {
+					s.state = StateClosed
+				} else {
 					s.state = StateOpen
 				}
 				cb(err)
