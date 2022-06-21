@@ -52,7 +52,6 @@ func getCaseCount() int {
 	if err != nil {
 		panic(err)
 	}
-	defer stream.Close(sonicwebsocket.Normal, "")
 
 	err = stream.Handshake(*addr + "/getCaseCount")
 	if err != nil {
@@ -85,24 +84,26 @@ func runTest(i int) {
 
 	stream.AsyncHandshake(addr, func(err error) {
 		if err != nil {
-			stream.Close(sonicwebsocket.Normal, "")
-			ioc.Close()
 			panic(err)
 		} else {
 			b := make([]byte, 4096)
 			stream.AsyncRead(b, func(err error, n int) {
 				if err != nil {
-					stream.Close(sonicwebsocket.Normal, "")
-					ioc.Close()
 					panic(err)
 				} else {
 					b = b[:n]
 					stream.AsyncWrite(b, func(err error, n int) {
 						if err != nil {
 							panic(err)
+						} else {
+							stream.AsyncClose(sonicwebsocket.Normal, "", func(err error) {
+								if err != nil {
+									panic(err)
+								} else {
+									ioc.Close()
+								}
+							})
 						}
-						stream.Close(sonicwebsocket.Normal, "")
-						ioc.Close()
 					})
 				}
 			})
@@ -125,8 +126,13 @@ func updateReports() {
 		if err != nil {
 			panic("could not update reports")
 		} else {
-			stream.Close(sonicwebsocket.Normal, "")
-			ioc.Close()
+			stream.AsyncClose(sonicwebsocket.Normal, "", func(err error) {
+				if err != nil {
+					panic(err)
+				} else {
+					ioc.Close()
+				}
+			})
 		}
 	})
 

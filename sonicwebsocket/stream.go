@@ -187,7 +187,21 @@ type Stream interface {
 	// will be performed in a manner equivalent to using sonic.Dispatch(...).
 	AsyncAccept(func(error))
 
-	// Close sends a websocket close control frame.
+	// AsyncClose sends a websocket close control frame asynchronously.
+	//
+	// This function is used to send a close frame which begins the WebSocket closing handshake.
+	// The session ends when both ends of the connection have sent and received a close frame.
+	//
+	// The handler is called if one of the following conditions is true:
+	//	- the close frame is written
+	//	- an error occurs
+	//
+	// After beginning the closing handshake, the program should not write further message data,
+	// pings, or pongs. Instead, the program should continue reading message data until
+	// an error occurs.
+	AsyncClose(cc CloseCode, reason string, cb func(err error))
+
+	// Close sends a websocket close control frame asynchronously.
 	//
 	// This function is used to send a close frame which begins the WebSocket closing handshake.
 	// The session ends when both ends of the connection have sent and received a close frame.
@@ -199,7 +213,7 @@ type Stream interface {
 	// After beginning the closing handshake, the program should not write further message data,
 	// pings, or pongs. Instead, the program should continue reading message data until
 	// an error occurs.
-	Close(cc CloseCode, reason ...string) error
+	Close(cc CloseCode, reason string) error
 
 	// Closed indicates whether the underlying connection is closed.
 	Closed() bool

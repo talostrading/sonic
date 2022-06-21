@@ -1,14 +1,14 @@
 {
    "agent": "sonic",
-   "behavior": "FAILED",
-   "behaviorClose": "FAILED",
+   "behavior": "OK",
+   "behaviorClose": "OK",
    "case": 1,
-   "closedByMe": false,
+   "closedByMe": true,
    "createStats": true,
    "createWirelog": true,
    "description": "Send text message with payload 0.",
-   "droppedByMe": false,
-   "duration": 11,
+   "droppedByMe": true,
+   "duration": 13,
    "expectation": "Receive echo'ed text message (with empty payload). Clean close with normal code.",
    "expected": {
       "OK": [
@@ -27,16 +27,16 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /runCase?case=1&agent=sonic HTTP/1.1\r\nHost: localhost:9001\r\nUser-Agent: Go-http-client/1.1\r\nConnection: upgrade\r\nSec-Websocket-Key: kaV2H8HdLv35mSvxcJcyDA==\r\nSec-Websocket-Version: 13\r\nUpgrade: websocket\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nServer: AutobahnTestSuite/0.8.2-0.10.9\r\nX-Powered-By: AutobahnPython/0.10.9\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: 6dqiG73B7SL/uH02lN9ehmLeRGQ=\r\n\r\n",
+   "httpRequest": "GET /runCase?case=1&agent=sonic HTTP/1.1\r\nHost: localhost:9001\r\nUser-Agent: Go-http-client/1.1\r\nConnection: upgrade\r\nSec-Websocket-Key: r5f8CeRlxlTGojKztaVDjA==\r\nSec-Websocket-Version: 13\r\nUpgrade: websocket\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nServer: AutobahnTestSuite/0.8.2-0.10.9\r\nX-Powered-By: AutobahnPython/0.10.9\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: gchs1vjhYZ7239D5DQzSC6Jp+h4=\r\n\r\n",
    "id": "1.1.1",
    "isServer": true,
-   "localCloseCode": null,
+   "localCloseCode": 1000,
    "localCloseReason": null,
    "received": [
       [
          "message",
-         "\u0000\u0000",
+         "",
          false
       ]
    ],
@@ -44,27 +44,30 @@
    "remoteCloseReason": null,
    "reportCompressionRatio": false,
    "reportTime": false,
-   "result": "Actual events differ from any expected.",
-   "resultClose": "The connection was failed by the wrong endpoint",
+   "result": "Actual events match at least one expected.",
+   "resultClose": "Connection was properly closed",
    "rxFrameStats": {
-      "1": 1
+      "1": 1,
+      "8": 1
    },
    "rxOctetStats": {
-      "8": 1,
+      "6": 2,
       "211": 1
    },
-   "started": "2022-06-21T13:06:22.015Z",
+   "started": "2022-06-21T16:03:47.709Z",
    "trafficStats": null,
    "txFrameStats": {
-      "1": 1
+      "1": 1,
+      "8": 1
    },
    "txOctetStats": {
       "2": 1,
+      "4": 1,
       "206": 1
    },
-   "wasClean": false,
+   "wasClean": true,
    "wasCloseHandshakeTimeout": false,
-   "wasNotCleanReason": "peer dropped the TCP connection without previous WebSocket closing handshake",
+   "wasNotCleanReason": null,
    "wasOpenHandshakeTimeout": false,
    "wasServerConnectionDropTimeout": false,
    "wirelog": [
@@ -112,21 +115,62 @@
       [
          "RO",
          [
-            8,
-            "818238d9bf9338d9"
+            6,
+            "81804de8d1f6"
          ]
       ],
       [
          "RF",
          [
-            2,
-            "\u0000\u0000"
+            0,
+            ""
          ],
          1,
          true,
          0,
          true,
-         "38d9bf93"
+         "4de8d1f6"
+      ],
+      [
+         "TF",
+         [
+            2,
+            "0x03e8"
+         ],
+         8,
+         true,
+         0,
+         null,
+         null,
+         null,
+         false
+      ],
+      [
+         "TO",
+         [
+            4,
+            "880203e8"
+         ],
+         false
+      ],
+      [
+         "RO",
+         [
+            6,
+            "8880ed23e419"
+         ]
+      ],
+      [
+         "RF",
+         [
+            0,
+            ""
+         ],
+         8,
+         true,
+         0,
+         true,
+         "ed23e419"
       ]
    ]
 }

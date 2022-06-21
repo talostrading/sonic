@@ -8,7 +8,7 @@
    "createWirelog": true,
    "description": "Send text message message with payload of length 65535.",
    "droppedByMe": false,
-   "duration": 7,
+   "duration": 211,
    "expectation": "Receive echo'ed text message (with payload as sent). Clean close with normal code.",
    "expected": {
       "OK": [
@@ -27,8 +27,8 @@
       "requireClean": true
    },
    "failedByMe": false,
-   "httpRequest": "GET /runCase?case=6&agent=sonic HTTP/1.1\r\nHost: localhost:9001\r\nUser-Agent: Go-http-client/1.1\r\nConnection: upgrade\r\nSec-Websocket-Key: UUtr0Q8bFGQ9HgfWP0S7AA==\r\nSec-Websocket-Version: 13\r\nUpgrade: websocket\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nServer: AutobahnTestSuite/0.8.2-0.10.9\r\nX-Powered-By: AutobahnPython/0.10.9\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: wp3x/miMpa1xp9JNoftmYb5jrqo=\r\n\r\n",
+   "httpRequest": "GET /runCase?case=6&agent=sonic HTTP/1.1\r\nHost: localhost:9001\r\nUser-Agent: Go-http-client/1.1\r\nConnection: upgrade\r\nSec-Websocket-Key: QSutyb8kF4AP4Cu367jK7g==\r\nSec-Websocket-Version: 13\r\nUpgrade: websocket\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nServer: AutobahnTestSuite/0.8.2-0.10.9\r\nX-Powered-By: AutobahnPython/0.10.9\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: NuO4lzDv8ZCA7Mm4oh05kdj/SnY=\r\n\r\n",
    "id": "1.1.6",
    "isServer": true,
    "localCloseCode": null,
@@ -44,7 +44,7 @@
    "rxOctetStats": {
       "211": 1
    },
-   "started": "2022-06-21T13:06:22.096Z",
+   "started": "2022-06-21T16:03:17.014Z",
    "trafficStats": null,
    "txFrameStats": {
       "1": 1

@@ -9,4 +9,6 @@ var (
 	ErrReadingMask           = errors.New("could not read mask")
 	ErrPayloadTooBig         = errors.New("payload too big")
 	ErrInvalidControlFrame   = errors.New("invalid control frame")
+	ErrOnClose               = errors.New("error on close")
+	ErrCloseWhileHandshaking = errors.New("closing while in handshake")
 )

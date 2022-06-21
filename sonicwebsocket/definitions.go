@@ -26,7 +26,35 @@ const (
 	Close FrameType = iota
 	Ping
 	Pong
+	Invalid
 )
+
+func (t FrameType) String() string {
+	switch t {
+	case Close:
+		return "close_frame"
+	case Ping:
+		return "ping_frame"
+	case Pong:
+		return "pong_frame"
+	default:
+		return "unknown"
+	}
+}
+
+func opcodeToFrameType(opcode Opcode) (ft FrameType) {
+	switch opcode {
+	case OpcodePing:
+		ft = Ping
+	case OpcodePong:
+		ft = Pong
+	case OpcodeClose:
+		ft = Close
+	default:
+		ft = Invalid
+	}
+	return
+}
 
 type Opcode uint8
 
@@ -100,6 +128,8 @@ const (
 	DefaultPayloadSize uint64 = 4096    // 4KB
 	MaxPayloadSize     uint64 = 1 << 32 // 4GB
 	MaxPending         uint64 = 8196    // 8KB
+
+	DefaultFrameSize = frameHeaderSize + frameMaskSize + DefaultPayloadSize
 )
 
 const (

@@ -7,7 +7,7 @@
    "createStats": true,
    "createWirelog": true,
    "description": "Send text message message with payload of length 128.",
-   "droppedByMe": false,
+   "droppedByMe": true,
    "duration": 8,
    "expectation": "Receive echo'ed text message (with payload as sent). Clean close with normal code.",
    "expected": {
@@ -26,9 +26,9 @@
       "closedByMe": true,
       "requireClean": true
    },
-   "failedByMe": false,
-   "httpRequest": "GET /runCase?case=5&agent=sonic HTTP/1.1\r\nHost: localhost:9001\r\nUser-Agent: Go-http-client/1.1\r\nConnection: upgrade\r\nSec-Websocket-Key: AwjOe1YB1SQDc3Z4jkOo8A==\r\nSec-Websocket-Version: 13\r\nUpgrade: websocket\r\n\r\n",
-   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nServer: AutobahnTestSuite/0.8.2-0.10.9\r\nX-Powered-By: AutobahnPython/0.10.9\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: focxG85w8u4OO6DpjSBn09GLmLw=\r\n\r\n",
+   "failedByMe": true,
+   "httpRequest": "GET /runCase?case=5&agent=sonic HTTP/1.1\r\nHost: localhost:9001\r\nUser-Agent: Go-http-client/1.1\r\nConnection: upgrade\r\nSec-Websocket-Key: Di2T/OwuQEZFCPZtutfdjg==\r\nSec-Websocket-Version: 13\r\nUpgrade: websocket\r\n\r\n",
+   "httpResponse": "HTTP/1.1 101 Switching Protocols\r\nServer: AutobahnTestSuite/0.8.2-0.10.9\r\nX-Powered-By: AutobahnPython/0.10.9\r\nUpgrade: WebSocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: eyvFsXnHkzAldpMXu/oY8bv3cQ0=\r\n\r\n",
    "id": "1.1.5",
    "isServer": true,
    "localCloseCode": 1000,
@@ -50,10 +50,10 @@
       "1": 1
    },
    "rxOctetStats": {
-      "136": 1,
+      "136": 2,
       "211": 1
    },
-   "started": "2022-06-21T13:06:22.083Z",
+   "started": "2022-06-21T16:03:47.797Z",
    "trafficStats": null,
    "txFrameStats": {
       "1": 1,
@@ -66,7 +66,7 @@
    },
    "wasClean": false,
    "wasCloseHandshakeTimeout": false,
-   "wasNotCleanReason": "peer dropped the TCP connection without previous WebSocket closing handshake",
+   "wasNotCleanReason": null,
    "wasOpenHandshakeTimeout": false,
    "wasServerConnectionDropTimeout": false,
    "wirelog": [
@@ -115,7 +115,7 @@
          "RO",
          [
             136,
-            "81fe0080c24f8535e865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1fe865af1f ..."
+            "81fe00809529194abf033360bf033360bf033360bf033360bf033360bf033360bf033360bf033360bf033360bf033360bf033360bf033360bf033360bf033360 ..."
          ]
       ],
       [
@@ -128,7 +128,7 @@
          true,
          0,
          true,
-         "c24f8535"
+         "9529194a"
       ],
       [
          "TF",
@@ -151,6 +151,13 @@
             "880203e8"
          ],
          false
+      ],
+      [
+         "RO",
+         [
+            136,
+            "88fe00809d041adab72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0b72e30f0 ..."
+         ]
       ]
    ]
 }
