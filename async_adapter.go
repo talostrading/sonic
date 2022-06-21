@@ -92,6 +92,7 @@ func (a *AsyncAdapter) asyncReadNow(b []byte, readBytes int, readAll bool, cb As
 
 	if err != nil {
 		cb(err, readBytes)
+		return
 	}
 
 	a.scheduleRead(b, readBytes, readAll, cb)
@@ -158,6 +159,7 @@ func (a *AsyncAdapter) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, 
 
 	if err != nil {
 		cb(err, writtenBytes)
+		return
 	}
 
 	a.scheduleWrite(b, writtenBytes, writeAll, cb)
