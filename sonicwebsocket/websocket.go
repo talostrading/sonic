@@ -1,8 +1,8 @@
 package sonicwebsocket
 
 import (
+	"bufio"
 	"bytes"
-	"context"
 	"crypto/rand"
 	"crypto/sha1"
 	"crypto/tls"
@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"syscall"
@@ -42,8 +43,6 @@ type WebsocketStream struct {
 	// ccb is the callback called when a control frame is received
 	ccb AsyncControlCallback
 
-	writeBuf *bytes.Buffer
-
 	// frame is the data frame in which read data is deserialized into.
 	frame *frame
 
@@ -53,8 +52,8 @@ type WebsocketStream struct {
 	// conn is the underlying tcp stream connection
 	conn net.Conn
 
-	// async makes it possible to execute asynchronous operations on conn
-	async *sonic.AsyncAdapter
+	// stream is the channel through which data is sent
+	stream sonic.Stream
 
 	readLimit uint64
 
@@ -69,8 +68,14 @@ type WebsocketStream struct {
 	// If that does not happen, this timer does it for the client.
 	closeTimer *sonic.Timer
 
-	// hasher is used to hash the Sec-WebSocket-Key when establishing the handshake
+	// hasher is used to hash the Sec-WebSocket-Key when establishing the handshake on the client side
 	hasher hash.Hash
+
+	// rbuf is the read buffer which may contain unparsed frames received on the wire
+	rbuf []byte
+
+	// wbuf is the write buffer in which one or more valid frames are written to the wire
+	wbuf *bytes.Buffer
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, error) {
@@ -83,7 +88,6 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		ioc:                 ioc,
 		state:               StateClosed,
 		tls:                 tls,
-		writeBuf:            bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
 		readLimit:           MaxPayloadSize,
 		text:                true,
 		role:                role,
@@ -91,13 +95,15 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		controlFramePayload: make([]byte, MaxControlFramePayloadSize),
 		closeTimer:          closeTimer,
 		hasher:              sha1.New(),
+		wbuf:                bytes.NewBuffer(make([]byte, 0, frameHeaderSize+frameMaskSize+DefaultPayloadSize)),
+		rbuf:                make([]byte, MaxPending),
 	}
 
 	return s, nil
 }
 
 func (s *WebsocketStream) NextLayer() sonic.Stream {
-	return s.async
+	return s.stream
 }
 
 func (s *WebsocketStream) Read(b []byte) (n int, err error) {
@@ -119,9 +125,18 @@ func (s *WebsocketStream) ReadSome(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
+	return s.readFrame(b)
+}
+
+func (s *WebsocketStream) readFrame(b []byte) (n int, err error) {
 	s.frame.Reset()
-	nn, err := s.frame.ReadFrom(s.async)
-	return int(nn), err
+
+	if s.hasPendingReads() {
+		return s.readPending(b)
+	} else {
+		nn, err := s.frame.ReadFrom(s.stream)
+		return int(nn), err
+	}
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
@@ -134,7 +149,7 @@ func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
-	s.AsyncReadSome(b[readBytes:], func(err error, n int) {
+	s.asyncReadFrame(b[readBytes:], func(err error, n int) {
 		readBytes += n
 		if err != nil {
 			cb(err, readBytes)
@@ -166,10 +181,38 @@ func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
 
 func (s *WebsocketStream) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
 	s.frame.Reset()
-	s.asyncReadFrameHeader(b, cb)
+
+	if s.hasPendingReads() {
+		n, err := s.readPending(b)
+		cb(err, n)
+	} else {
+		s.asyncReadFrameHeader(b, cb)
+	}
 }
+
+func (s *WebsocketStream) readPending(b []byte) (n int, err error) {
+	nn, err := s.frame.ReadFrom(bytes.NewReader(s.rbuf))
+	n = int(nn)
+
+	if err == nil {
+		if len(b) < n {
+			err = ErrPayloadTooBig
+			n = 0
+		} else {
+			s.rbuf = s.rbuf[:0]
+			copy(b, s.frame.Payload())
+		}
+	}
+
+	return
+}
+
+func (s *WebsocketStream) hasPendingReads() bool {
+	return len(s.rbuf) > 0
+}
+
 func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.frame.header[:2], func(err error, n int) {
+	s.stream.AsyncReadAll(s.frame.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, 0)
 		} else {
@@ -332,7 +375,7 @@ func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.frame.header[2:m+2], func(err error, n int) {
+	s.stream.AsyncReadAll(s.frame.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, 0)
 		} else {
@@ -350,7 +393,7 @@ func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.As
 }
 
 func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
-	s.async.AsyncReadAll(s.frame.mask[:4], func(err error, n int) {
+	s.stream.AsyncReadAll(s.frame.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, 0)
 		} else {
@@ -365,7 +408,7 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 		if remaining := payloadLen - int64(cap(b)); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
 		} else {
-			s.async.AsyncReadAll(b[:payloadLen], func(err error, n int) {
+			s.stream.AsyncReadAll(b[:payloadLen], func(err error, n int) {
 				if err != nil {
 					cb(err, n)
 				} else {
@@ -382,7 +425,7 @@ func (s *WebsocketStream) Write(b []byte) (n int, err error) {
 	}
 
 	fr := s.makeFrame(true, b)
-	nn, err := fr.WriteTo(s.async)
+	nn, err := fr.WriteTo(s.stream)
 	ReleaseFrame(fr)
 	return int(nn), err
 }
@@ -394,7 +437,7 @@ func (s *WebsocketStream) WriteSome(fin bool, b []byte) (n int, err error) {
 	}
 
 	fr := s.makeFrame(fin, b)
-	nn, err := fr.WriteTo(s.async)
+	nn, err := fr.WriteTo(s.stream)
 	ReleaseFrame(fr)
 	return int(nn), err
 }
@@ -452,16 +495,16 @@ func (s *WebsocketStream) makeFrame(fin bool, payload []byte) *frame {
 }
 
 func (s *WebsocketStream) asyncWriteFrame(fr *frame, cb sonic.AsyncCallback) {
-	s.writeBuf.Reset()
+	s.wbuf.Reset()
 
-	nn, err := fr.WriteTo(s.writeBuf)
+	nn, err := fr.WriteTo(s.wbuf)
 	n := int(nn)
 	if err != nil {
 		cb(err, n)
 	} else {
-		b := s.writeBuf.Bytes()
+		b := s.wbuf.Bytes()
 		b = b[:n]
-		s.async.AsyncWriteAll(b, cb)
+		s.stream.AsyncWriteAll(b, cb)
 	}
 }
 
@@ -515,8 +558,13 @@ func (s *WebsocketStream) ControlCallback() AsyncControlCallback {
 }
 
 func (s *WebsocketStream) Handshake(addr string) (err error) {
+	if s.role != RoleClient {
+		return fmt.Errorf("invalid role=%s; only clients can handshake", s.role)
+	}
+
 	done := make(chan struct{}, 1)
 	s.handshake(addr, func(herr error) {
+		done <- struct{}{}
 		err = herr
 	})
 	<-done
@@ -524,6 +572,11 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 }
 
 func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
+	if s.role != RoleClient {
+		cb(fmt.Errorf("invalid role=%s; only clients can establis", s.role))
+		return
+	}
+
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine here
 	go func() {
@@ -538,7 +591,7 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 func (s *WebsocketStream) handshake(addr string, cb func(error)) {
 	s.state = StateHandshake
 
-	uri, err := s.resolve(addr)
+	uri, err := s.resolveAddr(addr)
 	if err != nil {
 		cb(err)
 		s.state = StateClosed
@@ -560,7 +613,7 @@ func (s *WebsocketStream) handshake(addr string, cb func(error)) {
 	}
 }
 
-func (s *WebsocketStream) resolve(addr string) (*url.URL, error) {
+func (s *WebsocketStream) resolveAddr(addr string) (*url.URL, error) {
 	uri, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
@@ -590,7 +643,9 @@ func (s *WebsocketStream) dial(uri *url.URL, cb func(err error)) {
 		if port == "" {
 			port = "80"
 		}
-		conn, err = net.Dial("tcp", uri.Hostname()+":"+port)
+
+		addr := uri.Hostname() + ":" + port
+		conn, err = net.Dial("tcp", addr)
 		if err != nil {
 			cb(err)
 			return
@@ -606,7 +661,8 @@ func (s *WebsocketStream) dial(uri *url.URL, cb func(err error)) {
 			port = "443"
 		}
 
-		conn, err = tls.Dial("tcp", uri.Hostname()+":"+port, s.tls) // TODO dial timeout
+		addr := uri.Hostname() + ":" + port
+		conn, err = tls.Dial("tcp", addr, s.tls) // TODO dial timeout
 		if err != nil {
 			cb(err)
 			return
@@ -620,25 +676,13 @@ func (s *WebsocketStream) dial(uri *url.URL, cb func(err error)) {
 		if err != nil {
 			cb(err)
 		} else {
-			s.async = async
+			s.stream = async
 			cb(nil)
 		}
 	})
 }
 
 func (s *WebsocketStream) upgrade(uri *url.URL) error {
-	upgrader := &http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return s.conn, nil
-			},
-			DialTLSContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return s.conn, nil
-			},
-			TLSClientConfig: s.tls,
-		},
-	}
-
 	req, err := http.NewRequest("GET", uri.String(), nil)
 	if err != nil {
 		return err
@@ -646,16 +690,41 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 
 	sentKey, expectedKey := s.makeKey()
 	req.Header.Set("Upgrade", "websocket")
-	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Connection", "upgrade")
 	req.Header.Set("Sec-WebSocket-Key", string(sentKey))
 	req.Header.Set("Sec-Websocket-Version", "13")
 
-	res, err := upgrader.Do(req)
+	err = req.Write(s.stream)
 	if err != nil {
 		return err
 	}
 
+	n, err := s.stream.Read(s.rbuf)
+	if err != nil {
+		return err
+	}
+	s.rbuf = s.rbuf[:n]
+	rd := bytes.NewReader(s.rbuf)
+	res, err := http.ReadResponse(bufio.NewReader(rd), req)
+	if err != nil {
+		return err
+	}
+
+	rawRes, err := httputil.DumpResponse(res, true)
+	if err != nil {
+		return err
+	}
+
+	resLen := len(rawRes)
+	extra := len(s.rbuf) - resLen
+	if extra > 0 {
+		s.rbuf = s.rbuf[resLen:]
+	} else {
+		s.rbuf = s.rbuf[:0]
+	}
+
 	if !(res.StatusCode == 101 && strings.EqualFold(res.Header.Get("Upgrade"), "websocket")) {
+		// TODO somehow wrap errors here so you can attach a message
 		return ErrCannotUpgrade
 	}
 
@@ -668,11 +737,19 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 }
 
 func (s *WebsocketStream) Accept() error {
+	if s.role != RoleServer {
+		return fmt.Errorf("invalid role=%s; only servers can accept", s.role)
+	}
+
 	// TODO
 	return nil
 }
 
-func (s *WebsocketStream) AsyncAccept(func(error)) {
+func (s *WebsocketStream) AsyncAccept(cb func(error)) {
+	if s.role != RoleServer {
+		cb(fmt.Errorf("invalid role=%s; only servers can accept", s.role))
+		return
+	}
 	// TODO
 }
 
@@ -680,7 +757,7 @@ func (s *WebsocketStream) Close(cc CloseCode, reason ...string) error {
 	// TODO not correct
 	if s.state != StateClosed {
 		s.state = StateClosed
-		return s.async.Close()
+		return s.stream.Close()
 	}
 	return nil
 }
@@ -718,18 +795,19 @@ func (s *WebsocketStream) AsyncPong(b []byte, cb func(error)) {
 // makeKey generates the key of Sec-WebSocket-Key header as well as the expected
 // response present in Sec-WebSocket-Accept header.
 func (s *WebsocketStream) makeKey() (req, res string) {
+	// request
 	b := make([]byte, 16)
-	rand.Read(b[:])
-	n := base64.StdEncoding.EncodedLen(16)
-	reqKey := make([]byte, n)
-	base64.StdEncoding.Encode(reqKey, b)
+	rand.Read(b)
+	req = base64.StdEncoding.EncodeToString(b)
 
+	// response
 	var resKey []byte
-	resKey = append(resKey, reqKey...)
+	resKey = append(resKey, []byte(req)...)
 	resKey = append(resKey, GUID...)
 
 	s.hasher.Reset()
 	s.hasher.Write(resKey)
+	res = base64.StdEncoding.EncodeToString(s.hasher.Sum(nil))
 
-	return string(reqKey), base64.StdEncoding.EncodeToString(s.hasher.Sum(nil))
+	return
 }

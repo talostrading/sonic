@@ -7,6 +7,17 @@ const (
 	RoleServer
 )
 
+func (r Role) String() string {
+	switch r {
+	case RoleClient:
+		return "role_client"
+	case RoleServer:
+		return "role_server"
+	default:
+		return "role_unknown"
+	}
+}
+
 type AsyncControlCallback func(FrameType, []byte)
 
 type FrameType uint8
@@ -88,6 +99,7 @@ const (
 
 	DefaultPayloadSize uint64 = 4096    // 4KB
 	MaxPayloadSize     uint64 = 1 << 32 // 4GB
+	MaxPending         uint64 = 8196    // 8KB
 )
 
 const (

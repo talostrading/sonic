@@ -11,6 +11,11 @@ import (
 
 var zeroBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
+var (
+	_ io.ReaderFrom = &frame{}
+	_ io.WriterTo   = &frame{}
+)
+
 type frame struct {
 	header  [frameHeaderSize]byte
 	mask    [frameMaskSize]byte
@@ -70,7 +75,7 @@ func (fr *frame) ReadFrom(r io.Reader) (int64, error) {
 func (fr *frame) WriteTo(w io.Writer) (n int64, err error) {
 	var nn int
 
-	nn, err = w.Write(fr.header[:2+fr.payloadBytes()])
+	nn, err = w.Write(fr.header[:2+fr.setPayloadLen()])
 	n += int64(nn)
 
 	if err == nil {
@@ -88,22 +93,28 @@ func (fr *frame) WriteTo(w io.Writer) (n int64, err error) {
 	return
 }
 
-func (fr *frame) payloadBytes() int {
+func (fr *frame) setPayloadLen() (bytes int) {
 	n := len(fr.payload)
 
 	switch {
-	case n > 65535: // more than two bytes needed
-		fr.header[1] |= uint8(127)
+	case n > 65535: // more than two bytes needed for extra length
+		bytes = 8
+		fr.setLength(127)
 		binary.BigEndian.PutUint64(fr.header[2:], uint64(n))
-		return 8
 	case n > 125:
-		fr.header[1] |= uint8(125)
+		bytes = 2
+		fr.setLength(126)
 		binary.BigEndian.PutUint16(fr.header[2:], uint16(n))
 		return 2
 	default:
-		fr.header[1] |= uint8(n)
-		return 0
+		bytes = 0
+		fr.setLength(n)
 	}
+	return
+}
+
+func (fr *frame) setLength(n int) {
+	fr.header[1] |= uint8(n)
 }
 
 func (fr *frame) readMore() (n int) {
@@ -280,9 +291,13 @@ MASK: %v
 --------
 LENGTH: %d
 --------
-MASK-KEY: %v`,
+MASK-KEY: %v
+--------
+PAYLOAD: %v`,
+
 		fr.IsFin(), fr.IsRSV1(), fr.IsRSV2(), fr.IsRSV3(),
 		fr.Opcode(), fr.IsMasked(), fr.Len(), fr.MaskKey(),
+		fr.Payload(),
 	)
 }
 
