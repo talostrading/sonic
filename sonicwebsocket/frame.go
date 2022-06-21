@@ -63,7 +63,7 @@ func (fr *frame) ReadFrom(r io.Reader) (int64, error) {
 			if payloadLen := int(fr.Len()); payloadLen > 0 {
 				fr.payload = util.ExtendByteSlice(fr.payload, payloadLen)
 				n, err = io.ReadFull(r, fr.payload[:payloadLen])
-			} else {
+			} else if payloadLen < 0 {
 				panic("invalid uint64 to int conversion")
 			}
 		}
