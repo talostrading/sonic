@@ -1,0 +1,46 @@
+{
+   "sonic": {
+      "1.1.1": {
+         "behavior": "FAILED",
+         "behaviorClose": "FAILED",
+         "duration": 11,
+         "remoteCloseCode": null,
+         "reportfile": "sonic_case_1_1_1.json"
+      },
+      "1.1.2": {
+         "behavior": "OK",
+         "behaviorClose": "UNCLEAN",
+         "duration": 10,
+         "remoteCloseCode": null,
+         "reportfile": "sonic_case_1_1_2.json"
+      },
+      "1.1.3": {
+         "behavior": "OK",
+         "behaviorClose": "UNCLEAN",
+         "duration": 8,
+         "remoteCloseCode": null,
+         "reportfile": "sonic_case_1_1_3.json"
+      },
+      "1.1.4": {
+         "behavior": "OK",
+         "behaviorClose": "UNCLEAN",
+         "duration": 8,
+         "remoteCloseCode": null,
+         "reportfile": "sonic_case_1_1_4.json"
+      },
+      "1.1.5": {
+         "behavior": "OK",
+         "behaviorClose": "UNCLEAN",
+         "duration": 8,
+         "remoteCloseCode": null,
+         "reportfile": "sonic_case_1_1_5.json"
+      },
+      "1.1.6": {
+         "behavior": "FAILED",
+         "behaviorClose": "FAILED",
+         "duration": 7,
+         "remoteCloseCode": null,
+         "reportfile": "sonic_case_1_1_6.json"
+      }
+   }
+}
