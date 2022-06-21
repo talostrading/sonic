@@ -614,23 +614,21 @@ func (s *WebsocketStream) handshake(addr string, cb func(error)) {
 }
 
 func (s *WebsocketStream) resolveAddr(addr string) (*url.URL, error) {
-	uri, err := url.Parse(addr)
+	url, err := url.Parse(addr)
 	if err != nil {
 		return nil, err
 	}
 
-	var scheme string
-
-	switch uri.Scheme {
+	switch url.Scheme {
 	case "ws":
-		scheme = "http"
+		url.Scheme = "http"
 	case "wss":
-		scheme = "https"
+		url.Scheme = "https"
 	default:
 		return nil, fmt.Errorf("invalid address %s", addr)
 	}
 
-	return url.Parse(strings.Join([]string{scheme, "://", uri.Host, uri.Path}, ""))
+	return url, nil
 }
 
 func (s *WebsocketStream) dial(uri *url.URL, cb func(err error)) {
@@ -672,11 +670,11 @@ func (s *WebsocketStream) dial(uri *url.URL, cb func(err error)) {
 
 	s.conn = conn
 
-	sonic.NewAsyncAdapter(s.ioc, sc, s.conn, func(err error, async *sonic.AsyncAdapter) {
+	sonic.NewAsyncAdapter(s.ioc, sc, s.conn, func(err error, stream *sonic.AsyncAdapter) {
 		if err != nil {
 			cb(err)
 		} else {
-			s.stream = async
+			s.stream = stream
 			cb(nil)
 		}
 	})
