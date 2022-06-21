@@ -191,14 +191,14 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) readPending(b []byte) (n int, err error) {
-	nn, err := s.frame.ReadFrom(bytes.NewReader(s.rbuf))
-	n = int(nn)
+	_, err = s.frame.ReadFrom(bytes.NewReader(s.rbuf))
 
 	if err == nil {
 		if len(b) < n {
-			err = ErrPayloadTooBig
 			n = 0
+			err = ErrPayloadTooBig
 		} else {
+			n = int(s.frame.Len())
 			s.rbuf = s.rbuf[:0]
 			copy(b, s.frame.Payload())
 		}
