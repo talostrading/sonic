@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/talostrading/sonic/sonicerrors"
 	"golang.org/x/sys/unix"
 )
 
@@ -127,7 +128,7 @@ func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
 		}
 
 		if n == 0 {
-			return ErrTimeout
+			return sonicerrors.ErrTimeout
 		}
 
 		_, err = syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)

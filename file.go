@@ -7,6 +7,7 @@ import (
 	"syscall"
 
 	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 var _ File = &file{}
@@ -42,7 +43,7 @@ func (f *file) Read(b []byte) (int, error) {
 				return 0, io.EOF
 			}
 		}
-		return 0, internal.ErrWouldBlock
+		return 0, sonicerrors.ErrWouldBlock
 	}
 	return n, err
 }
@@ -55,7 +56,7 @@ func (f *file) Write(b []byte) (int, error) {
 				return 0, io.EOF
 			}
 		}
-		return 0, internal.ErrWouldBlock
+		return 0, sonicerrors.ErrWouldBlock
 	}
 	return n, err
 }
@@ -89,7 +90,7 @@ func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallb
 		return
 	}
 
-	if err != nil && err != internal.ErrWouldBlock {
+	if err != nil && err != sonicerrors.ErrWouldBlock {
 		cb(err, 0)
 		return
 	}
@@ -157,7 +158,7 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 		return
 	}
 
-	if err != nil && err != internal.ErrWouldBlock {
+	if err != nil && err != sonicerrors.ErrWouldBlock {
 		cb(err, 0)
 	}
 
@@ -226,7 +227,7 @@ func (f *file) cancelReads() {
 	if f.pd.Flags&internal.ReadFlags == internal.ReadFlags {
 		err := f.ioc.poller.DelRead(f.fd, &f.pd)
 		if err == nil {
-			err = internal.ErrCancelled
+			err = sonicerrors.ErrCancelled
 		}
 		f.pd.Cbs[internal.ReadEvent](err)
 	}
@@ -236,7 +237,7 @@ func (f *file) cancelWrites() {
 	if f.pd.Flags&internal.WriteFlags == internal.WriteFlags {
 		err := f.ioc.poller.DelWrite(f.fd, &f.pd)
 		if err == nil {
-			err = internal.ErrCancelled
+			err = sonicerrors.ErrCancelled
 		}
 		f.pd.Cbs[internal.WriteEvent](err)
 	}

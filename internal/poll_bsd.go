@@ -9,6 +9,8 @@ import (
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 var oneByte = [1]byte{0}
@@ -147,7 +149,7 @@ func (p *Poller) Poll(timeoutMs int) error {
 	}
 
 	if n == 0 && timeoutMs >= 0 {
-		return ErrTimeout
+		return sonicerrors.ErrTimeout
 	}
 
 	for i := 0; i < n; i++ {

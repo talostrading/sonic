@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 type IO struct {
@@ -49,7 +50,7 @@ func MustIO() *IO {
 // Run runs the event processing loop.
 func (ioc *IO) Run() error {
 	for {
-		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
+		if err := ioc.RunOne(); err != nil && err != sonicerrors.ErrTimeout {
 			return err
 		}
 	}
@@ -65,7 +66,7 @@ func (ioc *IO) RunPending() error {
 			break
 		}
 
-		if err := ioc.RunOne(); err != nil && err != internal.ErrTimeout {
+		if err := ioc.RunOne(); err != nil && err != sonicerrors.ErrTimeout {
 			return err
 		}
 	}
@@ -110,14 +111,14 @@ func (ioc *IO) poll(timeoutMs int) error {
 	if err := ioc.poller.Poll(timeoutMs); err != nil {
 		if err == syscall.EINTR {
 			if timeoutMs >= 0 {
-				return internal.ErrTimeout
+				return sonicerrors.ErrTimeout
 			}
 
 			runtime.Gosched()
 			return nil
 		}
 
-		if err == internal.ErrTimeout {
+		if err == sonicerrors.ErrTimeout {
 			return err
 		}
 

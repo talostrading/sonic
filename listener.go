@@ -5,6 +5,7 @@ import (
 	"syscall"
 
 	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/sonicopts"
 )
 
@@ -65,7 +66,7 @@ func (l *listener) AsyncAccept(cb AcceptCallback) {
 		l.asyncAccept(cb)
 	} else {
 		conn, err := l.accept()
-		if err != nil && (err == internal.ErrWouldBlock) {
+		if err != nil && (err == sonicerrors.ErrWouldBlock) {
 			l.asyncAccept(cb)
 		} else {
 			l.acceptDispatch++
@@ -103,7 +104,7 @@ func (l *listener) accept() (Conn, error) {
 
 	if err != nil {
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-			return nil, internal.ErrWouldBlock
+			return nil, sonicerrors.ErrWouldBlock
 		}
 		return nil, os.NewSyscallError("accept", err)
 	}

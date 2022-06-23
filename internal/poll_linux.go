@@ -9,6 +9,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"unsafe"
+
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 type PollFlags uint32
@@ -138,7 +140,7 @@ func (p *Poller) Poll(timeoutMs int) error {
 	}
 
 	if n == 0 && timeoutMs >= 0 {
-		return ErrTimeout
+		return sonicerrors.ErrTimeout
 	}
 
 	for i := 0; i < int(n); i++ {
