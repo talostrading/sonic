@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 func TestPost(t *testing.T) {
@@ -44,7 +44,7 @@ func TestEmptyPoll(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	if err := ioc.Poll(); err != internal.ErrTimeout {
+	if err := ioc.Poll(); err != sonicerrors.ErrTimeout {
 		t.Fatalf("expected timeout as not operations are scheduled")
 	}
 }
@@ -56,7 +56,7 @@ func TestRunOneFor(t *testing.T) {
 	start := time.Now()
 
 	expected := 5 * time.Millisecond
-	if err := ioc.RunOneFor(expected); err != internal.ErrTimeout {
+	if err := ioc.RunOneFor(expected); err != sonicerrors.ErrTimeout {
 		t.Fatalf("expected timeout as no operations are scheduled received=%v", err)
 	}
 
