@@ -126,8 +126,8 @@ func (p *Poller) Post(handler func()) error {
 	return err
 }
 
-func (p *Poller) Poll(timeoutMs int) error {
-	n, _, errno := syscall.RawSyscall6(
+func (p *Poller) Poll(timeoutMs int) (n int, err error) {
+	n, _, err = syscall.RawSyscall6(
 		syscall.SYS_EPOLL_WAIT,
 		uintptr(p.fd),
 		uintptr(unsafe.Pointer(&p.events[0])),
@@ -135,12 +135,12 @@ func (p *Poller) Poll(timeoutMs int) error {
 		uintptr(timeoutMs),
 		0, 0,
 	)
-	if errno != 0 {
-		return errno
+	if err != 0 {
+		return
 	}
 
 	if n == 0 && timeoutMs >= 0 {
-		return sonicerrors.ErrTimeout
+		return 0, sonicerrors.ErrTimeout
 	}
 
 	for i := 0; i < int(n); i++ {
@@ -165,7 +165,7 @@ func (p *Poller) Poll(timeoutMs int) error {
 		}
 	}
 
-	return nil
+	return
 }
 
 func (p *Poller) dispatch() {

@@ -133,7 +133,7 @@ func (p *Poller) Post(handler func()) error {
 	return err
 }
 
-func (p *Poller) Poll(timeoutMs int) error {
+func (p *Poller) Poll(timeoutMs int) (n int, err error) {
 	var timeout *syscall.Timespec
 	if timeoutMs >= 0 {
 		ts := syscall.NsecToTimespec(int64(timeoutMs) * 1e6)
@@ -143,13 +143,13 @@ func (p *Poller) Poll(timeoutMs int) error {
 	changelist := p.changes
 	p.changes = p.changes[:0]
 
-	n, err := syscall.Kevent(p.fd, changelist, p.events, timeout)
+	n, err = syscall.Kevent(p.fd, changelist, p.events, timeout)
 	if err != nil {
-		return err
+		return
 	}
 
 	if n == 0 && timeoutMs >= 0 {
-		return sonicerrors.ErrTimeout
+		return 0, sonicerrors.ErrTimeout
 	}
 
 	for i := 0; i < n; i++ {
@@ -176,7 +176,7 @@ func (p *Poller) Poll(timeoutMs int) error {
 		}
 	}
 
-	return nil
+	return
 }
 
 func (p *Poller) dispatch() {

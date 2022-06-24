@@ -76,17 +76,19 @@ func (ioc *IO) RunPending() error {
 // RunOne runs the event processing loop to execute at most one handler
 //
 // This blocks the calling goroutine until one event is ready to process
-func (ioc *IO) RunOne() error {
-	return ioc.poll(-1)
+func (ioc *IO) RunOne() (err error) {
+	_, err = ioc.poll(-1)
+	return
 }
 
 // RunOneFor runs the event processing loop for a specified duration to execute at
 // most one handler. The provided duration should not be lower than a millisecond.
 //
 // This blocks the calling goroutine until one event is ready to process
-func (ioc *IO) RunOneFor(dur time.Duration) error {
+func (ioc *IO) RunOneFor(dur time.Duration) (err error) {
 	ms := int(dur.Milliseconds())
-	return ioc.poll(ms)
+	_, err = ioc.poll(ms)
+	return
 }
 
 // Poll runs the event processing loop to execute ready handlers.
@@ -94,7 +96,7 @@ func (ioc *IO) RunOneFor(dur time.Duration) error {
 // This will return immediately in case there is no event to process.
 func (ioc *IO) Poll() error {
 	for {
-		if err := ioc.PollOne(); err != nil {
+		if _, err := ioc.PollOne(); err != nil {
 			return err
 		}
 	}
@@ -103,29 +105,31 @@ func (ioc *IO) Poll() error {
 // PollOne runs the event processing loop to execute one ready handler.
 //
 // This will return immediately in case there is no event to process.
-func (ioc *IO) PollOne() error {
+func (ioc *IO) PollOne() (n int, err error) {
 	return ioc.poll(0)
 }
 
-func (ioc *IO) poll(timeoutMs int) error {
-	if err := ioc.poller.Poll(timeoutMs); err != nil {
+func (ioc *IO) poll(timeoutMs int) (n int, err error) {
+	n, err = ioc.poller.Poll(timeoutMs)
+
+	if err != nil {
 		if err == syscall.EINTR {
 			if timeoutMs >= 0 {
-				return sonicerrors.ErrTimeout
+				return 0, sonicerrors.ErrTimeout
 			}
 
 			runtime.Gosched()
-			return nil
+			return 0, nil
 		}
 
 		if err == sonicerrors.ErrTimeout {
-			return err
+			return 0, err
 		}
 
-		return os.NewSyscallError(fmt.Sprintf("poll_wait timeout=%d", timeoutMs), err)
+		return 0, os.NewSyscallError(fmt.Sprintf("poll_wait timeout=%d", timeoutMs), err)
 	}
 
-	return nil
+	return
 }
 
 // Post schedules the provided handler to be run immediately by the event
