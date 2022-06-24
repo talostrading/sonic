@@ -67,6 +67,45 @@ func TestRunOneFor(t *testing.T) {
 	}
 }
 
+func TestRightNumberOfPolledEvents(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dur := 500 * time.Millisecond
+	err = timer.Arm(dur, func() {
+
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	npolled := 0
+	for {
+		if time.Now().Sub(start) > 2*dur {
+			break
+		}
+
+		n, err := ioc.PollOne()
+		if err != nil && err != sonicerrors.ErrTimeout {
+			t.Fatal(err)
+		}
+
+		if n > npolled {
+			npolled = n
+		}
+	}
+
+	if npolled != 1 {
+		t.Fatalf("expected to poll 1 operation, but polled %d", npolled)
+	}
+}
+
 func BenchmarkPollOne(b *testing.B) {
 	ioc := MustIO()
 	defer ioc.Close()
