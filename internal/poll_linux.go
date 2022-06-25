@@ -127,7 +127,7 @@ func (p *Poller) Post(handler func()) error {
 }
 
 func (p *Poller) Poll(timeoutMs int) (n int, err error) {
-	nn, _, err := syscall.RawSyscall6(
+	nn, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_WAIT,
 		uintptr(p.fd),
 		uintptr(unsafe.Pointer(&p.events[0])),
