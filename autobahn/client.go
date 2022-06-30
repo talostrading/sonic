@@ -92,17 +92,18 @@ func runTest(i int) {
 					panic(err)
 				} else {
 					b = b[:n]
+					fmt.Println("received ", string(b))
 					stream.AsyncWrite(b, func(err error, n int) {
 						if err != nil {
 							panic(err)
 						} else {
-							stream.AsyncClose(sonicwebsocket.Normal, "", func(err error) {
-								if err != nil {
-									panic(err)
-								} else {
-									ioc.Close()
-								}
-							})
+							//stream.AsyncClose(sonicwebsocket.Normal, "", func(err error) {
+							//if err != nil {
+							//panic(err)
+							//} else {
+							//ioc.Close()
+							//}
+							//})
 						}
 					})
 				}

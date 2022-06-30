@@ -279,6 +279,7 @@ func (s *WebsocketStream) handleClose() {
 	case StateHandshake:
 		// Not possible.
 	case StateOpen:
+		fmt.Println("receive control frme when open")
 		// Received a close frame - MUST send a close frame back.
 		// Note that there is no guarantee that any in-flight
 		// writes will complete at this point.
@@ -291,6 +292,7 @@ func (s *WebsocketStream) handleClose() {
 		if s.role == RoleClient {
 			closeFrame.Mask()
 		}
+		fmt.Println("sneding close frame", closeFrame)
 
 		s.asyncWriteFrame(closeFrame, func(err error, _ int) {
 			if err != nil {
