@@ -1,0 +1,50 @@
+version: 2.1
+
+orbs:
+  slack: circleci/slack@4.10.1
+
+commands:
+  post_slack:
+    steps:
+      - slack/notify:
+          event: pass
+          custom: |
+            {
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "build succeeded $CIRCLE_BUILD_URL"
+                  }
+                }
+              ]
+            }
+
+
+jobs:
+  build:
+    docker:
+      - image: cimg/go:1.18
+    steps:
+      - checkout
+      - run:
+          name: Build examples
+          command: make && make test && make bench
+      - post_slack
+  test:
+    docker:
+      - image: cimg/go:1.18
+    steps:
+      - checkout
+      - run:
+          name: Running tests
+          command: make test
+  bench:
+    docker:
+      - image: cimg/go:1.18
+    steps:
+      - checkout
+      - run:
+          name: Running benchmarks
+          command: make bench
