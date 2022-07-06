@@ -25,7 +25,7 @@ const (
 	frameMaskSize   uint64 = 4  // 4B
 
 	DefaultPayloadSize uint64 = 4096    // 4KB
-	MaxPayloadSize     uint64 = 1 << 32 // 4GB
+	MaxMessageSize     uint64 = 1 << 32 // 4GB
 	MaxPending         uint64 = 8196    // 8KB
 
 	DefaultFrameSize = frameHeaderSize + frameMaskSize + DefaultPayloadSize

@@ -98,8 +98,8 @@ type Stream interface {
 	// it should be set to true.
 	AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback)
 
-	// SetReadLimit sets the maximum read size. If 0, the max size is used.
-	SetReadLimit(uint64)
+	// SetMaxMessageSize sets the maximum read message size. If 0, the default MaxMessageSize is used.
+	SetMaxMessageSize(uint64)
 
 	// State returns the state of the WebSocket connection.
 	State() StreamState

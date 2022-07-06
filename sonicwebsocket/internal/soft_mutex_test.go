@@ -18,7 +18,7 @@ var op1 = &testOp{1}
 var op2 = &testOp{2}
 
 func TestMutex(t *testing.T) {
-	s := &softMutex{}
+	s := &SoftMutex{}
 
 	s.Lock(op1)
 	if s.id != 1 {
@@ -70,7 +70,7 @@ func TestSoftMutexLockPanic(t *testing.T) {
 		}
 	}()
 
-	s := &softMutex{}
+	s := &SoftMutex{}
 
 	s.Lock(op1)
 	s.Lock(op1)
@@ -91,7 +91,7 @@ func TestSoftMutexTryLockPanic(t *testing.T) {
 		}
 	}()
 
-	s := &softMutex{}
+	s := &SoftMutex{}
 
 	s.TryLock(op1)
 	s.TryLock(op1)
@@ -112,7 +112,7 @@ func TestSoftMutexUnlockPanic(t *testing.T) {
 		}
 	}()
 
-	s := &softMutex{}
+	s := &SoftMutex{}
 
 	s.Lock(op1)
 	s.Unlock(op1)
