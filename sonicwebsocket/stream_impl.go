@@ -103,6 +103,10 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 	return s, nil
 }
 
+func (s *WebsocketStream) DeflateSupported() bool {
+	return false
+}
+
 func (s *WebsocketStream) NextLayer() sonic.Stream {
 	return s.stream
 }

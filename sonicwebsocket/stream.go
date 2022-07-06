@@ -26,8 +26,6 @@ func (s StreamState) String() string {
 	}
 }
 
-type StateChangeCallback func(err error, state StreamState)
-
 // Stream is an interface for representing a stateful WebSocket connection
 // on the server or client side.
 //
@@ -45,7 +43,8 @@ type Stream interface {
 	// entire lifetime. All reads and writes will go through the next layer.
 	NextLayer() sonic.Stream
 
-	// TODO: DeflateSupported (https://datatracker.ietf.org/doc/html/rfc7692)
+	// https://datatracker.ietf.org/doc/html/rfc7692
+	DeflateSupported() bool
 
 	// Reads reads a complete message into b.
 	//
