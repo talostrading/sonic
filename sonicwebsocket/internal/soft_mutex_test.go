@@ -1,4 +1,4 @@
-package sonicwebsocket
+package internal
 
 import (
 	"testing"
