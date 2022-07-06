@@ -320,7 +320,7 @@ func (s *WebsocketStream) handleClose() {
 
 		// TODO need a helper function or change handler signature to parse the reason for close which is in the first 2 bytes of the frame.
 		if s.ccb != nil {
-			s.ccb(Close, s.frame.Payload())
+			s.ccb(OpcodeClose, s.frame.Payload())
 		}
 		s.NextLayer().Close()
 		s.state = StateClosed
@@ -348,7 +348,7 @@ func (s *WebsocketStream) handlePing() {
 		})
 
 		if s.ccb != nil {
-			s.ccb(Ping, s.frame.Payload())
+			s.ccb(OpcodePing, s.frame.Payload())
 		}
 	}
 }
@@ -356,7 +356,7 @@ func (s *WebsocketStream) handlePing() {
 func (s *WebsocketStream) handlePong() {
 	if s.state == StateOpen {
 		if s.ccb != nil {
-			s.ccb(Pong, s.frame.Payload())
+			s.ccb(OpcodePong, s.frame.Payload())
 		}
 	}
 }
