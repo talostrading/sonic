@@ -37,7 +37,7 @@ func (s *testServer) Accept(addr string) error {
 		return err
 	}
 
-	if !IsUpgrade(req) {
+	if !IsUpgradeReq(req) {
 		reqb, err := httputil.DumpRequest(req, true)
 		if err == nil {
 			err = fmt.Errorf("request is not websocket upgrade: %s", string(reqb))

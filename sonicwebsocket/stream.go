@@ -5,25 +5,39 @@ import "github.com/talostrading/sonic"
 type StreamState uint8
 
 const (
+	// The connection is being established.
 	StateHandshake StreamState = iota
-	StateOpen
-	StateClosing
-	StateClosed
-	StateFailed
+
+	// The connection is active.
+	StateActive
+
+	// We initiated a close handshake.
+	StateClosedByUs
+
+	// The peer initiated a close handshake.
+	StateClosedByPeer
+
+	// The peer replied to our close handshake.
+	StateCloseAcked
+
+	// The connection does not exist anymore.
+	StateTerminated
 )
 
 func (s StreamState) String() string {
 	switch s {
 	case StateHandshake:
 		return "state_handshake"
-	case StateOpen:
-		return "state_open"
-	case StateClosing:
-		return "state_closing"
-	case StateClosed:
-		return "state_closed"
-	case StateFailed:
-		return "state_failed"
+	case StateActive:
+		return "state_active"
+	case StateClosedByUs:
+		return "state_closed_by_us"
+	case StateClosedByPeer:
+		return "state_closed_by_peer"
+	case StateCloseAcked:
+		return "state_closed_acked"
+	case StateTerminated:
+		return "state_terminated"
 	default:
 		return "state_unknown"
 	}
@@ -75,36 +89,15 @@ type Stream interface {
 	// If b cannot hold the message, ErrPayloadTooBig is provided in the handler invocation.
 	AsyncReadSome(b []byte, cb AsyncCallback)
 
-	// Write writes a complete message from b.
-	//
-	// The message can be composed of one or several frames.
-	Write(t MessageType, b []byte) (n int, err error)
+	// WriteFrame writes the given frame.
+	WriteFrame(fr *Frame) error
 
-	// WriteSome writes some part of a message from b.
-	//
-	// A caller should expect this function to write frames with the provided buffer
-	// as payload. If the payload is too big, the caller has the option of breaking
-	// up the message into multiple frames through multiple calls to AsyncWriteSome.
-	// In this case, fin should be set to false on all calls but the last one, where
-	// it should be set to true.
-	WriteSome(fin bool, t MessageType, b []byte) (n int, err error)
+	// AsyncWriteFrame writes the given frame asynchronously.
+	AsyncWriteFrame(fr *Frame, cb func(error))
 
-	// AsyncWrite writes a complete message from b asynchronously.
-	//
-	// The message can be composed of one or several frames.
-	AsyncWrite(t MessageType, b []byte, cb sonic.AsyncCallback)
+	AsyncFlush(cb func(err error))
 
-	// AsyncWriteSome writes some part of a message from b asynchronously.
-	//
-	// A caller should expect this function to write frames with the provided buffer
-	// as payload. If the payload is too big, the caller has the option of breaking
-	// up the message into multiple frames through multiple calls to AsyncWriteSome.
-	// In this case, fin should be set to false on all calls but the last one, where
-	// it should be set to true.
-	AsyncWriteSome(fin bool, t MessageType, b []byte, cb sonic.AsyncCallback)
-
-	// Flush TODO
-	Flush()
+	Flush() error
 
 	// SetMaxMessageSize sets the maximum read message size. If 0, the default MaxMessageSize is used.
 	SetMaxMessageSize(uint64)
@@ -189,7 +182,4 @@ type Stream interface {
 	// pings, or pongs. Instead, the program should continue reading message data until
 	// an error occurs.
 	Close(cc CloseCode, reason string) error
-
-	// Closed indicates whether the underlying connection is closed.
-	Closed() bool
 }

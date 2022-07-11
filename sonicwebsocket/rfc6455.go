@@ -8,12 +8,14 @@ import (
 // GUID is used when constructing the Sec-WebSocket-Accept key based on Sec-WebSocket-Key.
 var GUID = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
-// IsUpgrade returns true if the HTTP request is a WebSocket upgrade.
-//
-// This function returns true when the passed HTTP request indicates
-// a WebSocket Upgrade. It does not validate the contents of the fields.
-func IsUpgrade(req *http.Request) bool {
+// IsUpgradeReq returns true if the HTTP request is a valid WebSocket upgrade.
+func IsUpgradeReq(req *http.Request) bool {
 	return strings.EqualFold(req.Header.Get("Upgrade"), "websocket")
+}
+
+// IsUpgradeReq returns true if the HTTP response is a valid WebSocket upgrade.
+func IsUpgradeRes(res *http.Response) bool {
+	return res.StatusCode == 101 && strings.EqualFold(res.Header.Get("Upgrade"), "websocket")
 }
 
 const (
