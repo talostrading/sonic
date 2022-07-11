@@ -1,19 +1,19 @@
 package sonicwebsocket
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/talostrading/sonic"
 )
 
-func TestHandshake2(t *testing.T) {
-	server := &testServer{}
-	server.AsyncAccept("localhost:8080", func(err error) {
+func TestHandshake(t *testing.T) {
+	srv := &testServer{}
+	go func() {
+		err := srv.Accept("localhost:8080")
 		if err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
-	})
+	}()
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -23,13 +23,19 @@ func TestHandshake2(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	valid := false
 	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		} else {
-			fmt.Println("handshake succeeded")
+			valid = true
+			srv.Close() // TODO
 		}
 	})
 
 	ioc.RunOne()
+
+	if !valid {
+		t.Fatal("failed handshake")
+	}
 }

@@ -2,7 +2,6 @@ package sonicwebsocket
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 
 	"github.com/talostrading/sonic"
@@ -72,7 +71,6 @@ func (s *WebsocketStream) asyncCloseNow(cc CloseCode, reason string, cb func(err
 }
 
 func (s *WebsocketStream) asyncReadPending(b []byte, cb sonic.AsyncCallback) {
-	fmt.Println("reading pending")
 	s.AsyncRead(b, func(err error, n int) {
 		if err != nil {
 			if err != io.EOF {
