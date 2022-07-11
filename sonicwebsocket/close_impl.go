@@ -54,12 +54,12 @@ func (s *WebsocketStream) asyncCloseNow(cc CloseCode, reason string, cb func(err
 	binary.BigEndian.PutUint16(payload, uint16(cc))
 	payload = append(payload, []byte(reason)...)
 
-	s.AsyncWriteSome(true, payload, func(err error, n int) {
+	s.AsyncWriteSome(true, TypeClose, payload, func(err error, n int) {
 		if err != nil {
 			cb(ErrOnClose)
 		} else {
 			b := make([]byte, 128)
-			s.AsyncRead(b, func(err error, n int) {
+			s.AsyncRead(b, func(err error, n int, t MessageType) {
 				if err != nil {
 					err = ErrOnClose
 				} else {
@@ -71,7 +71,7 @@ func (s *WebsocketStream) asyncCloseNow(cc CloseCode, reason string, cb func(err
 }
 
 func (s *WebsocketStream) asyncReadPending(b []byte, cb sonic.AsyncCallback) {
-	s.AsyncRead(b, func(err error, n int) {
+	s.AsyncRead(b, func(err error, n int, t MessageType) {
 		if err != nil {
 			if err != io.EOF {
 				err = ErrOnClose

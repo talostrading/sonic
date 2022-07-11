@@ -43,9 +43,10 @@ type WebsocketStream struct {
 
 	// --------- used when writing ---------
 	// TODO i fucking hate this bytes.Buffer do something like a boost flat_buffer
-	wbuf    *bytes.Buffer // holds the frames which will be written on the wire
-	wopcode Opcode        // currently written opcode: binary or text
-	wframe  *frame        // data frame in which data is read from the wire
+	wbuf    *bytes.Buffer       // holds the frames which will be written on the wire
+	wopcode Opcode              // currently written opcode: binary or text
+	wframe  *frame              // data frame in which data is read from the wire
+	wblock  *internal.SoftMutex // locked is we are currently writing
 
 	// --------- used when handshaking ---------
 	hasher hash.Hash // hashes Sec-Websocket-Key when the stream is a client
@@ -81,6 +82,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		wbuf:    bytes.NewBuffer(make([]byte, 0, DefaultFrameSize)),
 		wopcode: OpcodeText,
 		wframe:  newFrame(),
+		wblock:  &internal.SoftMutex{},
 
 		// used when handshaking
 		hasher: sha1.New(),
@@ -89,6 +91,10 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 	}
 
 	return s, nil
+}
+
+func (s *WebsocketStream) Flush() {
+
 }
 
 func (s *WebsocketStream) DeflateSupported() bool {

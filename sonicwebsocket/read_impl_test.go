@@ -36,7 +36,7 @@ func TestAsyncReadSome(t *testing.T) {
 			t.Fatal(err)
 		} else {
 			b := make([]byte, 4096)
-			ws.AsyncReadSome(b, func(err error, n int) {
+			ws.AsyncReadSome(b, func(err error, n int, mt MessageType) {
 				valid = true
 				if err != nil {
 					t.Fatal(err)

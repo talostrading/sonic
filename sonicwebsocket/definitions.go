@@ -30,3 +30,16 @@ const (
 
 	DefaultFrameSize = frameHeaderSize + frameMaskSize + DefaultPayloadSize
 )
+
+type MessageType uint8
+
+const (
+	TypeText   = MessageType(OpcodeText)
+	TypeBinary = MessageType(OpcodeBinary)
+	TypeClose  = MessageType(OpcodeClose)
+	TypePing   = MessageType(OpcodePing)
+	TypePong   = MessageType(OpcodePong)
+
+	// Sent when failing to read a complete frame.
+	TypeNone
+)

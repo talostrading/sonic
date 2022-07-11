@@ -11,4 +11,5 @@ var (
 	ErrInvalidControlFrame   = errors.New("invalid control frame")
 	ErrOnClose               = errors.New("error on close")
 	ErrCloseWhileHandshaking = errors.New("closing while in handshake")
+	ErrOperationAborted      = errors.New("operation aborted")
 )

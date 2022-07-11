@@ -9,6 +9,7 @@ const (
 	StateOpen
 	StateClosing
 	StateClosed
+	StateFailed
 )
 
 func (s StreamState) String() string {
@@ -21,10 +22,14 @@ func (s StreamState) String() string {
 		return "state_closing"
 	case StateClosed:
 		return "state_closed"
+	case StateFailed:
+		return "state_failed"
 	default:
 		return "state_unknown"
 	}
 }
+
+type AsyncCallback func(err error, n int, t MessageType)
 
 // Stream is an interface for representing a stateful WebSocket connection
 // on the server or client side.
@@ -49,31 +54,31 @@ type Stream interface {
 	// Reads reads a complete message into b.
 	//
 	// If b cannot hold the message, ErrPayloadTooBig is returned.
-	Read(b []byte) (n int, err error)
+	Read(b []byte) (t MessageType, n int, err error)
 
 	// ReadSome reads some part of a message into b.
 	//
 	// The chunk of the message should come from a valid WebSocket frame.
 	//
 	// If b cannot hold the message, ErrPayloadTooBig is returned
-	ReadSome(b []byte) (n int, err error)
+	ReadSome(b []byte) (t MessageType, n int, err error)
 
 	// AsyncRead reads a complete message into b asynchronously.
 	//
 	// If b cannot hold the message, ErrPayloadTooBig is provided in the handler invocation.
-	AsyncRead(b []byte, cb sonic.AsyncCallback)
+	AsyncRead(b []byte, cb AsyncCallback)
 
 	// AsyncReadSome reads some part of a message into b asynchronously.
 	//
-	// The chunk of the message should come from a valid WebSocket frame.
+	// The message chunk is a valid WebSocket frame.
 	//
 	// If b cannot hold the message, ErrPayloadTooBig is provided in the handler invocation.
-	AsyncReadSome(b []byte, cb sonic.AsyncCallback)
+	AsyncReadSome(b []byte, cb AsyncCallback)
 
 	// Write writes a complete message from b.
 	//
 	// The message can be composed of one or several frames.
-	Write(b []byte) (n int, err error)
+	Write(t MessageType, b []byte) (n int, err error)
 
 	// WriteSome writes some part of a message from b.
 	//
@@ -82,12 +87,12 @@ type Stream interface {
 	// up the message into multiple frames through multiple calls to AsyncWriteSome.
 	// In this case, fin should be set to false on all calls but the last one, where
 	// it should be set to true.
-	WriteSome(fin bool, b []byte) (n int, err error)
+	WriteSome(fin bool, t MessageType, b []byte) (n int, err error)
 
 	// AsyncWrite writes a complete message from b asynchronously.
 	//
 	// The message can be composed of one or several frames.
-	AsyncWrite(b []byte, cb sonic.AsyncCallback)
+	AsyncWrite(t MessageType, b []byte, cb sonic.AsyncCallback)
 
 	// AsyncWriteSome writes some part of a message from b asynchronously.
 	//
@@ -96,7 +101,10 @@ type Stream interface {
 	// up the message into multiple frames through multiple calls to AsyncWriteSome.
 	// In this case, fin should be set to false on all calls but the last one, where
 	// it should be set to true.
-	AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback)
+	AsyncWriteSome(fin bool, t MessageType, b []byte, cb sonic.AsyncCallback)
+
+	// Flush TODO
+	Flush()
 
 	// SetMaxMessageSize sets the maximum read message size. If 0, the default MaxMessageSize is used.
 	SetMaxMessageSize(uint64)
@@ -104,47 +112,15 @@ type Stream interface {
 	// State returns the state of the WebSocket connection.
 	State() StreamState
 
-	// GotText returns true if the latest message data indicates text.
-	//
-	// This function informs the caller of whether the last
-	// received message frame represents a message with the
-	// text opcode.
-	//
-	// If there is no last message frame, the return value
-	// is undefined.
-	GotText() bool
-
-	// GotBinary returns true if the latest message data indicates binary.
-	//
-	// This function informs the caller of whether the last
-	// received message frame represents a message with the
-	// binary opcode.
-	//
-	// If there is no last message frame, the return value
-	// is undefined.
-	GotBinary() bool
-
 	// IsMessageDone returns true if the last completed read finished the current message.
 	IsMessageDone() bool
-
-	// SentBinary returns true if the last sent frame was binary.
-	SentBinary() bool
-
-	// SentText returns true if the last sent frame was text.
-	SentText() bool
-
-	// SendBinary TODO doc
-	SendBinary(bool)
-
-	// SendText TODO doc
-	SendText(bool)
 
 	// SetControlCallback sets a callback to be invoked on each incoming control frame.
 	//
 	// Sets the callback to be invoked whenever a ping, pong, or close control frame
 	// is received during a call to one of the following functions:
 	//	- AsyncRead
-	//	- AsyncReadAll // TODO maybe change stuff to have AsyncReadSome and AsyncRead then will read completely
+	//	- AsyncReadSome
 	SetControlCallback(AsyncControlCallback)
 
 	// ControlCallback returns the set control callback invoked on each incoming control frame.
@@ -166,7 +142,7 @@ type Stream interface {
 	//
 	// Regardless of  whether the asynchronous operation completes immediately or not,
 	// the handler will not be invoked from within this function. Invocation of the handler
-	// will be performed in a manner equivalent to using sonic.Dispatch(...).
+	// will be performed in a manner equivalent to using sonic.Post(...).
 	AsyncHandshake(addr string, cb func(error))
 
 	// Accept performs the handshake in the server role.
@@ -183,7 +159,7 @@ type Stream interface {
 	//
 	// Regardless of  whether the asynchronous operation completes immediately or not,
 	// the handler will not be invoked from within this function. Invocation of the handler
-	// will be performed in a manner equivalent to using sonic.Dispatch(...).
+	// will be performed in a manner equivalent to using sonic.Post(...).
 	AsyncAccept(func(error))
 
 	// AsyncClose sends a websocket close control frame asynchronously.
@@ -216,34 +192,4 @@ type Stream interface {
 
 	// Closed indicates whether the underlying connection is closed.
 	Closed() bool
-
-	// Ping sends a websocket ping control frame.
-	//
-	// The call blocks until one of the following conditions is true:
-	//  - the ping frame is written
-	//  - an error occurs
-	Ping([]byte) error
-
-	// AsyncPing sends a websocket ping control frame asynchronously.
-	//
-	// This call always returns immediately. The asynchronous operation will continue until
-	// one of the following conditions is true:
-	//	- the ping frame finishes sending
-	//	- an error occurs
-	AsyncPing([]byte, func(error))
-
-	// Pong sends a websocket pong control frame.
-	//
-	// The call blocks until one of the following conditions is true:
-	//  - the pong frame is written
-	//  - an error occurs
-	Pong([]byte) error
-
-	// AsyncPong sends a websocket pong control frame asynchronously.
-	//
-	// This call always returns immediately. The asynchronous operation will continue until
-	// one of the following conditions is true:
-	//	- the pong frame finishes sending
-	//	- an error occurs
-	AsyncPong([]byte, func(error))
 }

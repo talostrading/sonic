@@ -7,7 +7,7 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-func (s *WebsocketStream) Write(b []byte) (n int, err error) {
+func (s *WebsocketStream) Write(t MessageType, b []byte) (n int, err error) {
 	if s.state != StateOpen {
 		return 0, io.EOF
 	}
@@ -19,7 +19,7 @@ func (s *WebsocketStream) Write(b []byte) (n int, err error) {
 }
 
 // WriteSome writes some message data.
-func (s *WebsocketStream) WriteSome(fin bool, b []byte) (n int, err error) {
+func (s *WebsocketStream) WriteSome(fin bool, t MessageType, b []byte) (n int, err error) {
 	if s.state != StateOpen {
 		return 0, io.EOF
 	}
@@ -27,11 +27,12 @@ func (s *WebsocketStream) WriteSome(fin bool, b []byte) (n int, err error) {
 	fr := s.makeFrame(fin, b)
 	nn, err := fr.WriteTo(s.stream)
 	ReleaseFrame(fr)
+
 	return int(nn), err
 }
 
 // AsyncWrite writes a complete message asynchronously.
-func (s *WebsocketStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncWrite(t MessageType, b []byte, cb sonic.AsyncCallback) {
 	if s.state != StateOpen {
 		cb(io.EOF, 0)
 		return
@@ -46,7 +47,7 @@ func (s *WebsocketStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
 }
 
 // AsyncWriteSome writes some message data asynchronously.
-func (s *WebsocketStream) AsyncWriteSome(fin bool, b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncWriteSome(fin bool, t MessageType, b []byte, cb sonic.AsyncCallback) {
 	if s.state != StateOpen {
 		cb(io.EOF, 0)
 		return
@@ -95,6 +96,8 @@ func (s *WebsocketStream) asyncWriteFrame(fr *frame, cb sonic.AsyncCallback) {
 	} else {
 		b := s.wbuf.Bytes()
 		b = b[:n]
-		s.stream.AsyncWriteAll(b, cb)
+		s.stream.AsyncWriteAll(b, func(err error, n int) {
+			cb(err, n)
+		})
 	}
 }

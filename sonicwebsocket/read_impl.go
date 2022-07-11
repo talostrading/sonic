@@ -5,17 +5,15 @@ import (
 	"fmt"
 	"io"
 	"time"
-
-	"github.com/talostrading/sonic"
 )
 
-func (s *WebsocketStream) Read(b []byte) (n int, err error) {
+func (s *WebsocketStream) Read(b []byte) (t MessageType, n int, err error) {
 	if s.state == StateClosed {
-		return 0, io.EOF
+		return TypeNone, 0, io.EOF
 	}
 
 	for {
-		n, err = s.ReadSome(b)
+		t, n, err = s.ReadSome(b)
 
 		if s.IsMessageDone() {
 			return
@@ -23,81 +21,81 @@ func (s *WebsocketStream) Read(b []byte) (n int, err error) {
 	}
 }
 
-func (s *WebsocketStream) ReadSome(b []byte) (n int, err error) {
+func (s *WebsocketStream) ReadSome(b []byte) (t MessageType, n int, err error) {
 	if s.state == StateClosed {
-		return 0, io.EOF
+		return TypeNone, 0, io.EOF
 	}
 
 	return s.readFrame(b)
 }
 
-func (s *WebsocketStream) readFrame(b []byte) (n int, err error) {
+func (s *WebsocketStream) readFrame(b []byte) (t MessageType, n int, err error) {
 	s.rframe.Reset()
 
 	if s.hasPendingReads() {
 		return s.readPending(b)
 	} else {
 		nn, err := s.rframe.ReadFrom(s.stream)
-		return int(nn), err
+		return MessageType(s.rframe.Opcode()), int(nn), err
 	}
 }
 
-func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncRead(b []byte, cb AsyncCallback) {
 	if s.state == StateClosed {
-		cb(io.EOF, 0)
+		cb(io.EOF, 0, TypeNone)
 		return
 	}
 
 	s.asyncRead(b, 0, cb)
 }
 
-func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
-	s.asyncReadFrame(b[readBytes:], func(err error, n int) {
+func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb AsyncCallback) {
+	s.asyncReadFrame(b[readBytes:], func(err error, n int, t MessageType) {
 		readBytes += n
 		if err != nil {
-			cb(err, readBytes)
+			cb(err, readBytes, t)
 		} else {
 			s.onAsyncRead(b, readBytes, cb)
 		}
 	})
 }
 
-func (s *WebsocketStream) onAsyncRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) onAsyncRead(b []byte, readBytes int, cb AsyncCallback) {
 	if s.IsMessageDone() {
-		cb(nil, readBytes)
+		cb(nil, readBytes, MessageType(s.rframe.Opcode()))
 	} else if readBytes >= len(b) {
-		cb(ErrPayloadTooBig, readBytes)
+		cb(ErrPayloadTooBig, readBytes, TypeNone)
 	} else {
 		// continue reading frames to complete the current message
 		s.asyncRead(b, readBytes, cb)
 	}
 }
 
-func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncReadSome(b []byte, cb AsyncCallback) {
 	if s.state == StateClosed {
-		cb(io.EOF, 0)
+		cb(io.EOF, 0, TypeNone)
 		return
 	}
 
 	s.asyncReadFrame(b, cb)
 }
 
-func (s *WebsocketStream) asyncReadFrame(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 	s.rframe.Reset()
 
 	if s.hasPendingReads() {
-		n, err := s.readPending(b)
+		t, n, err := s.readPending(b)
 		if s.rframe.IsControl() {
 			s.handleControlFrame(b, cb)
 		} else {
-			cb(err, n)
+			cb(err, n, t)
 		}
 	} else {
 		s.asyncReadFrameHeader(b, cb)
 	}
 }
 
-func (s *WebsocketStream) readPending(b []byte) (n int, err error) {
+func (s *WebsocketStream) readPending(b []byte) (t MessageType, n int, err error) {
 	_, err = s.rframe.ReadFrom(bytes.NewReader(s.rbuf))
 
 	if err == nil {
@@ -107,6 +105,7 @@ func (s *WebsocketStream) readPending(b []byte) (n int, err error) {
 		} else {
 			n = int(s.rframe.Len())
 			s.rbuf = s.rbuf[:0]
+			t = MessageType(s.rframe.Opcode())
 			copy(b, s.rframe.Payload())
 		}
 	}
@@ -118,10 +117,10 @@ func (s *WebsocketStream) hasPendingReads() bool {
 	return len(s.rbuf) > 0
 }
 
-func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb AsyncCallback) {
 	s.stream.AsyncReadAll(s.rframe.header[:2], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingHeader, 0)
+			cb(ErrReadingHeader, 0, TypeNone)
 		} else {
 			if s.rframe.IsControl() {
 				// Note that b and cb are meant to be used when handling data frames.
@@ -137,7 +136,7 @@ func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback)
 	})
 }
 
-func (s *WebsocketStream) asyncReadControlFrame(bTransparent []byte, cbTransparent sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadControlFrame(bTransparent []byte, cbTransparent AsyncCallback) {
 	// TODO all these panics should dissapear
 
 	if !s.IsMessageDone() {
@@ -152,7 +151,7 @@ func (s *WebsocketStream) asyncReadControlFrame(bTransparent []byte, cbTranspare
 			"sonic-websocket: invalid control frame - length is more than 125 bytes frame=%s",
 			s.rframe.String()))
 	} else {
-		s.asyncReadPayload(s.controlFramePayload, func(err error, n int) {
+		s.asyncReadPayload(s.controlFramePayload, func(err error, n int, t MessageType) {
 			if err != nil {
 				panic("sonic-websocket: could not read control frame payload")
 			} else {
@@ -163,7 +162,7 @@ func (s *WebsocketStream) asyncReadControlFrame(bTransparent []byte, cbTranspare
 	}
 }
 
-func (s *WebsocketStream) handleControlFrame(bTransparent []byte, cbTransparent sonic.AsyncCallback) {
+func (s *WebsocketStream) handleControlFrame(bTransparent []byte, cbTransparent AsyncCallback) {
 	switch s.rframe.Opcode() {
 	case OpcodeClose:
 		s.handleClose()
@@ -259,7 +258,7 @@ func (s *WebsocketStream) handlePong() {
 	}
 }
 
-func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb AsyncCallback) {
 	m := s.rframe.readMore()
 	if m > 0 {
 		s.asyncReadFrameExtraLength(m, b, cb)
@@ -272,13 +271,13 @@ func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
 	}
 }
 
-func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb AsyncCallback) {
 	s.stream.AsyncReadAll(s.rframe.header[2:m+2], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingExtendedLength, 0)
+			cb(ErrReadingExtendedLength, 0, TypeNone)
 		} else {
 			if s.rframe.Len() > s.rmax {
-				cb(ErrPayloadTooBig, 0)
+				cb(ErrPayloadTooBig, 0, TypeNone)
 			} else {
 				if s.rframe.IsMasked() {
 					s.asyncReadFrameMask(b, cb)
@@ -290,27 +289,27 @@ func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.As
 	})
 }
 
-func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb AsyncCallback) {
 	s.stream.AsyncReadAll(s.rframe.mask[:4], func(err error, n int) {
 		if err != nil {
-			cb(ErrReadingMask, 0)
+			cb(ErrReadingMask, 0, TypeNone)
 		} else {
 			s.asyncReadPayload(b, cb)
 		}
 	})
 }
 
-func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) asyncReadPayload(b []byte, cb AsyncCallback) {
 	if pl := s.rframe.Len(); pl > 0 {
 		payloadLen := int64(pl)
 		if remaining := payloadLen - int64(cap(b)); remaining > 0 {
-			cb(ErrPayloadTooBig, 0)
+			cb(ErrPayloadTooBig, 0, MessageType(s.rframe.Opcode()))
 		} else {
 			s.stream.AsyncReadAll(b[:payloadLen], func(err error, n int) {
 				if err != nil {
-					cb(err, n)
+					cb(err, n, MessageType(s.rframe.Opcode()))
 				} else {
-					cb(nil, n)
+					cb(nil, n, MessageType(s.rframe.Opcode()))
 				}
 			})
 		}
