@@ -91,7 +91,3 @@ func TestAsyncReadSome(t *testing.T) {
 		t.Fatal("did not read from server")
 	}
 }
-
-func TestAsyncRead(t *testing.T) {
-	// TODO test reading a fragmented message
-}

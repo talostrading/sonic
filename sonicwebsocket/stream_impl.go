@@ -7,6 +7,7 @@ import (
 	"crypto/sha1"
 	"crypto/tls"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"hash"
 	"io"
@@ -48,11 +49,6 @@ type WebsocketStream struct {
 	// The payload may not be empty if a control frame is read.
 	readFrame *Frame
 
-	pongFrame *Frame
-
-	// Contains the currently written frame.
-	writeFrame *Frame
-
 	// Bytes that are waiting to be read.
 	pendingRead   []byte
 	pendingReader *bytes.Reader
@@ -82,9 +78,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		role:       role,
 		closeTimer: closeTimer,
 
-		readFrame:  newFrame(),
-		writeFrame: newFrame(),
-		pongFrame:  newFrame(),
+		readFrame: newFrame(),
 
 		pendingRead:  make([]byte, MaxPending),
 		pendingWrite: make([]*Frame, 0, 128),
@@ -96,9 +90,6 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		maxMessageSize: MaxMessageSize,
 	}
 	s.pendingReader = bytes.NewReader(s.pendingRead)
-
-	s.pongFrame.SetFin()
-	s.pongFrame.SetPong()
 
 	return s, nil
 }
@@ -123,12 +114,13 @@ func (s *WebsocketStream) asyncFlush(ix int, cb func(err error)) {
 			if err != nil && err == io.EOF {
 				cb(err)
 			} else {
+				ReleaseFrame(s.pendingWrite[ix])
 				s.asyncFlush(ix+1, cb)
 			}
 		})
 	} else {
-		fmt.Println("here2")
 		s.pendingWrite = s.pendingWrite[:0]
+
 		cb(nil)
 	}
 }
@@ -506,9 +498,12 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 						b = b[:n]
 
 						// this is queued for writing
-						s.pongFrame.SetPayload(s.readFrame.payload)
+						pongFrame := AcquireFrame()
+						pongFrame.SetFin()
+						pongFrame.SetPong()
+						pongFrame.SetPayload(s.readFrame.payload)
 
-						s.pendingWrite = append(s.pendingWrite, s.pongFrame)
+						s.pendingWrite = append(s.pendingWrite, pongFrame)
 					}
 				case TypePong:
 					// supply to the caller
@@ -643,16 +638,58 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) AsyncWriteFrame(fr *Frame, cb func(err error)) {
-
+	if s.state == StateActive {
+		switch fr.Opcode() {
+		case OpcodeClose:
+			s.AsyncClose(CloseNormal, "", cb)
+		case OpcodeText, OpcodeBinary, OpcodePing, OpcodePong:
+			s.pendingWrite = append(s.pendingWrite, fr)
+			s.AsyncFlush(cb)
+		default:
+			cb(ErrInvalidFrame)
+		}
+	} else {
+		cb(ErrSendAfterClosing)
+	}
 }
 
 func (s *WebsocketStream) WriteFrame(fr *Frame) error {
-	return nil
+	if s.state == StateActive {
+		switch fr.Opcode() {
+		case OpcodeClose:
+			return s.Close(CloseNormal, "")
+		case OpcodeText, OpcodeBinary, OpcodePing, OpcodePong:
+			s.pendingWrite = append(s.pendingWrite, fr)
+			return s.Flush()
+		default:
+			return ErrInvalidFrame
+		}
+	} else {
+		return ErrSendAfterClosing
+	}
 }
 
 func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
+	s.prepareClose(cc, reason)
+	s.AsyncFlush(cb)
 }
 
 func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
-	panic("Close(...) not yet supported. Use AsyncClose(...) instead.")
+	s.prepareClose(cc, reason)
+	return s.Flush()
+}
+
+func (s *WebsocketStream) prepareClose(cc CloseCode, reason string) {
+	if s.state == StateActive {
+		s.state = StateClosedByUs
+
+		closeFrame := AcquireFrame()
+		closeFrame.SetClose()
+		closeFrame.SetFin()
+
+		binary.BigEndian.PutUint16(closeFrame.payload, uint16(cc))
+		closeFrame.payload = append(closeFrame.payload[2:], []byte(reason)...)
+
+		s.pendingWrite = append(s.pendingWrite, closeFrame)
+	}
 }

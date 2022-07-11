@@ -127,7 +127,7 @@ func updateReports() {
 		if err != nil {
 			panic("could not update reports")
 		} else {
-			stream.AsyncClose(sonicwebsocket.Normal, "", func(err error) {
+			stream.AsyncClose(sonicwebsocket.CloseNormal, "", func(err error) {
 				if err != nil {
 					panic(err)
 				} else {
