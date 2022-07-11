@@ -12,46 +12,44 @@ func (t testOp) ID() int {
 	return t.id
 }
 
-var _ operation = testOp{}
-
-var op1 = &testOp{1}
-var op2 = &testOp{2}
+var op1 = OpRead
+var op2 = OpHandshake
 
 func TestMutex(t *testing.T) {
 	s := &SoftMutex{}
 
 	s.Lock(op1)
-	if s.id != 1 {
-		t.Fatalf("wrong id expected=%d given=%d", op1.id, s.id)
+	if s.op != OpRead {
+		t.Fatalf("wrong id expected=%s given=%s", op1, s.op)
 	}
 
 	s.Unlock(op1)
-	if s.id != 0 {
-		t.Fatalf("wrong id expected=%d given=%d", 0, s.id)
+	if s.op != OpNoop {
+		t.Fatalf("wrong id expected=%s given=%s", OpNoop, s.op)
 	}
 
 	if ok := s.TryLock(op1); !ok {
 		t.Fatalf("should have locked")
-	} else if s.id != op1.id {
-		t.Fatalf("wrong id expected=%d given=%d", op1.id, s.id)
+	} else if s.op != op1 {
+		t.Fatalf("wrong id expected=%s given=%s", op1, s.op)
 	}
 
 	if ok := s.TryLock(op2); ok {
 		t.Fatalf("should not have locked")
-	} else if s.id != op1.id {
-		t.Fatalf("wrong id expected=%d given=%d", op1.id, s.id)
+	} else if s.op != op1 {
+		t.Fatalf("wrong id expected=%s given=%s", op1, s.op)
 	}
 
 	if ok := s.TryUnlock(op2); ok {
 		t.Fatalf("should not have unlocked")
-	} else if s.id != op1.id {
-		t.Fatalf("wrong id expected=%d given=%d", op1.id, s.id)
+	} else if s.op != op1 {
+		t.Fatalf("wrong id expected=%s given=%s", op1, s.op)
 	}
 
 	if ok := s.TryUnlock(op1); !ok {
 		t.Fatalf("should have unlocked")
-	} else if s.id != 0 {
-		t.Fatalf("wrong id expected=%d given=%d", 0, s.id)
+	} else if s.op != OpNoop {
+		t.Fatalf("wrong id expected=%s given=%s", OpNoop, s.op)
 	}
 }
 

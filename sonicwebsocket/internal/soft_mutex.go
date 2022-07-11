@@ -3,50 +3,50 @@ package internal
 import "fmt"
 
 type SoftMutex struct {
-	id int
+	op Operation
 }
 
 func (s *SoftMutex) Reset() {
-	s.id = 0
+	s.op = OpNoop
 }
 
 func (s *SoftMutex) IsLocked() bool {
-	return s.id != 0
+	return s.op != OpNoop
 }
 
-func (s *SoftMutex) IsLockedWith(op operation) bool {
-	return s.id == op.ID()
+func (s *SoftMutex) IsLockedWith(op Operation) bool {
+	return s.op == op
 }
 
-func (s *SoftMutex) Lock(op operation) {
-	if s.id != 0 {
-		panic(fmt.Errorf("attempting to lock operation=%d while already locked on op=%d", op.ID(), s.id))
+func (s *SoftMutex) Lock(op Operation) {
+	if s.op != OpNoop {
+		panic(fmt.Errorf("attempting to lock operation=%d while already locked on op=%d", op, s.op))
 	}
-	s.id = op.ID()
+	s.op = op
 }
 
-func (s *SoftMutex) Unlock(op operation) {
-	if s.id != op.ID() {
-		panic(fmt.Errorf("attempting to unlock operation=%d while locked on a different op=%d", op.ID(), s.id))
+func (s *SoftMutex) Unlock(op Operation) {
+	if s.op != op {
+		panic(fmt.Errorf("attempting to unlock operation=%s while locked on a different op=%s", op, s.op))
 	}
-	s.id = 0
+	s.op = OpNoop
 }
 
-func (s *SoftMutex) TryLock(op operation) bool {
-	if s.id == op.ID() {
-		panic(fmt.Errorf("trying to lock an already locked op=%d", op.ID()))
+func (s *SoftMutex) TryLock(op Operation) bool {
+	if s.op == op {
+		panic(fmt.Errorf("trying to lock an already locked op=%s", op))
 	}
-	if s.id != 0 {
+	if s.op != OpNoop {
 		return false
 	}
-	s.id = op.ID()
+	s.op = op
 	return true
 }
 
-func (s *SoftMutex) TryUnlock(op operation) bool {
-	if s.id != op.ID() {
+func (s *SoftMutex) TryUnlock(op Operation) bool {
+	if s.op != op {
 		return false
 	}
-	s.id = 0
+	s.op = OpNoop
 	return true
 }
