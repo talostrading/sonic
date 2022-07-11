@@ -85,7 +85,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 
 		hasher: sha1.New(),
 
-		readSoFar: 0,
+		readSoFar: 0, // TODO
 
 		maxMessageSize: MaxMessageSize,
 	}
@@ -513,6 +513,8 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 				default:
 					err = ErrUnknownFrameType
 				}
+			} else if err == io.EOF {
+				s.state = StateTerminated
 			}
 
 			cb(err, int(s.readSoFar), t)
