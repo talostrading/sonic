@@ -1,7 +1,11 @@
 package sonicwebsocket
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
+// GUID is used when constructing the Sec-WebSocket-Accept key based on Sec-WebSocket-Key.
 var GUID = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 
 // IsUpgrade returns true if the HTTP request is a WebSocket upgrade.
@@ -9,8 +13,7 @@ var GUID = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 // This function returns true when the passed HTTP request indicates
 // a WebSocket Upgrade. It does not validate the contents of the fields.
 func IsUpgrade(req *http.Request) bool {
-	// TODO implement and use this in the handshake
-	return false
+	return strings.EqualFold(req.Header.Get("Upgrade"), "websocket")
 }
 
 const (
