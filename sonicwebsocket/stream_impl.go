@@ -25,7 +25,6 @@ var _ Stream = &WebsocketStream{}
 
 // WebsocketStream is a stateful full-duplex connection between two endpoints which
 // adheres to the WebSocket protocol.
-//
 // The WebsocketStream implements Stream and can be used by both clients and servers.
 //
 // The underlying socket through which all IO is done is and must remain in blocking mode.
@@ -58,10 +57,9 @@ type WebsocketStream struct {
 	rb []byte        // read buffer which contains unparsed frames as received from the wire
 	rd *bytes.Reader // reader used to read the above buffer
 
-	// Frames that are waiting to be written on the wire.
-	pendingWrite []*Frame
+	pendingWrite []*Frame      // contains frames that are waiting to be written on the wire
+	wb           *bytes.Buffer // contains serialized frames ready to be written on the wire
 
-	// Used to hash the handshake key.
 	hasher hash.Hash // hashes Sec-Websocket-Key when the stream is a client
 }
 
@@ -83,6 +81,8 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		rb:           make([]byte, MaxPending),
 		pendingWrite: make([]*Frame, 0, 128),
 
+		wb: bytes.NewBuffer(make([]byte, DefaultFrameSize)),
+
 		hasher: sha1.New(),
 	}
 	s.rd = bytes.NewReader(s.rb)
@@ -92,7 +92,8 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 
 func (s *WebsocketStream) Flush() error {
 	for i := range s.pendingWrite {
-		if err := s.WriteFrame(s.pendingWrite[i]); err != nil && err == io.EOF {
+		if _, err := s.write(s.pendingWrite[i]); err != nil {
+			s.pendingWrite = s.pendingWrite[i:]
 			return err
 		}
 	}
@@ -106,12 +107,13 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 
 func (s *WebsocketStream) asyncFlush(ix int, cb func(err error)) {
 	if ix < len(s.pendingWrite) {
-		s.AsyncWriteFrame(s.pendingWrite[ix], func(err error) {
-			if err != nil && err == io.EOF {
-				cb(err)
-			} else {
-				ReleaseFrame(s.pendingWrite[ix])
+		s.asyncWrite(s.pendingWrite[ix], func(err error, n int) {
+			ReleaseFrame(s.pendingWrite[ix])
+			if err == nil {
 				s.asyncFlush(ix+1, cb)
+			} else {
+				s.pendingWrite = s.pendingWrite[ix:]
+				cb(err)
 			}
 		})
 	} else {
@@ -370,7 +372,6 @@ func (s *WebsocketStream) ReadSome(b []byte) (t MessageType, n int, err error) {
 
 		//return MessageType(s.readFrame.Opcode()), n, err
 		panic("sad")
-		return
 	} else {
 		return TypeNone, 0, io.EOF
 	}
@@ -419,7 +420,6 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 		if err != nil {
 			cb(err, 0, TypeNone)
 		} else {
-
 			handler := s.getReadHandler(b, cb)
 			if s.pendingRead() {
 				s.tryReadPending(b, handler)
@@ -497,6 +497,11 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 					// this is queued for writing
 					closeFrame := AcquireFrame()
 					s.readFrame.CopyTo(closeFrame)
+
+					if s.role == RoleClient {
+						closeFrame.Mask()
+					}
+
 					s.pendingWrite = append(s.pendingWrite, closeFrame)
 				case StateClosedByPeer, StateCloseAcked:
 					// ignore - connection already closed
@@ -624,68 +629,53 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) AsyncWriteFrame(fr *Frame, cb func(err error)) {
-	if err := s.prepareFrameWrite(fr); err != nil {
-		cb(err)
-		return
-	}
-
 	if s.state == StateActive {
-		switch fr.Opcode() {
-		case OpcodeClose:
-			s.AsyncClose(CloseNormal, "", cb)
-		case OpcodeText, OpcodeBinary, OpcodePing, OpcodePong:
-			s.pendingWrite = append(s.pendingWrite, fr)
-			s.AsyncFlush(cb)
-		default:
-			cb(ErrInvalidFrame)
-		}
+		s.prepareFrameWrite(fr)
+		s.pendingWrite = append(s.pendingWrite, fr)
+		s.AsyncFlush(cb)
 	} else {
 		cb(ErrSendAfterClosing)
 	}
 }
 
 func (s *WebsocketStream) WriteFrame(fr *Frame) error {
-	if err := s.prepareFrameWrite(fr); err != nil {
-		return err
-	}
-
 	if s.state == StateActive {
-		switch fr.Opcode() {
-		case OpcodeClose:
-			return s.Close(CloseNormal, "")
-		case OpcodeText, OpcodeBinary, OpcodePing, OpcodePong:
-			s.pendingWrite = append(s.pendingWrite, fr)
-			return s.Flush()
-		default:
-			return ErrInvalidFrame
-		}
+		s.prepareFrameWrite(fr)
+		s.pendingWrite = append(s.pendingWrite, fr)
+		return s.Flush()
 	} else {
 		return ErrSendAfterClosing
 	}
 }
 
-func (s *WebsocketStream) prepareFrameWrite(fr *Frame) error {
+func (s *WebsocketStream) prepareFrameWrite(fr *Frame) {
 	switch s.role {
 	case RoleClient:
 		if !fr.IsMasked() {
-			return ErrUnmaskedFrameFromClient
+			fr.Mask()
 		}
 	case RoleServer:
 		if fr.IsMasked() {
-			return ErrMaskedFrameFromServer
+			fr.Unmask()
 		}
 	}
-	return nil
 }
 
 func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
-	s.prepareClose(cc, reason)
-	s.AsyncFlush(cb)
+	if s.state == StateActive || s.state == StateClosedByPeer {
+		s.prepareClose(cc, reason)
+		s.AsyncFlush(cb)
+	} else {
+		cb(ErrOperationAborted)
+	}
 }
 
 func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
-	s.prepareClose(cc, reason)
-	return s.Flush()
+	if s.state == StateActive || s.state == StateClosedByPeer {
+		s.prepareClose(cc, reason)
+		return s.Flush()
+	}
+	return ErrOperationAborted
 }
 
 func (s *WebsocketStream) prepareClose(cc CloseCode, reason string) {
@@ -700,5 +690,26 @@ func (s *WebsocketStream) prepareClose(cc CloseCode, reason string) {
 		closeFrame.payload = append(closeFrame.payload[2:], []byte(reason)...)
 
 		s.pendingWrite = append(s.pendingWrite, closeFrame)
+	}
+}
+
+func (s *WebsocketStream) asyncWrite(fr *Frame, cb sonic.AsyncCallback) {
+	s.wb.Reset()
+
+	_, err := fr.WriteTo(s.wb)
+	if err != nil {
+		cb(err, 0)
+	} else {
+		s.stream.AsyncWrite(s.wb.Bytes(), cb)
+	}
+}
+
+func (s *WebsocketStream) write(fr *Frame) (n int, err error) {
+	s.wb.Reset()
+	nn, err := fr.WriteTo(s.wb)
+	if err != nil {
+		return int(nn), err
+	} else {
+		return s.stream.Write(s.wb.Bytes())
 	}
 }

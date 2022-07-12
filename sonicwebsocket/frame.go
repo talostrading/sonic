@@ -1,8 +1,6 @@
 package sonicwebsocket
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -84,16 +82,6 @@ func (fr *Frame) CopyTo(dst *Frame) {
 	dst.payload = dst.payload[:cap(dst.payload)]
 	n = copy(dst.payload, fr.payload)
 	dst.payload = dst.payload[:n]
-}
-
-func (fr *Frame) WriteToBuffer(b []byte) (n int, err error) {
-	b = b[:cap(b)]
-
-	buf := bytes.NewBuffer(b)
-	writer := bufio.NewWriter(buf)
-
-	nn, err := fr.WriteTo(writer)
-	return int(nn), err
 }
 
 func (fr *Frame) WriteTo(w io.Writer) (n int64, err error) {

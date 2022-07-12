@@ -65,15 +65,8 @@ func (s *testServer) Write(fr *Frame) (n int, err error) {
 	return
 }
 
-func (s *testServer) Read(b []byte) (n int, err error) {
-	frame := AcquireFrame()
-	defer ReleaseFrame(frame)
-
-	nn, err := frame.ReadFrom(s.conn)
-	if err == nil {
-		copy(b, frame.Payload())
-	}
-
+func (s *testServer) Read(fr *Frame) (n int, err error) {
+	nn, err := fr.ReadFrom(s.conn)
 	return int(nn), err
 }
 
@@ -82,21 +75,22 @@ func (s *testServer) Close() {
 }
 
 type testClient struct {
-	ws Stream
+	ws *WebsocketStream
 }
 
 func AsyncNewTestClient(ioc *sonic.IO, addr string, cb func(err error, cl *testClient)) {
 	cl := &testClient{}
-	var err error
-	cl.ws, err = NewWebsocketStream(ioc, nil, RoleClient)
-
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
 	if err != nil {
 		cb(err, nil)
-	} else {
-		cl.ws.AsyncHandshake(addr, func(err error) {
-			cb(err, cl)
-		})
+		return
 	}
+
+	cl.ws = ws.(*WebsocketStream)
+
+	cl.ws.AsyncHandshake(addr, func(err error) {
+		cb(err, cl)
+	})
 }
 
 func (c *testClient) RunReadLoop(b []byte, cb AsyncCallback) {

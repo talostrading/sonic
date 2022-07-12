@@ -3,6 +3,7 @@ package sonicwebsocket
 import (
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"github.com/talostrading/sonic"
@@ -185,6 +186,8 @@ func TestClientAsyncReadMaskedFrame(t *testing.T) {
 func TestClientAsyncClose(t *testing.T) {
 	expected := "hello"
 
+	var canClose uint32
+
 	srv := &testServer{}
 	go func() {
 		err := srv.Accept("localhost:8083")
@@ -212,12 +215,20 @@ func TestClientAsyncClose(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
+
+		fr.Reset()
+		_, err = srv.Read(fr)
+		if err != nil {
+			panic(err)
+		}
+
+		fmt.Println("read frame", fr)
+
+		atomic.StoreUint32(&canClose, 1)
 	}()
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
-
-	canClose := false
 
 	AsyncNewTestClient(ioc, "ws://localhost:8083", func(err error, cl *testClient) {
 		if err != nil {
@@ -229,20 +240,17 @@ func TestClientAsyncClose(t *testing.T) {
 				fmt.Println("received", b, err, n, mt)
 
 				if mt == TypeClose {
-					canClose = true
-
 					if expect := StateClosedByPeer; cl.ws.State() != expect {
 						t.Fatalf("wrong state expected=%s given=%s", expect, cl.ws.State())
 					}
 				}
-
 			})
 		}
 	})
 
 	for {
 		ioc.RunOne()
-		if canClose {
+		if atomic.LoadUint32(&canClose) == 1 {
 			break
 		}
 	}
