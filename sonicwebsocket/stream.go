@@ -108,19 +108,6 @@ type Stream interface {
 	// IsMessageDone returns true if the last completed read finished the current message.
 	IsMessageDone() bool
 
-	// SetControlCallback sets a callback to be invoked on each incoming control frame.
-	//
-	// Sets the callback to be invoked whenever a ping, pong, or close control frame
-	// is received during a call to one of the following functions:
-	//	- AsyncRead
-	//	- AsyncReadSome
-	SetControlCallback(AsyncControlCallback)
-
-	// ControlCallback returns the set control callback invoked on each incoming control frame.
-	//
-	// If not control callback is set, nil is returned.
-	ControlCallback() AsyncControlCallback
-
 	// Handshake performs the WebSocket handshake in the client role.
 	//
 	// The call blocks until one of the following conditions is true:

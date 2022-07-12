@@ -30,12 +30,11 @@ var _ Stream = &WebsocketStream{}
 //
 // The underlying socket through which all IO is done is and must remain in blocking mode.
 type WebsocketStream struct {
-	ioc    *sonic.IO            // executes async operations for WebsocketStream
-	state  StreamState          // current stream state
-	tls    *tls.Config          // the optional TLS config used when wanting to connect to `wss` scheme endpoints
-	ccb    AsyncControlCallback // the callback invoked when a control frame is received
-	stream sonic.Stream         // the stream through which websocket data is sent/received
-	role   Role                 // role of the stream: client or server
+	ioc    *sonic.IO    // executes async operations for WebsocketStream
+	state  StreamState  // current stream state
+	tls    *tls.Config  // the optional TLS config used when wanting to connect to `wss` scheme endpoints
+	stream sonic.Stream // the stream through which websocket data is sent/received
+	role   Role         // role of the stream: client or server
 
 	// closeTimer is a timer which closes the underlying stream on expiry in the client role.
 	// The expected behaviour is for the server to close the connection such that the client receives an io.EOF.
@@ -149,14 +148,6 @@ func (s *WebsocketStream) State() StreamState {
 
 func (s *WebsocketStream) IsMessageDone() bool {
 	return s.readFrame.IsFin()
-}
-
-func (s *WebsocketStream) SetControlCallback(ccb AsyncControlCallback) {
-	s.ccb = ccb
-}
-
-func (s *WebsocketStream) ControlCallback() AsyncControlCallback {
-	return s.ccb
 }
 
 func (s *WebsocketStream) Accept() error {
