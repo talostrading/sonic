@@ -99,9 +99,6 @@ type Stream interface {
 
 	Flush() error
 
-	// SetMaxMessageSize sets the maximum read message size. If 0, the default MaxMessageSize is used.
-	SetMaxMessageSize(uint64)
-
 	// State returns the state of the WebSocket connection.
 	State() StreamState
 

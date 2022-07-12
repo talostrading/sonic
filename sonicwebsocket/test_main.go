@@ -82,14 +82,11 @@ func (s *testServer) Close() {
 }
 
 type testClient struct {
-	rbuf []byte
-	ws   Stream
+	ws Stream
 }
 
 func AsyncNewTestClient(ioc *sonic.IO, addr string, cb func(err error, cl *testClient)) {
-	cl := &testClient{
-		rbuf: make([]byte, 128),
-	}
+	cl := &testClient{}
 	var err error
 	cl.ws, err = NewWebsocketStream(ioc, nil, RoleClient)
 
@@ -102,18 +99,17 @@ func AsyncNewTestClient(ioc *sonic.IO, addr string, cb func(err error, cl *testC
 	}
 }
 
-func (c *testClient) Run() {
-	c.asyncRead()
+func (c *testClient) RunReadLoop(b []byte, cb AsyncCallback) {
+	c.asyncRead(b, cb)
 }
 
-func (c *testClient) asyncRead() {
-	c.rbuf = c.rbuf[:cap(c.rbuf)]
-	c.ws.AsyncRead(c.rbuf, c.onAsyncRead)
-}
+func (c *testClient) asyncRead(b []byte, cb AsyncCallback) {
+	b = b[:cap(b)]
+	c.ws.AsyncRead(b, func(err error, n int, mt MessageType) {
+		cb(err, n, mt)
 
-func (c *testClient) onAsyncRead(err error, n int, mt MessageType) {
-	if err != nil {
-	} else {
-		c.asyncRead()
-	}
+		if err == nil {
+			c.asyncRead(b, cb)
+		}
+	})
 }
