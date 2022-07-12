@@ -5,6 +5,10 @@ import (
 	"strings"
 )
 
+// NOTE: A fragmented message consists of a single frame with the FIN bit clear and an opcode other than 0,
+// followed by zero or more frames with the FIN bit clear and the opcode set to 0, and terminated by
+// a single frame with the FIN bit set and an opcode of 0.
+
 // GUID is used when constructing the Sec-WebSocket-Accept key based on Sec-WebSocket-Key.
 var GUID = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
 

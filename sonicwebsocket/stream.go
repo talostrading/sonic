@@ -105,9 +105,6 @@ type Stream interface {
 	// State returns the state of the WebSocket connection.
 	State() StreamState
 
-	// IsMessageDone returns true if the last completed read finished the current message.
-	IsMessageDone() bool
-
 	// Handshake performs the WebSocket handshake in the client role.
 	//
 	// The call blocks until one of the following conditions is true:

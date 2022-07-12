@@ -11,7 +11,7 @@ import (
 	"github.com/talostrading/sonic/util"
 )
 
-var zeroBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+var zeroBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
 
 var (
 	_ io.ReaderFrom = &Frame{}
@@ -32,41 +32,35 @@ func newFrame() *Frame {
 	}
 }
 
-func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
+func (fr *Frame) ReadFrom(r io.Reader) (nn int64, err error) {
 	var n int
-	var err error
 
 	n, err = io.ReadFull(r, fr.header[:2])
-	if err == io.ErrUnexpectedEOF {
-		return int64(n), ErrReadingHeader
-	}
+	nn += int64(n)
 
 	if err == nil {
 		m := fr.readMore()
 		if m > 0 {
 			n, err = io.ReadFull(r, fr.header[2:m+2])
-			if err == io.ErrUnexpectedEOF {
-				err = ErrReadingExtendedLength
-			}
+			nn += int64(n)
 
 			if err == nil {
 				if fr.Len() > MaxMessageSize {
-					return int64(n), ErrPayloadTooBig
+					return nn, ErrPayloadTooBig
 				}
 			}
 		}
 
 		if err == nil && fr.IsMasked() {
 			n, err = io.ReadFull(r, fr.mask[:4])
-			if err == io.ErrUnexpectedEOF {
-				err = ErrReadingMask
-			}
+			nn += int64(n)
 		}
 
 		if err == nil {
 			if payloadLen := int(fr.Len()); payloadLen > 0 {
 				fr.payload = util.ExtendBytes(fr.payload, payloadLen)
 				n, err = io.ReadFull(r, fr.payload[:payloadLen])
+				nn += int64(n)
 			} else if payloadLen == 0 {
 				fr.payload = fr.payload[:0]
 			} else if payloadLen < 0 {
@@ -75,7 +69,7 @@ func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
 		}
 	}
 
-	return int64(n), err
+	return
 }
 
 func (fr *Frame) CopyTo(dst *Frame) {
@@ -160,6 +154,7 @@ func (fr *Frame) readMore() (n int) {
 func (fr *Frame) Reset() {
 	copy(fr.header[:], zeroBytes)
 	copy(fr.mask[:], zeroBytes)
+	fr.payload = fr.payload[:0]
 }
 
 func (fr *Frame) IsFin() bool {

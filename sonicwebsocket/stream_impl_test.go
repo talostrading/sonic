@@ -61,7 +61,14 @@ func TestClientAsyncReadSingleFrame(t *testing.T) {
 			panic(err)
 		}
 
-		_, err = srv.Write([]byte(expected), 1, true, false)
+		fr := AcquireFrame()
+		defer ReleaseFrame(fr)
+
+		fr.SetText()
+		fr.SetFin()
+		fr.SetPayload([]byte(expected))
+
+		_, err = srv.Write(fr)
 		if err != nil {
 			panic(err)
 		}
@@ -123,7 +130,15 @@ func TestClientAsyncReadMaskedFrame(t *testing.T) {
 			panic(err)
 		}
 
-		_, err = srv.Write([]byte(expected), 1, true, true)
+		fr := AcquireFrame()
+		defer ReleaseFrame(fr)
+
+		fr.SetText()
+		fr.SetFin()
+		fr.SetPayload([]byte(expected))
+		fr.Mask()
+
+		_, err = srv.Write(fr)
 		if err != nil {
 			panic(err)
 		}
@@ -142,7 +157,6 @@ func TestClientAsyncReadMaskedFrame(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		} else {
-
 			b := make([]byte, 10)
 			ws.AsyncReadSome(b, func(err error, n int, mt MessageType) {
 				called = true
@@ -163,6 +177,54 @@ func TestClientAsyncReadMaskedFrame(t *testing.T) {
 	if !called {
 		t.Fatal("did not read from server")
 	}
+
+	srv.Close()
+}
+
+func TestClientAsyncClose(t *testing.T) {
+	expected := "hello"
+
+	srv := &testServer{}
+	go func() {
+		err := srv.Accept("localhost:8083")
+		if err != nil {
+			panic(err)
+		}
+
+		fr := AcquireFrame()
+		defer ReleaseFrame(fr)
+
+		fr.SetText()
+		fr.SetFin()
+		fr.SetPayload([]byte(expected))
+
+		_, err = srv.Write(fr)
+		if err != nil {
+			panic(err)
+		}
+
+		fr.Reset()
+		fr.SetFin()
+		fr.SetClose()
+
+		_, err = srv.Write(fr)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	AsyncNewTestClient(ioc, "ws://localhost:8083", func(err error, cl *testClient) {
+		if err != nil {
+			t.Fatal(err)
+		} else {
+			cl.Run()
+		}
+	})
+
+	ioc.Run()
 
 	srv.Close()
 }

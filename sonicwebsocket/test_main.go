@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
+
+	"github.com/talostrading/sonic"
 )
 
 type testServer struct {
@@ -56,55 +58,10 @@ func (s *testServer) Accept(addr string) error {
 	return err
 }
 
-// Write writes the buffer as a message composed of `nframe` frames.
-//
-// Note: The continuation opcode is 0.
-//
-// An unfragmented message consists of a single frame with the FIN bit set and an opcode other than 0.
-//
-// A fragmented message consists of a single frame with the FIN bit clear and an opcode other than 0,
-// followed by zero or more frames with the FIN bit clear and the opcode set to 0, and terminated by
-// a single frame with the FIN bit set and an opcode of 0.
-func (s *testServer) Write(b []byte, nframe int, text bool, mask bool) (n int, err error) {
-	nchunk := len(b) / nframe
-	for i := 0; i < nframe; i++ {
-		start := i * nchunk
-		end := (i + 1) * nchunk
-		if i == nframe-1 {
-			end = len(b)
-		}
-		chunk := b[start:end]
-
-		frame := AcquireFrame()
-		if i == 0 {
-			if text {
-				frame.SetText()
-			} else {
-				frame.SetBinary()
-			}
-		} else {
-			frame.SetContinuation()
-		}
-
-		if i == nframe-1 {
-			frame.SetFin()
-		}
-
-		if mask {
-			frame.Mask()
-		}
-
-		frame.SetPayload(chunk)
-
-		nn, err := frame.WriteTo(s.conn)
-		n += int(nn)
-		if err != nil {
-			return n, err
-		}
-
-		ReleaseFrame(frame)
-	}
-
+func (s *testServer) Write(fr *Frame) (n int, err error) {
+	var nn int64
+	nn, err = fr.WriteTo(s.conn)
+	n = int(nn)
 	return
 }
 
@@ -121,6 +78,42 @@ func (s *testServer) Read(b []byte) (n int, err error) {
 }
 
 func (s *testServer) Close() {
-	// TODO proper closing handshake
 	s.conn.Close()
+}
+
+type testClient struct {
+	rbuf []byte
+	ws   Stream
+}
+
+func AsyncNewTestClient(ioc *sonic.IO, addr string, cb func(err error, cl *testClient)) {
+	cl := &testClient{
+		rbuf: make([]byte, 128),
+	}
+	var err error
+	cl.ws, err = NewWebsocketStream(ioc, nil, RoleClient)
+
+	if err != nil {
+		cb(err, nil)
+	} else {
+		cl.ws.AsyncHandshake(addr, func(err error) {
+			cb(err, cl)
+		})
+	}
+}
+
+func (c *testClient) Run() {
+	c.asyncRead()
+}
+
+func (c *testClient) asyncRead() {
+	c.rbuf = c.rbuf[:cap(c.rbuf)]
+	c.ws.AsyncRead(c.rbuf, c.onAsyncRead)
+}
+
+func (c *testClient) onAsyncRead(err error, n int, mt MessageType) {
+	if err != nil {
+	} else {
+		c.asyncRead()
+	}
 }

@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -49,9 +50,14 @@ type WebsocketStream struct {
 	// The payload may not be empty if a control frame is read.
 	readFrame *Frame
 
-	// Bytes that are waiting to be read.
-	pendingRead   []byte
-	pendingReader *bytes.Reader
+	// Read buffer which contains the unparsed frames as received from the wire.
+	//
+	// We try to read as much as possible into the caller's buffer, however there are cases
+	// when the peer sends data immediately after the handshake and before the caller
+	// schedules any async read. In this instance, the data succeeding the handshake is read into
+	// rd and parsed on the next read. Note that rd might contain incomplete frames as a result of short reads.
+	rb []byte        // read buffer which contains unparsed frames as received from the wire
+	rd *bytes.Reader // reader used to read the above buffer
 
 	// Frames that are waiting to be written on the wire.
 	pendingWrite []*Frame
@@ -80,7 +86,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 
 		readFrame: newFrame(),
 
-		pendingRead:  make([]byte, MaxPending),
+		rb:           make([]byte, MaxPending),
 		pendingWrite: make([]*Frame, 0, 128),
 
 		hasher: sha1.New(),
@@ -89,7 +95,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 
 		maxMessageSize: MaxMessageSize,
 	}
-	s.pendingReader = bytes.NewReader(s.pendingRead)
+	s.rd = bytes.NewReader(s.rb)
 
 	return s, nil
 }
@@ -144,10 +150,6 @@ func (s *WebsocketStream) SetMaxMessageSize(limit uint64) {
 
 func (s *WebsocketStream) State() StreamState {
 	return s.state
-}
-
-func (s *WebsocketStream) IsMessageDone() bool {
-	return s.readFrame.IsFin()
 }
 
 func (s *WebsocketStream) Accept() error {
@@ -305,12 +307,12 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 		return err
 	}
 
-	n, err := s.stream.Read(s.pendingRead)
+	n, err := s.stream.Read(s.rb)
 	if err != nil {
 		return err
 	}
-	s.pendingRead = s.pendingRead[:n]
-	rd := bytes.NewReader(s.pendingRead)
+	s.rb = s.rb[:n]
+	rd := bytes.NewReader(s.rb)
 	res, err := http.ReadResponse(bufio.NewReader(rd), req)
 	if err != nil {
 		return err
@@ -322,11 +324,11 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 	}
 
 	resLen := len(rawRes)
-	extra := len(s.pendingRead) - resLen
+	extra := len(s.rb) - resLen
 	if extra > 0 {
-		s.pendingRead = s.pendingRead[resLen:]
+		s.rb = s.rb[resLen:]
 	} else {
-		s.pendingRead = s.pendingRead[:0]
+		s.rb = s.rb[:0]
 	}
 
 	if !IsUpgradeRes(res) {
@@ -364,7 +366,7 @@ func (s *WebsocketStream) Read(b []byte) (t MessageType, n int, err error) {
 	if s.state != StateTerminated {
 		for {
 			t, n, err = s.ReadSome(b)
-			if s.IsMessageDone() {
+			if s.readFrame.IsFin() {
 				return
 			}
 		}
@@ -377,7 +379,7 @@ func (s *WebsocketStream) ReadSome(b []byte) (t MessageType, n int, err error) {
 	if s.state != StateTerminated {
 		s.readFrame.Reset()
 
-		if s.hasPendingReads() {
+		if s.pendingRead() {
 			n, err = s.readPending(b)
 		} else {
 			var nn int64
@@ -411,7 +413,7 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb AsyncCallback) {
 }
 
 func (s *WebsocketStream) onAsyncRead(b []byte, readBytes int, cb AsyncCallback) {
-	if s.IsMessageDone() {
+	if s.readFrame.IsFin() {
 		cb(nil, readBytes, MessageType(s.readFrame.Opcode()))
 	} else if readBytes >= len(b) {
 		cb(ErrPayloadTooBig, readBytes, TypeNone)
@@ -434,17 +436,38 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 		if err != nil {
 			cb(err, 0, TypeNone)
 		} else {
-			s.readFrame.Reset()
 
-			if s.hasPendingReads() {
-				n, err := s.readPending(b)
-				handler := s.getReadHandler(b, cb)
-				handler(err, n)
+			handler := s.getReadHandler(b, cb)
+			if s.pendingRead() {
+				s.tryReadPending(b, 0, handler)
 			} else {
-				handler := s.getReadHandler(b, cb)
 				s.asyncReadFrameHeader(b, handler)
 			}
 		}
+	})
+}
+
+func (s *WebsocketStream) tryReadPending(b []byte, readBytes int, cb sonic.AsyncCallback) {
+	s.readFrame.Reset()
+
+	s.rb = s.rb[:cap(s.rb)]
+
+	n, err := s.readPending(b)
+	readBytes += n
+
+	if errors.Is(err, io.EOF) {
+		s.scheduleCompleteShortRead(b, readBytes, cb)
+	} else {
+		cb(err, n)
+	}
+}
+
+func (s *WebsocketStream) scheduleCompleteShortRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
+
+	s.stream.AsyncRead(s.rb[readBytes:], func(err error, n int) {
+		readBytes += n
+		s.rb = s.rb[:readBytes]
+		s.tryReadPending(b, readBytes, cb)
 	})
 }
 
@@ -473,13 +496,6 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 				cb(err, 0, TypeNone)
 			}
 		}
-	}
-
-	if s.role == RoleClient && s.readFrame.IsMasked() {
-	}
-
-	if s.role == RoleServer && s.readFrame.IsMasked() {
-
 	}
 
 	if s.readFrame.IsControl() {
@@ -552,24 +568,26 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 }
 
 func (s *WebsocketStream) readPending(b []byte) (n int, err error) {
-	s.pendingReader.Reset(s.pendingRead)
-	_, err = s.readFrame.ReadFrom(s.pendingReader)
+	s.rd.Reset(s.rb)
+
+	nn, err := s.readFrame.ReadFrom(s.rd)
+	n = int(nn)
 
 	if err == nil {
-		// TODO check if payload is too big
-		s.pendingRead = s.pendingRead[:0]
-		n = copy(b, s.readFrame.Payload())
-		b = b[:n]
+		b = util.CopyBytes(b, s.readFrame.payload)
+		s.rb = s.rb[n:]
 	}
 
 	return
 }
 
-func (s *WebsocketStream) hasPendingReads() bool {
-	return len(s.pendingRead) > 0
+func (s *WebsocketStream) pendingRead() bool {
+	return len(s.rb) > 0
 }
 
 func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
+	s.readFrame.Reset()
+
 	s.stream.AsyncReadAll(s.readFrame.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, 0)
@@ -588,13 +606,13 @@ func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback)
 }
 
 func (s *WebsocketStream) asyncReadControlFrame(b []byte, cb sonic.AsyncCallback) {
-	if !s.IsMessageDone() {
+	if !s.readFrame.IsFin() {
 		cb(ErrFragmentedControlFrame, 0)
 		return
 	}
 
 	if s.readFrame.readMore() > 0 {
-		cb(ErrFragmentedControlFrame, 0)
+		cb(ErrControlFrameTooBig, 0)
 		return
 	}
 
