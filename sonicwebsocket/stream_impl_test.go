@@ -144,11 +144,15 @@ func TestClientAsyncReadMaskedFrame(t *testing.T) {
 		} else {
 
 			b := make([]byte, 10)
-			ws.AsyncReadSome(b, func(err error, n int, _ MessageType) {
+			ws.AsyncReadSome(b, func(err error, n int, mt MessageType) {
 				called = true
 
 				if expect := ErrMaskedFrameFromServer; !errors.Is(err, expect) {
 					t.Fatalf("wrong error expected=%s given=%s", expect, err)
+				}
+
+				if expect := TypeNone; mt != expect {
+					t.Fatalf("wrong message type expected=%s given=%s", expect, mt)
 				}
 			})
 		}
