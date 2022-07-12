@@ -7,3 +7,10 @@ func ExtendByteSlice(b []byte, need int) []byte {
 	}
 	return b[:need]
 }
+
+func CopyBytes(dst []byte, src []byte) []byte {
+	dst = ExtendByteSlice(dst, len(src))
+	n := copy(dst, src)
+	dst = dst[:n]
+	return dst
+}

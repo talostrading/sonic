@@ -18,6 +18,7 @@ import (
 	"syscall"
 
 	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/util"
 )
 
 var _ Stream = &WebsocketStream{}
@@ -474,9 +475,7 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 						s.state = StateClosedByPeer
 
 						// this is supplied to the caller
-						b = b[:cap(b)]
-						n := copy(b, s.readFrame.payload)
-						b = b[:n]
+						b = util.CopyBytes(b, s.readFrame.payload)
 
 						// this is queued for writing
 						closeFrame := AcquireFrame()
@@ -493,9 +492,7 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 				case TypePing:
 					if s.state == StateActive {
 						// this is supplied to the caller
-						b = b[:cap(b)]
-						n := copy(b, s.readFrame.payload)
-						b = b[:n]
+						b = util.CopyBytes(b, s.readFrame.payload)
 
 						// this is queued for writing
 						pongFrame := AcquireFrame()
@@ -506,10 +503,8 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 						s.pendingWrite = append(s.pendingWrite, pongFrame)
 					}
 				case TypePong:
-					// supply to the caller
-					b = b[:cap(b)]
-					n := copy(b, s.readFrame.payload)
-					b = b[:n]
+					// this is supplied to the caller
+					b = util.CopyBytes(b, s.readFrame.payload)
 				default:
 					err = ErrUnknownFrameType
 				}

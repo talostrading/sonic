@@ -12,3 +12,19 @@ func TestExtendByteSlice(t *testing.T) {
 		t.Fatalf("invalid len=%d cap=%d; need len=%d cap>=%d", l, c, 20, 20)
 	}
 }
+
+func TestCopyBytes(t *testing.T) {
+	dst := make([]byte, 1)
+	src := []byte("hello")
+
+	dst = CopyBytes(dst, src)
+	if len(dst) != len(src) {
+		t.Fatalf("wrong length expected=%d given=%d", len(src), len(dst))
+	}
+
+	dst = make([]byte, 10)
+	dst = CopyBytes(dst, src)
+	if len(dst) != len(src) {
+		t.Fatalf("wrong length expected=%d given=%d", len(src), len(dst))
+	}
+}
