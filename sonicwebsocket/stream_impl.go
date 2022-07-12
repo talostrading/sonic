@@ -560,13 +560,9 @@ func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback)
 			cb(ErrReadingHeader, 0)
 		} else {
 			if s.readFrame.IsControl() {
-				s.asyncReadControlFrame(b, func(err error, n int) {
-					cb(err, n)
-				})
+				s.asyncReadControlFrame(b, cb)
 			} else {
-				s.asyncReadDataFrame(b, func(err error, n int) {
-					cb(err, n)
-				})
+				s.asyncReadDataFrame(b, cb)
 			}
 		}
 	})
@@ -640,6 +636,8 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 				}
 			})
 		}
+	} else {
+		cb(nil, 0)
 	}
 }
 

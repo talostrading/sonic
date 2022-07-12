@@ -224,8 +224,7 @@ func TestClientAsyncClose(t *testing.T) {
 			b := make([]byte, 128)
 			cl.RunReadLoop(b, func(err error, n int, mt MessageType) {
 				b = b[:n]
-				fmt.Println("received", b)
-				fmt.Println(err, n, mt)
+				fmt.Println("received", b, err, n, mt)
 			})
 		}
 	})
