@@ -460,6 +460,8 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 // Returns a handler that is called when the frame is fully read or an error occurs during reading.
 //
 // This should never be called before trying to read a frame.
+//
+// This handler validates the read frame and updates the state machine of the stream.
 func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.AsyncCallback {
 	if s.role == RoleClient && s.readFrame.IsMasked() {
 		return func(err error, n int) {
@@ -527,7 +529,7 @@ func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.Async
 		return func(err error, n int) {
 			s.readSoFar += uint64(n)
 			t := TypeNone
-			if err != nil {
+			if err == nil {
 				t = MessageType(s.readFrame.Opcode())
 			}
 

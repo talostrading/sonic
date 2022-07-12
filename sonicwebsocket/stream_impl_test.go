@@ -95,6 +95,10 @@ func TestClientAsyncReadSingleFrame(t *testing.T) {
 					if given := string(b); given != expected {
 						t.Fatalf("invalid read expected=%s given=%s", expected, given)
 					}
+
+					if expect := TypeText; mt != expect {
+						t.Fatalf("wrong message type expected=%s given=%s", expect, mt)
+					}
 				}
 			})
 		}

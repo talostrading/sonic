@@ -41,5 +41,24 @@ const (
 	TypePong   = MessageType(OpcodePong)
 
 	// Sent when failing to read a complete frame.
-	TypeNone
+	TypeNone MessageType = 0xFF
 )
+
+func (t MessageType) String() string {
+	switch t {
+	case TypeText:
+		return "type_text"
+	case TypeBinary:
+		return "type_binary"
+	case TypeClose:
+		return "type_close"
+	case TypePing:
+		return "type_ping"
+	case TypePong:
+		return "type_pong"
+	case TypeNone:
+		return "type_none"
+	default:
+		return "type_unknown"
+	}
+}
