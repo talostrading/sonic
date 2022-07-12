@@ -454,97 +454,79 @@ func (s *WebsocketStream) scheduleCompleteShortRead(b []byte, cb sonic.AsyncCall
 	})
 }
 
-// Returns a handler that is called when the frame is fully read or an error occurs during reading.
+// Returns a handler that is invoked when the frame is fully read or an error occurs during reading.
 //
 // This should never be called before trying to read a frame.
 //
 // This handler validates the read frame and updates the state machine of the stream.
 func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.AsyncCallback {
-	switch s.role {
-	case RoleClient:
-		if s.readFrame.IsMasked() {
-			return func(err error, n int) {
-				if err == nil {
-					err = ErrMaskedFrameFromServer
-				}
-				cb(err, 0, TypeNone)
-			}
+	return func(err error, n int) {
+		// Since this handler can be invoked at any time during a read, we forward the error to the
+		// caller if supplied. If no error is supplied, that means that a frame has been
+		// successfully read and we can proceed to validate and parse it and update the stream's state.
+		if err != nil {
+			cb(err, n, TypeNone)
+			return
 		}
-	case RoleServer:
-		if !s.readFrame.IsMasked() {
-			return func(err error, n int) {
-				if err == nil {
-					err = ErrUnmaskedFrameFromClient
-				}
-				cb(err, 0, TypeNone)
-			}
+
+		// cannot receive masked frames from the server
+		if s.role == RoleClient && s.readFrame.IsMasked() {
+			cb(ErrMaskedFrameFromServer, 0, MessageType(s.readFrame.Opcode()))
+			return
 		}
-	}
 
-	if s.readFrame.IsControl() {
-		return func(err error, n int) {
-			t := TypeNone
+		// cannot receive unmasked frames from the client
+		if s.role == RoleServer && !s.readFrame.IsMasked() {
+			cb(ErrUnmaskedFrameFromClient, 0, MessageType(s.readFrame.Opcode()))
+			return
+		}
 
-			if err == nil {
-				t = MessageType(s.readFrame.Opcode())
+		t := MessageType(s.readFrame.Opcode())
+		if s.readFrame.IsControl() {
+			switch t {
+			case TypeClose:
+				switch s.state {
+				case StateHandshake:
+					panic("unreachable")
+				case StateActive:
+					s.state = StateClosedByPeer
 
-				switch mt := MessageType(s.readFrame.Opcode()); mt {
-				case TypeClose:
-					switch s.state {
-					case StateHandshake:
-						panic("unreachable")
-					case StateActive:
-						s.state = StateClosedByPeer
-
-						// this is supplied to the caller
-						b = util.CopyBytes(b, s.readFrame.payload)
-
-						// this is queued for writing
-						closeFrame := AcquireFrame()
-						s.readFrame.CopyTo(closeFrame)
-						s.pendingWrite = append(s.pendingWrite, closeFrame)
-					case StateClosedByPeer, StateCloseAcked:
-						// ignore - connection already closed
-					case StateClosedByUs:
-						// we received a reply
-						s.state = StateCloseAcked
-					case StateTerminated:
-						panic("unreachable")
-					}
-				case TypePing:
-					if s.state == StateActive {
-						// this is supplied to the caller
-						b = util.CopyBytes(b, s.readFrame.payload)
-
-						// this is queued for writing
-						pongFrame := AcquireFrame()
-						pongFrame.SetFin()
-						pongFrame.SetPong()
-						pongFrame.SetPayload(s.readFrame.payload)
-
-						s.pendingWrite = append(s.pendingWrite, pongFrame)
-					}
-				case TypePong:
 					// this is supplied to the caller
 					b = util.CopyBytes(b, s.readFrame.payload)
-				default:
-					err = ErrUnknownFrameType
+
+					// this is queued for writing
+					closeFrame := AcquireFrame()
+					s.readFrame.CopyTo(closeFrame)
+					s.pendingWrite = append(s.pendingWrite, closeFrame)
+				case StateClosedByPeer, StateCloseAcked:
+					// ignore - connection already closed
+				case StateClosedByUs:
+					// we received a reply
+					s.state = StateCloseAcked
+				case StateTerminated:
+					panic("unreachable")
 				}
-			} else if err == io.EOF {
-				s.state = StateTerminated
-			}
+			case TypePing:
+				if s.state == StateActive {
+					// this is supplied to the caller
+					b = util.CopyBytes(b, s.readFrame.payload)
 
-			cb(err, n, t)
-		}
-	} else {
-		return func(err error, n int) {
-			t := TypeNone
-			if err == nil {
-				t = MessageType(s.readFrame.Opcode())
-			}
+					// this is queued for writing
+					pongFrame := AcquireFrame()
+					pongFrame.SetFin()
+					pongFrame.SetPong()
+					pongFrame.SetPayload(s.readFrame.payload)
 
-			cb(err, n, t)
+					s.pendingWrite = append(s.pendingWrite, pongFrame)
+				}
+			case TypePong:
+				// this is supplied to the caller
+				b = util.CopyBytes(b, s.readFrame.payload)
+			default:
+				err = ErrUnknownFrameType
+			}
 		}
+		cb(err, n, t)
 	}
 }
 

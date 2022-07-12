@@ -217,6 +217,8 @@ func TestClientAsyncClose(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
+	canClose := false
+
 	AsyncNewTestClient(ioc, "ws://localhost:8083", func(err error, cl *testClient) {
 		if err != nil {
 			t.Fatal(err)
@@ -225,11 +227,25 @@ func TestClientAsyncClose(t *testing.T) {
 			cl.RunReadLoop(b, func(err error, n int, mt MessageType) {
 				b = b[:n]
 				fmt.Println("received", b, err, n, mt)
+
+				if mt == TypeClose {
+					canClose = true
+
+					if expect := StateClosedByPeer; cl.ws.State() != expect {
+						t.Fatalf("wrong state expected=%s given=%s", expect, cl.ws.State())
+					}
+				}
+
 			})
 		}
 	})
 
-	ioc.Run()
+	for {
+		ioc.RunOne()
+		if canClose {
+			break
+		}
+	}
 
 	srv.Close()
 }
