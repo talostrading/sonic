@@ -454,10 +454,32 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 //
 // This handler validates the read frame and updates the state machine of the stream.
 func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.AsyncCallback {
-	if s.role == RoleClient && s.readFrame.IsMasked() {
-		return func(err error, n int) {
-			cb(ErrMaskedFrameFromServer, 0, TypeNone)
+	switch s.role {
+	case RoleClient:
+		if s.readFrame.IsMasked() {
+			return func(err error, n int) {
+				if err == nil {
+					err = ErrMaskedFrameFromServer
+				}
+				cb(err, 0, TypeNone)
+			}
 		}
+	case RoleServer:
+		if !s.readFrame.IsMasked() {
+			return func(err error, n int) {
+				if err == nil {
+					err = ErrUnmaskedFrameFromClient
+				}
+				cb(err, 0, TypeNone)
+			}
+		}
+	}
+
+	if s.role == RoleClient && s.readFrame.IsMasked() {
+	}
+
+	if s.role == RoleServer && s.readFrame.IsMasked() {
+
 	}
 
 	if s.readFrame.IsControl() {
@@ -637,6 +659,11 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) AsyncWriteFrame(fr *Frame, cb func(err error)) {
+	if err := s.prepareFrameWrite(fr); err != nil {
+		cb(err)
+		return
+	}
+
 	if s.state == StateActive {
 		switch fr.Opcode() {
 		case OpcodeClose:
@@ -653,6 +680,10 @@ func (s *WebsocketStream) AsyncWriteFrame(fr *Frame, cb func(err error)) {
 }
 
 func (s *WebsocketStream) WriteFrame(fr *Frame) error {
+	if err := s.prepareFrameWrite(fr); err != nil {
+		return err
+	}
+
 	if s.state == StateActive {
 		switch fr.Opcode() {
 		case OpcodeClose:
@@ -666,6 +697,20 @@ func (s *WebsocketStream) WriteFrame(fr *Frame) error {
 	} else {
 		return ErrSendAfterClosing
 	}
+}
+
+func (s *WebsocketStream) prepareFrameWrite(fr *Frame) error {
+	switch s.role {
+	case RoleClient:
+		if !fr.IsMasked() {
+			return ErrUnmaskedFrameFromClient
+		}
+	case RoleServer:
+		if fr.IsMasked() {
+			return ErrMaskedFrameFromServer
+		}
+	}
+	return nil
 }
 
 func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
