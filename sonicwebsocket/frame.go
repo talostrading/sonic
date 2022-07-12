@@ -65,7 +65,7 @@ func (fr *Frame) ReadFrom(r io.Reader) (int64, error) {
 
 		if err == nil {
 			if payloadLen := int(fr.Len()); payloadLen > 0 {
-				fr.payload = util.ExtendByteSlice(fr.payload, payloadLen)
+				fr.payload = util.ExtendBytes(fr.payload, payloadLen)
 				n, err = io.ReadFull(r, fr.payload[:payloadLen])
 			} else if payloadLen == 0 {
 				fr.payload = fr.payload[:0]
