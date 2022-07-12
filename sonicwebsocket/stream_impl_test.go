@@ -1,6 +1,7 @@
 package sonicwebsocket
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/talostrading/sonic"
@@ -50,7 +51,7 @@ func TestHandshake(t *testing.T) {
 	srv.Close() // TODO
 }
 
-func TestAsyncReadSingleFrame(t *testing.T) {
+func TestClientAsyncReadSingleFrame(t *testing.T) {
 	expected := "hello"
 
 	srv := &testServer{}
@@ -60,7 +61,7 @@ func TestAsyncReadSingleFrame(t *testing.T) {
 			panic(err)
 		}
 
-		_, err = srv.Write([]byte(expected), 1, true)
+		_, err = srv.Write([]byte(expected), 1, true, false)
 		if err != nil {
 			panic(err)
 		}
@@ -106,4 +107,54 @@ func TestAsyncReadSingleFrame(t *testing.T) {
 	}
 
 	srv.Close() // TODO
+}
+
+func TestClientAsyncReadMaskedFrame(t *testing.T) {
+	expected := "hello"
+
+	srv := &testServer{}
+	go func() {
+		err := srv.Accept("localhost:8082")
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = srv.Write([]byte(expected), 1, true, true)
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	ws.AsyncHandshake("ws://localhost:8082", func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		} else {
+
+			b := make([]byte, 10)
+			ws.AsyncReadSome(b, func(err error, n int, _ MessageType) {
+				called = true
+
+				if expect := ErrMaskedFrameFromServer; !errors.Is(err, expect) {
+					t.Fatalf("wrong error expected=%s given=%s", expect, err)
+				}
+			})
+		}
+	})
+
+	ioc.RunOne()
+
+	if !called {
+		t.Fatal("did not read from server")
+	}
+
+	srv.Close()
 }

@@ -65,7 +65,7 @@ func (s *testServer) Accept(addr string) error {
 // A fragmented message consists of a single frame with the FIN bit clear and an opcode other than 0,
 // followed by zero or more frames with the FIN bit clear and the opcode set to 0, and terminated by
 // a single frame with the FIN bit set and an opcode of 0.
-func (s *testServer) Write(b []byte, nframe int, text bool) (n int, err error) {
+func (s *testServer) Write(b []byte, nframe int, text bool, mask bool) (n int, err error) {
 	nchunk := len(b) / nframe
 	for i := 0; i < nframe; i++ {
 		start := i * nchunk
@@ -88,6 +88,10 @@ func (s *testServer) Write(b []byte, nframe int, text bool) (n int, err error) {
 
 		if i == nframe-1 {
 			frame.SetFin()
+		}
+
+		if mask {
+			frame.Mask()
 		}
 
 		frame.SetPayload(chunk)

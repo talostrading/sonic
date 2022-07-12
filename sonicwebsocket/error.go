@@ -17,4 +17,5 @@ var (
 	ErrUnknownFrameType       = errors.New("unknown frame type")
 	ErrSendAfterClosing       = errors.New("send after closing")
 	ErrInvalidFrame           = errors.New("invalid frame")
+	ErrMaskedFrameFromServer  = errors.New("masked frame from server")
 )
