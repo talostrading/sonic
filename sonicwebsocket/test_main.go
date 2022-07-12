@@ -82,12 +82,14 @@ func (s *testServer) Write(b []byte, nframe int, text bool) (n int, err error) {
 			} else {
 				frame.SetBinary()
 			}
-		} else if i == nframe-1 {
-			frame.SetContinuation()
 		} else {
 			frame.SetContinuation()
+		}
+
+		if i == nframe-1 {
 			frame.SetFin()
 		}
+
 		frame.SetPayload(chunk)
 
 		nn, err := frame.WriteTo(s.conn)
