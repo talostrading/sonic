@@ -90,6 +90,10 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 	return s, nil
 }
 
+func (s *WebsocketStream) Pending() int {
+	return len(s.pendingWrite)
+}
+
 func (s *WebsocketStream) Flush() error {
 	for i := range s.pendingWrite {
 		if _, err := s.write(s.pendingWrite[i]); err != nil {

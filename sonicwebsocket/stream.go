@@ -99,6 +99,8 @@ type Stream interface {
 
 	Flush() error
 
+	Pending() int
+
 	// State returns the state of the WebSocket connection.
 	State() StreamState
 
