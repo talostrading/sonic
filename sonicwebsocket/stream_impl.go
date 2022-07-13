@@ -616,8 +616,6 @@ func (s *WebsocketStream) getReadHandler(cb AsyncCallback) sonic.AsyncCallback {
 // This function should never update anything more than the state of the stream.
 // The caller's buffer is not filled by this function but rather during the read operation.
 func (s *WebsocketStream) updateOnRead(bytesProcessed int, upcallErr error) (t MessageType, n int, err error) {
-	n = bytesProcessed
-
 	// if the read failed, propagate the error to the caller
 	if err != nil {
 		return TypeNone, n, upcallErr
@@ -679,6 +677,9 @@ func (s *WebsocketStream) updateOnRead(bytesProcessed int, upcallErr error) (t M
 			err = ErrUnknownControlFrameType
 		}
 	}
+
+	// Number of bytes in the payload. Used by the caller to set the proper buffer length
+	n = int(s.rfr.Len()) // TODO i don't like this, get rid of uint64
 
 	return t, n, err
 }

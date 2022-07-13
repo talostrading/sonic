@@ -3,5 +3,6 @@ bin/
 *.pem
 ./sonicwebsocket/notes.md
 ./autobahn/reports/clients/*.*
+./autobahn/reports/clients/index.json
 *.html
 
