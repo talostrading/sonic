@@ -9,9 +9,17 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-func TestHandshake(t *testing.T) {
+func TestClientAsyncHandshake(t *testing.T) {
 	srv := &testServer{}
+
+	var done uint32 = 0
+
 	go func() {
+		defer func() {
+			atomic.StoreUint32(&done, 1)
+			srv.Close()
+		}()
+
 		err := srv.Accept("localhost:8080")
 		if err != nil {
 			panic(err)
@@ -30,10 +38,7 @@ func TestHandshake(t *testing.T) {
 		t.Fatalf("wrong websocket state expected=%s given=%s", expect, ws.State())
 	}
 
-	called := false
 	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
-		called = true
-
 		if err != nil {
 			t.Fatal(err)
 		} else {
@@ -44,20 +49,26 @@ func TestHandshake(t *testing.T) {
 		}
 	})
 
-	ioc.RunOne()
-
-	if !called {
-		t.Fatal("failed handshake")
+	for {
+		ioc.RunOne()
+		if atomic.LoadUint32(&done) == 1 {
+			break
+		}
 	}
-
-	srv.Close() // TODO
 }
 
 func TestClientAsyncReadSingleFrame(t *testing.T) {
 	expected := "hello"
 
+	var done uint32 = 0
+
 	srv := &testServer{}
 	go func() {
+		defer func() {
+			atomic.StoreUint32(&done, 1)
+			srv.Close()
+		}()
+
 		err := srv.Accept("localhost:8081")
 		if err != nil {
 			panic(err)
@@ -84,15 +95,12 @@ func TestClientAsyncReadSingleFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	called := false
 	ws.AsyncHandshake("ws://localhost:8081", func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		} else {
 			b := make([]byte, 4096)
 			ws.AsyncReadSome(b, func(err error, n int, mt MessageType) {
-				called = true
-
 				if err != nil {
 					t.Fatal(err)
 				} else {
@@ -113,20 +121,26 @@ func TestClientAsyncReadSingleFrame(t *testing.T) {
 		}
 	})
 
-	ioc.RunOne()
-
-	if !called {
-		t.Fatal("did not read from server")
+	for {
+		ioc.RunOne()
+		if atomic.LoadUint32(&done) == 1 {
+			break
+		}
 	}
-
-	srv.Close() // TODO
 }
 
 func TestClientAsyncReadMaskedFrame(t *testing.T) {
 	expected := "hello"
 
+	var done uint32 = 0
+
 	srv := &testServer{}
 	go func() {
+		defer func() {
+			atomic.StoreUint32(&done, 1)
+			srv.Close()
+		}()
+
 		err := srv.Accept("localhost:8082")
 		if err != nil {
 			panic(err)
@@ -154,42 +168,43 @@ func TestClientAsyncReadMaskedFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	called := false
 	ws.AsyncHandshake("ws://localhost:8082", func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		} else {
 			b := make([]byte, 10)
 			ws.AsyncReadSome(b, func(err error, n int, mt MessageType) {
-				called = true
-
 				if expect := ErrMaskedFrameFromServer; !errors.Is(err, expect) {
 					t.Fatalf("wrong error expected=%s given=%s", expect, err)
 				}
 
-				if expect := TypeNone; mt != expect {
+				if expect := TypeText; mt != expect {
 					t.Fatalf("wrong message type expected=%s given=%s", expect, mt)
 				}
 			})
 		}
 	})
 
-	ioc.RunOne()
-
-	if !called {
-		t.Fatal("did not read from server")
+	for {
+		ioc.RunOne()
+		if atomic.LoadUint32(&done) == 1 {
+			break
+		}
 	}
-
-	srv.Close()
 }
 
 func TestClientAsyncClose(t *testing.T) {
 	expected := "hello"
 
-	var canClose uint32
+	var done uint32 = 0
 
 	srv := &testServer{}
 	go func() {
+		defer func() {
+			atomic.StoreUint32(&done, 1)
+			srv.Close()
+		}()
+
 		err := srv.Accept("localhost:8083")
 		if err != nil {
 			panic(err)
@@ -221,10 +236,6 @@ func TestClientAsyncClose(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-
-		fmt.Println("read frame", fr)
-
-		atomic.StoreUint32(&canClose, 1)
 	}()
 
 	ioc := sonic.MustIO()
@@ -250,10 +261,8 @@ func TestClientAsyncClose(t *testing.T) {
 
 	for {
 		ioc.RunOne()
-		if atomic.LoadUint32(&canClose) == 1 {
+		if atomic.LoadUint32(&done) == 1 {
 			break
 		}
 	}
-
-	srv.Close()
 }

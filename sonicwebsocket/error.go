@@ -15,6 +15,7 @@ var (
 	ErrFragmentedControlFrame  = errors.New("fragmented control frame")
 	ErrControlFrameTooBig      = errors.New("control frame length is over 125 bytes")
 	ErrUnknownFrameType        = errors.New("unknown frame type")
+	ErrUnknownControlFrameType = errors.New("unknown control frame type")
 	ErrSendAfterClosing        = errors.New("send after closing")
 	ErrInvalidFrame            = errors.New("invalid frame")
 	ErrMaskedFrameFromServer   = errors.New("masked frame from server")

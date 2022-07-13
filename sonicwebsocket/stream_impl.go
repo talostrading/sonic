@@ -29,7 +29,7 @@ var _ Stream = &WebsocketStream{}
 //
 // The underlying socket through which all IO is done is and must remain in blocking mode.
 type WebsocketStream struct {
-	ioc    *sonic.IO    // executes async operations for WebsocketStream
+	ioc    *sonic.IO    // executes async operations on behalf of WebsocketStream
 	state  StreamState  // current stream state
 	tls    *tls.Config  // the optional TLS config used when wanting to connect to `wss` scheme endpoints
 	stream sonic.Stream // the stream through which websocket data is sent/received
@@ -46,7 +46,7 @@ type WebsocketStream struct {
 	// directly filled into the caller's buffer to avoid any copying.
 	//
 	// The payload may not be empty if a control frame is read.
-	readFrame *Frame
+	rfr *Frame
 
 	// Read buffer which contains the unparsed frames as received from the wire.
 	//
@@ -76,7 +76,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		role:       role,
 		closeTimer: closeTimer,
 
-		readFrame: newFrame(),
+		rfr: newFrame(),
 
 		rb:           make([]byte, MaxPending),
 		pendingWrite: make([]*Frame, 0, 128),
@@ -120,6 +120,28 @@ func (s *WebsocketStream) asyncFlush(ix int, cb func(err error)) {
 		s.pendingWrite = s.pendingWrite[:0]
 
 		cb(nil)
+	}
+}
+
+func (s *WebsocketStream) asyncWrite(fr *Frame, cb sonic.AsyncCallback) {
+	s.wb.Reset()
+
+	_, err := fr.WriteTo(s.wb)
+	if err != nil {
+		cb(err, 0)
+	} else {
+		s.stream.AsyncWrite(s.wb.Bytes(), cb)
+	}
+}
+
+func (s *WebsocketStream) write(fr *Frame) (n int, err error) {
+	s.wb.Reset()
+
+	nn, err := fr.WriteTo(s.wb)
+	if err != nil {
+		return int(nn), err
+	} else {
+		return s.stream.Write(s.wb.Bytes())
 	}
 }
 
@@ -349,7 +371,7 @@ func (s *WebsocketStream) Read(b []byte) (t MessageType, n int, err error) {
 	if s.state != StateTerminated {
 		for {
 			t, n, err = s.ReadSome(b)
-			if s.readFrame.IsFin() {
+			if s.rfr.IsFin() {
 				return
 			}
 		}
@@ -359,22 +381,54 @@ func (s *WebsocketStream) Read(b []byte) (t MessageType, n int, err error) {
 }
 
 func (s *WebsocketStream) ReadSome(b []byte) (t MessageType, n int, err error) {
-	if s.state != StateTerminated {
-		//s.readFrame.Reset()
-
-		//if s.pendingRead() {
-		//n, err = s.readPending(b)
-		//} else {
-		//var nn int64
-		//nn, err = s.readFrame.ReadFrom(s.stream)
-		//n = int(nn)
-		//}
-
-		//return MessageType(s.readFrame.Opcode()), n, err
-		panic("sad")
-	} else {
-		return TypeNone, 0, io.EOF
+	if s.state == StateTerminated {
+		err = io.EOF
 	}
+
+	if err == nil {
+		if s.pendingRead() {
+			n, err = s.tryReadPending(b)
+		} else {
+			n, err = s.readFrame(b)
+		}
+	}
+
+	return s.updateOnRead(n, err)
+}
+
+func (s *WebsocketStream) tryReadPending(b []byte) (n int, err error) {
+	for {
+		s.rfr.Reset()
+		s.rd.Reset(s.rb)
+
+		var nn int64
+		nn, err = s.rfr.ReadFrom(s.rd)
+		n += int(nn)
+
+		if err == nil {
+			s.rb = s.rb[n:]
+			b = util.CopyBytes(b, s.rfr.payload)
+			return
+		} else {
+			existing := len(s.rb)
+			nn, err := s.stream.Read(s.rb[existing:cap(s.rb)])
+			n += nn
+			if err != nil {
+				return n, err
+			}
+			s.rb = s.rb[:existing+nn]
+		}
+	}
+}
+
+func (s *WebsocketStream) readFrame(b []byte) (n int, err error) {
+	s.rfr.Reset()
+
+	var nn int64
+	nn, err = s.rfr.ReadFrom(s.stream)
+	n = int(nn)
+
+	return
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb AsyncCallback) {
@@ -397,8 +451,8 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb AsyncCallback) {
 }
 
 func (s *WebsocketStream) onAsyncRead(b []byte, readBytes int, cb AsyncCallback) {
-	if s.readFrame.IsFin() {
-		cb(nil, readBytes, MessageType(s.readFrame.Opcode()))
+	if s.rfr.IsFin() {
+		cb(nil, readBytes, MessageType(s.rfr.Opcode()))
 	} else if readBytes >= len(b) {
 		cb(ErrPayloadTooBig, readBytes, TypeNone)
 	} else {
@@ -416,13 +470,14 @@ func (s *WebsocketStream) AsyncReadSome(b []byte, cb AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
+	// Before doing a read, we try to flush any pending writes, such as Close/Ping/Pong frames.
 	s.AsyncFlush(func(err error) {
 		if err != nil {
 			cb(err, 0, TypeNone)
 		} else {
-			handler := s.getReadHandler(b, cb)
+			handler := s.getReadHandler(cb)
 			if s.pendingRead() {
-				s.tryReadPending(b, handler)
+				s.asyncTryReadPending(b, handler)
 			} else {
 				s.asyncReadFrameHeader(b, handler)
 			}
@@ -430,16 +485,15 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 	})
 }
 
-func (s *WebsocketStream) tryReadPending(b []byte, cb sonic.AsyncCallback) {
-	s.readFrame.Reset()
-
+func (s *WebsocketStream) asyncTryReadPending(b []byte, cb sonic.AsyncCallback) {
+	s.rfr.Reset()
 	s.rd.Reset(s.rb)
 
-	n, err := s.readFrame.ReadFrom(s.rd)
+	n, err := s.rfr.ReadFrom(s.rd)
 
 	if err == nil {
 		s.rb = s.rb[n:]
-		b := util.CopyBytes(b, s.readFrame.payload)
+		b = util.CopyBytes(b, s.rfr.payload)
 		cb(err, len(b))
 	} else {
 		s.scheduleCompleteShortRead(b, cb)
@@ -450,89 +504,8 @@ func (s *WebsocketStream) scheduleCompleteShortRead(b []byte, cb sonic.AsyncCall
 	existing := len(s.rb)
 	s.stream.AsyncRead(s.rb[existing:cap(s.rb)], func(err error, n int) {
 		s.rb = s.rb[:existing+n]
-		s.tryReadPending(b, cb)
+		s.asyncTryReadPending(b, cb)
 	})
-}
-
-// Returns a handler that is invoked when the frame is fully read or an error occurs during reading.
-//
-// This should never be called before trying to read a frame.
-//
-// This handler validates the read frame and updates the state machine of the stream.
-func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.AsyncCallback {
-	return func(err error, n int) {
-		// Since this handler can be invoked at any time during a read, we forward the error to the
-		// caller if supplied. If no error is supplied, that means that a frame has been
-		// successfully read and we can proceed to validate and parse it and update the stream's state.
-		if err != nil {
-			cb(err, n, TypeNone)
-			return
-		}
-
-		// cannot receive masked frames from the server
-		if s.role == RoleClient && s.readFrame.IsMasked() {
-			cb(ErrMaskedFrameFromServer, 0, MessageType(s.readFrame.Opcode()))
-			return
-		}
-
-		// cannot receive unmasked frames from the client
-		if s.role == RoleServer && !s.readFrame.IsMasked() {
-			cb(ErrUnmaskedFrameFromClient, 0, MessageType(s.readFrame.Opcode()))
-			return
-		}
-
-		t := MessageType(s.readFrame.Opcode())
-		if s.readFrame.IsControl() {
-			switch t {
-			case TypeClose:
-				switch s.state {
-				case StateHandshake:
-					panic("unreachable")
-				case StateActive:
-					s.state = StateClosedByPeer
-
-					// this is supplied to the caller
-					b = util.CopyBytes(b, s.readFrame.payload)
-
-					// this is queued for writing
-					closeFrame := AcquireFrame()
-					s.readFrame.CopyTo(closeFrame)
-
-					if s.role == RoleClient {
-						closeFrame.Mask()
-					}
-
-					s.pendingWrite = append(s.pendingWrite, closeFrame)
-				case StateClosedByPeer, StateCloseAcked:
-					// ignore - connection already closed
-				case StateClosedByUs:
-					// we received a reply
-					s.state = StateCloseAcked
-				case StateTerminated:
-					panic("unreachable")
-				}
-			case TypePing:
-				if s.state == StateActive {
-					// this is supplied to the caller
-					b = util.CopyBytes(b, s.readFrame.payload)
-
-					// this is queued for writing
-					pongFrame := AcquireFrame()
-					pongFrame.SetFin()
-					pongFrame.SetPong()
-					pongFrame.SetPayload(s.readFrame.payload)
-
-					s.pendingWrite = append(s.pendingWrite, pongFrame)
-				}
-			case TypePong:
-				// this is supplied to the caller
-				b = util.CopyBytes(b, s.readFrame.payload)
-			default:
-				err = ErrUnknownFrameType
-			}
-		}
-		cb(err, n, t)
-	}
 }
 
 func (s *WebsocketStream) pendingRead() bool {
@@ -540,13 +513,13 @@ func (s *WebsocketStream) pendingRead() bool {
 }
 
 func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
-	s.readFrame.Reset()
+	s.rfr.Reset()
 
-	s.stream.AsyncReadAll(s.readFrame.header[:2], func(err error, n int) {
+	s.stream.AsyncReadAll(s.rfr.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, 0)
 		} else {
-			if s.readFrame.IsControl() {
+			if s.rfr.IsControl() {
 				s.asyncReadControlFrame(b, cb)
 			} else {
 				s.asyncReadDataFrame(b, cb)
@@ -556,12 +529,12 @@ func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback)
 }
 
 func (s *WebsocketStream) asyncReadControlFrame(b []byte, cb sonic.AsyncCallback) {
-	if !s.readFrame.IsFin() {
+	if !s.rfr.IsFin() {
 		cb(ErrFragmentedControlFrame, 0)
 		return
 	}
 
-	if s.readFrame.readMore() > 0 {
+	if s.rfr.readMore() > 0 {
 		cb(ErrControlFrameTooBig, 0)
 		return
 	}
@@ -570,7 +543,7 @@ func (s *WebsocketStream) asyncReadControlFrame(b []byte, cb sonic.AsyncCallback
 }
 
 func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
-	m := s.readFrame.readMore()
+	m := s.rfr.readMore()
 	if m > 0 {
 		s.asyncReadFrameExtraLength(m, b, cb)
 	} else {
@@ -579,7 +552,7 @@ func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncTryReadMask(b []byte, cb sonic.AsyncCallback) {
-	if s.readFrame.IsMasked() {
+	if s.rfr.IsMasked() {
 		s.asyncReadFrameMask(b, cb)
 	} else {
 		s.asyncReadPayload(b, cb)
@@ -587,11 +560,11 @@ func (s *WebsocketStream) asyncTryReadMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
-	s.stream.AsyncReadAll(s.readFrame.header[2:m+2], func(err error, n int) {
+	s.stream.AsyncReadAll(s.rfr.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, 0)
 		} else {
-			if s.readFrame.Len() > MaxFramePayloadSize {
+			if s.rfr.Len() > MaxFramePayloadSize {
 				cb(ErrPayloadTooBig, 0)
 			} else {
 				s.asyncTryReadMask(b, cb)
@@ -601,7 +574,7 @@ func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.As
 }
 
 func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
-	s.stream.AsyncReadAll(s.readFrame.mask[:4], func(err error, n int) {
+	s.stream.AsyncReadAll(s.rfr.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, 0)
 		} else {
@@ -611,7 +584,7 @@ func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
-	if payloadLen := int64(s.readFrame.Len()); payloadLen > 0 {
+	if payloadLen := int64(s.rfr.Len()); payloadLen > 0 {
 		if remaining := payloadLen - int64(cap(b)); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
 		} else {
@@ -626,6 +599,88 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 	} else {
 		cb(nil, 0)
 	}
+}
+
+// Returns a handler that will be invoked at some point while trying to complete an async read operation.
+// This function is called before trying to perform an async read with the caller's original handler.
+// The returned handler wraps the caller's handler in a function that tries to update the state of the stream
+// once the async read fails or completes successfully.
+func (s *WebsocketStream) getReadHandler(cb AsyncCallback) sonic.AsyncCallback {
+	return func(err error, n int) {
+		t, n, err := s.updateOnRead(n, err)
+		cb(err, n, t)
+	}
+}
+
+// Updates the state of the stream after a read operation fails or completes successfully.
+// This function should never update anything more than the state of the stream.
+// The caller's buffer is not filled by this function but rather during the read operation.
+func (s *WebsocketStream) updateOnRead(bytesProcessed int, upcallErr error) (t MessageType, n int, err error) {
+	n = bytesProcessed
+
+	// if the read failed, propagate the error to the caller
+	if err != nil {
+		return TypeNone, n, upcallErr
+	}
+
+	// at this point, the read succeeded so we proceeed in validating it
+
+	t = MessageType(s.rfr.Opcode())
+
+	// cannot receive masked frames from the server
+	if s.role == RoleClient && s.rfr.IsMasked() {
+		return t, n, ErrMaskedFrameFromServer
+	}
+
+	// cannot receive unmasked frames from the client
+	if s.role == RoleServer && !s.rfr.IsMasked() {
+		return t, n, ErrUnmaskedFrameFromClient
+	}
+
+	// Reading a control frame has consequences for the stream's state and thus warrants an update.
+	if s.rfr.IsControl() {
+		switch t {
+		case TypeClose:
+			switch s.state {
+			case StateHandshake:
+				panic("unreachable")
+			case StateActive:
+				s.state = StateClosedByPeer
+
+				// this is queued for writing
+				closeFrame := AcquireFrame()
+				s.rfr.CopyTo(closeFrame)
+
+				if s.role == RoleClient {
+					closeFrame.Mask()
+				}
+
+				s.pendingWrite = append(s.pendingWrite, closeFrame)
+			case StateClosedByPeer, StateCloseAcked:
+				// ignore - connection already closed
+			case StateClosedByUs:
+				// we received a reply
+				s.state = StateCloseAcked
+			case StateTerminated:
+				panic("unreachable")
+			}
+		case TypePing:
+			if s.state == StateActive {
+				// this is queued for writing
+				pongFrame := AcquireFrame()
+				pongFrame.SetFin()
+				pongFrame.SetPong()
+				pongFrame.SetPayload(s.rfr.payload)
+
+				s.pendingWrite = append(s.pendingWrite, pongFrame)
+			}
+		case TypePong:
+		default:
+			err = ErrUnknownControlFrameType
+		}
+	}
+
+	return t, n, err
 }
 
 func (s *WebsocketStream) AsyncWriteFrame(fr *Frame, cb func(err error)) {
@@ -690,26 +745,5 @@ func (s *WebsocketStream) prepareClose(cc CloseCode, reason string) {
 		closeFrame.payload = append(closeFrame.payload[2:], []byte(reason)...)
 
 		s.pendingWrite = append(s.pendingWrite, closeFrame)
-	}
-}
-
-func (s *WebsocketStream) asyncWrite(fr *Frame, cb sonic.AsyncCallback) {
-	s.wb.Reset()
-
-	_, err := fr.WriteTo(s.wb)
-	if err != nil {
-		cb(err, 0)
-	} else {
-		s.stream.AsyncWrite(s.wb.Bytes(), cb)
-	}
-}
-
-func (s *WebsocketStream) write(fr *Frame) (n int, err error) {
-	s.wb.Reset()
-	nn, err := fr.WriteTo(s.wb)
-	if err != nil {
-		return int(nn), err
-	} else {
-		return s.stream.Write(s.wb.Bytes())
 	}
 }
