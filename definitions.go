@@ -139,8 +139,8 @@ type Conn interface {
 // Codec defines a generic interface through which one can encode/decode
 // a raw stream of bytes.
 //
-// This interface is used when constructing an instance implementing
-// `sonic.Stream`.
+// Implementations are optionally able to track their state which enables
+// implementing stateful streaming parsers.
 type Codec[Item any] interface {
 	// Decode decodes the given stream into an `Item`.
 	//

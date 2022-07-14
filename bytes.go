@@ -48,6 +48,10 @@ func (b *BytesBuffer) Prepare(n int) {
 
 // Commit moves `n` bytes from the write area to the read area.
 func (b *BytesBuffer) Commit(n int) {
+	if n < 0 {
+		n = 0
+	}
+
 	b.ri += n
 	if b.ri > b.wi {
 		b.ri = b.wi
@@ -59,9 +63,14 @@ func (b *BytesBuffer) Data() []byte {
 	return b.data[:b.ri]
 }
 
-// Size returns the length of the read area.
-func (b *BytesBuffer) Len() int {
+// Len returns the length of the read area.
+func (b *BytesBuffer) ReadLen() int {
 	return len(b.data[:b.ri])
+}
+
+// UnreadLen returns the length of the write area.
+func (b *BytesBuffer) WriteLen() int {
+	return len(b.data[b.ri:b.wi])
 }
 
 // Cap returns the capacity of the underlying byte slice.
