@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"testing"
 )
 
@@ -20,6 +21,7 @@ func TestUnder125Frame(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	fmt.Println("after", len(fr.payload), raw[2:])
 
 	checkFrame(t, fr, false, true, raw[2:])
 }
@@ -59,7 +61,7 @@ func Test127Frame(t *testing.T) {
 }
 
 func TestWriteFrame(t *testing.T) {
-	payload := []byte("heloo")
+	payload := []byte("hello")
 
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
@@ -98,12 +100,12 @@ func checkFrame(t *testing.T, fr *Frame, c, fin bool, payload []byte) {
 		t.Fatal("expected FIN")
 	}
 
-	if len(payload) != int(fr.Len()) {
-		t.Fatalf("invalid payload length; given=%d expected=%d", int(fr.Len()), len(payload))
+	if given, expected := len(payload), fr.PayloadLen(); given != expected {
+		t.Fatalf("invalid payload length; given=%d expected=%d", given, expected)
 	}
 
 	if p := fr.Payload(); !bytes.Equal(p, payload) {
-		t.Fatalf("invalid payload; given=%s expected=%s", p, payload)
+		t.Fatalf("invalid payload; given=%s expected=%s", string(p), string(payload))
 	}
 }
 

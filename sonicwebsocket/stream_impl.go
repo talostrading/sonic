@@ -18,7 +18,6 @@ import (
 	"syscall"
 
 	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/util"
 )
 
 var _ Stream = &WebsocketStream{}
@@ -40,13 +39,8 @@ type WebsocketStream struct {
 	// If that does not happen, this timer does it for the client.
 	closeTimer *sonic.Timer
 
-	// Contains the currently read frame.
-	//
-	// The payload is empty a data frame is read. In this case, the payload is
-	// directly filled into the caller's buffer to avoid any copying.
-	//
-	// The payload may not be empty if a control frame is read.
-	rfr *Frame
+	// Contains the header of the currently read frame.
+	rfh *FrameHeader
 
 	// Read buffer which contains the unparsed frames as received from the wire.
 	//
@@ -76,7 +70,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (Stream, erro
 		role:       role,
 		closeTimer: closeTimer,
 
-		rfr: newFrame(),
+		rfh: NewFrameHeader(),
 
 		rb:           make([]byte, MaxPending),
 		pendingWrite: make([]*Frame, 0, 128),
@@ -375,7 +369,7 @@ func (s *WebsocketStream) Read(b []byte) (t MessageType, n int, err error) {
 	if s.state != StateTerminated {
 		for {
 			t, n, err = s.ReadSome(b)
-			if s.rfr.IsFin() {
+			if s.rfh.IsFin() {
 				return
 			}
 		}
@@ -397,42 +391,39 @@ func (s *WebsocketStream) ReadSome(b []byte) (t MessageType, n int, err error) {
 		}
 	}
 
-	return s.updateOnRead(n, err)
+	return s.updateOnRead(b, n, err)
 }
 
-func (s *WebsocketStream) tryReadPending(b []byte) (n int, err error) {
+func (s *WebsocketStream) tryReadPending(b []byte) (int, error) {
+	nt := 0
+
 	for {
-		s.rfr.Reset()
+		s.rfh.Reset()
 		s.rd.Reset(s.rb)
 
-		var nn int64
-		nn, err = s.rfr.ReadFrom(s.rd)
-		n += int(nn)
+		n, err := s.rfh.Read(b, s.rd)
+		nt += n
 
 		if err == nil {
-			s.rb = s.rb[n:]
-			b = util.CopyBytes(b, s.rfr.payload)
-			return
+			s.rb = s.rb[nt:]
+			return nt, nil
 		} else {
 			existing := len(s.rb)
-			nn, err := s.stream.Read(s.rb[existing:cap(s.rb)])
-			n += nn
+			n, err := s.stream.Read(s.rb[existing:cap(s.rb)])
+			nt += n
+
 			if err != nil {
-				return n, err
+				return nt, err
 			}
-			s.rb = s.rb[:existing+nn]
+
+			s.rb = s.rb[:existing+n]
 		}
 	}
 }
 
 func (s *WebsocketStream) readFrame(b []byte) (n int, err error) {
-	s.rfr.Reset()
-
-	var nn int64
-	nn, err = s.rfr.ReadFrom(s.stream)
-	n = int(nn)
-
-	return
+	s.rfh.Reset()
+	return s.rfh.Read(b, s.stream)
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb AsyncCallback) {
@@ -455,8 +446,8 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb AsyncCallback) {
 }
 
 func (s *WebsocketStream) onAsyncRead(b []byte, readBytes int, cb AsyncCallback) {
-	if s.rfr.IsFin() {
-		cb(nil, readBytes, MessageType(s.rfr.Opcode()))
+	if s.rfh.IsFin() {
+		cb(nil, readBytes, MessageType(s.rfh.Opcode()))
 	} else if readBytes >= len(b) {
 		cb(ErrPayloadTooBig, readBytes, TypeNone)
 	} else {
@@ -479,7 +470,7 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 		if err != nil {
 			cb(err, 0, TypeNone)
 		} else {
-			handler := s.getReadHandler(cb)
+			handler := s.getReadHandler(b, cb)
 			if s.pendingRead() {
 				s.asyncTryReadPending(b, handler)
 			} else {
@@ -490,14 +481,15 @@ func (s *WebsocketStream) asyncReadFrame(b []byte, cb AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncTryReadPending(b []byte, cb sonic.AsyncCallback) {
-	s.rfr.Reset()
+	s.rfh.Reset()
 	s.rd.Reset(s.rb)
 
-	n, err := s.rfr.ReadFrom(s.rd)
+	b = b[:cap(b)]
+	n, err := s.rfh.ReadFrom(b, s.rd)
+	b = b[:n]
 
 	if err == nil {
 		s.rb = s.rb[n:]
-		b = util.CopyBytes(b, s.rfr.payload)
 		cb(err, len(b))
 	} else {
 		s.scheduleCompleteShortRead(b, cb)
@@ -517,13 +509,13 @@ func (s *WebsocketStream) pendingRead() bool {
 }
 
 func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback) {
-	s.rfr.Reset()
+	s.rfh.Reset()
 
-	s.stream.AsyncReadAll(s.rfr.header[:2], func(err error, n int) {
+	s.stream.AsyncReadAll(s.rfh.header[:2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingHeader, 0)
 		} else {
-			if s.rfr.IsControl() {
+			if s.rfh.IsControl() {
 				s.asyncReadControlFrame(b, cb)
 			} else {
 				s.asyncReadDataFrame(b, cb)
@@ -533,21 +525,22 @@ func (s *WebsocketStream) asyncReadFrameHeader(b []byte, cb sonic.AsyncCallback)
 }
 
 func (s *WebsocketStream) asyncReadControlFrame(b []byte, cb sonic.AsyncCallback) {
-	if !s.rfr.IsFin() {
+	if !s.rfh.IsFin() {
 		cb(ErrFragmentedControlFrame, 0)
 		return
 	}
 
-	if s.rfr.readMore() > 0 {
+	if s.rfh.readMore() > 0 {
 		cb(ErrControlFrameTooBig, 0)
 		return
 	}
+	fmt.Println("async reading control frame")
 
 	s.asyncReadPayload(b, cb)
 }
 
 func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
-	m := s.rfr.readMore()
+	m := s.rfh.readMore()
 	if m > 0 {
 		s.asyncReadFrameExtraLength(m, b, cb)
 	} else {
@@ -556,7 +549,7 @@ func (s *WebsocketStream) asyncReadDataFrame(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncTryReadMask(b []byte, cb sonic.AsyncCallback) {
-	if s.rfr.IsMasked() {
+	if s.rfh.IsMasked() {
 		s.asyncReadFrameMask(b, cb)
 	} else {
 		s.asyncReadPayload(b, cb)
@@ -564,11 +557,11 @@ func (s *WebsocketStream) asyncTryReadMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.AsyncCallback) {
-	s.stream.AsyncReadAll(s.rfr.header[2:m+2], func(err error, n int) {
+	s.stream.AsyncReadAll(s.rfh.header[2:m+2], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingExtendedLength, 0)
 		} else {
-			if s.rfr.Len() > MaxFramePayloadSize {
+			if s.rfh.PayloadLen() > MaxFramePayloadSize {
 				cb(ErrPayloadTooBig, 0)
 			} else {
 				s.asyncTryReadMask(b, cb)
@@ -578,7 +571,7 @@ func (s *WebsocketStream) asyncReadFrameExtraLength(m int, b []byte, cb sonic.As
 }
 
 func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
-	s.stream.AsyncReadAll(s.rfr.mask[:4], func(err error, n int) {
+	s.stream.AsyncReadAll(s.rfh.mask[:4], func(err error, n int) {
 		if err != nil {
 			cb(ErrReadingMask, 0)
 		} else {
@@ -588,11 +581,11 @@ func (s *WebsocketStream) asyncReadFrameMask(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
-	if payloadLen := int64(s.rfr.Len()); payloadLen > 0 {
-		if remaining := payloadLen - int64(cap(b)); remaining > 0 {
+	if pn := s.rfh.PayloadLen(); pn > 0 {
+		if remaining := pn - cap(b); remaining > 0 {
 			cb(ErrPayloadTooBig, 0)
 		} else {
-			s.stream.AsyncReadAll(b[:payloadLen], func(err error, n int) {
+			s.stream.AsyncReadAll(b[:pn], func(err error, n int) {
 				if err != nil {
 					cb(err, n)
 				} else {
@@ -609,9 +602,9 @@ func (s *WebsocketStream) asyncReadPayload(b []byte, cb sonic.AsyncCallback) {
 // This function is called before trying to perform an async read with the caller's original handler.
 // The returned handler wraps the caller's handler in a function that tries to update the state of the stream
 // once the async read fails or completes successfully.
-func (s *WebsocketStream) getReadHandler(cb AsyncCallback) sonic.AsyncCallback {
+func (s *WebsocketStream) getReadHandler(b []byte, cb AsyncCallback) sonic.AsyncCallback {
 	return func(err error, n int) {
-		t, n, err := s.updateOnRead(n, err)
+		t, n, err := s.updateOnRead(b, n, err)
 		cb(err, n, t)
 	}
 }
@@ -619,28 +612,31 @@ func (s *WebsocketStream) getReadHandler(cb AsyncCallback) sonic.AsyncCallback {
 // Updates the state of the stream after a read operation fails or completes successfully.
 // This function should never update anything more than the state of the stream.
 // The caller's buffer is not filled by this function but rather during the read operation.
-func (s *WebsocketStream) updateOnRead(bytesProcessed int, upcallErr error) (t MessageType, n int, err error) {
+func (s *WebsocketStream) updateOnRead(b []byte, bytesProcessed int, upcallErr error) (t MessageType, n int, err error) {
 	// if the read failed, propagate the error to the caller
 	if err != nil {
-		return TypeNone, n, upcallErr
+		return TypeNone, 0, upcallErr
 	}
+
+	// Number of bytes in the payload. Used by the caller to set the proper buffer length after a successful read.
+	n = s.rfh.PayloadLen()
 
 	// at this point, the read succeeded so we proceeed in validating it
 
-	t = MessageType(s.rfr.Opcode())
+	t = MessageType(s.rfh.Opcode())
 
 	// cannot receive masked frames from the server
-	if s.role == RoleClient && s.rfr.IsMasked() {
+	if s.role == RoleClient && s.rfh.IsMasked() {
 		return t, n, ErrMaskedFrameFromServer
 	}
 
 	// cannot receive unmasked frames from the client
-	if s.role == RoleServer && !s.rfr.IsMasked() {
+	if s.role == RoleServer && !s.rfh.IsMasked() {
 		return t, n, ErrUnmaskedFrameFromClient
 	}
 
 	// Reading a control frame has consequences for the stream's state and thus warrants an update.
-	if s.rfr.IsControl() {
+	if s.rfh.IsControl() {
 		switch t {
 		case TypeClose:
 			switch s.state {
@@ -651,10 +647,10 @@ func (s *WebsocketStream) updateOnRead(bytesProcessed int, upcallErr error) (t M
 
 				// this is queued for writing
 				closeFrame := AcquireFrame()
-				s.rfr.CopyTo(closeFrame)
+				s.rfh.CopyToFrame(closeFrame)
 
 				if s.role == RoleClient {
-					closeFrame.Mask()
+					closeFrame.Mask(nil)
 				}
 
 				s.pendingWrite = append(s.pendingWrite, closeFrame)
@@ -672,7 +668,7 @@ func (s *WebsocketStream) updateOnRead(bytesProcessed int, upcallErr error) (t M
 				pongFrame := AcquireFrame()
 				pongFrame.SetFin()
 				pongFrame.SetPong()
-				pongFrame.SetPayload(s.rfr.payload)
+				pongFrame.SetPayload(b)
 
 				s.pendingWrite = append(s.pendingWrite, pongFrame)
 			}
@@ -681,9 +677,6 @@ func (s *WebsocketStream) updateOnRead(bytesProcessed int, upcallErr error) (t M
 			err = ErrUnknownControlFrameType
 		}
 	}
-
-	// Number of bytes in the payload. Used by the caller to set the proper buffer length
-	n = int(s.rfr.Len()) // TODO i don't like this, get rid of uint64
 
 	return t, n, err
 }
@@ -712,11 +705,11 @@ func (s *WebsocketStream) prepareFrameWrite(fr *Frame) {
 	switch s.role {
 	case RoleClient:
 		if !fr.IsMasked() {
-			fr.Mask()
+			fr.Mask(nil)
 		}
 	case RoleServer:
 		if fr.IsMasked() {
-			fr.Unmask()
+			fr.Unmask(nil)
 		}
 	}
 }

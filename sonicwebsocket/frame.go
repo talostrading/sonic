@@ -16,121 +16,119 @@ var (
 	_ io.WriterTo   = &Frame{}
 )
 
-type Frame struct {
-	header  []byte
-	mask    []byte
-	payload []byte
+type FrameHeader struct {
+	header []byte
+	mask   []byte
 }
 
-func newFrame() *Frame {
-	return &Frame{
-		header:  make([]byte, frameHeaderSize),
-		mask:    make([]byte, frameMaskSize),
-		payload: make([]byte, DefaultPayloadSize),
+func NewFrameHeader() *FrameHeader {
+	return &FrameHeader{
+		header: make([]byte, FrameHeaderSize),
+		mask:   make([]byte, FrameMaskSize),
 	}
 }
 
-func (fr *Frame) ReadFrom(r io.Reader) (nn int64, err error) {
-	var n int
+func (h *FrameHeader) CopyTo(dst *FrameHeader) {
+	dst.header = dst.header[:cap(dst.header)]
+	n := copy(dst.header, h.header)
+	dst.header = dst.header[:n]
 
-	n, err = io.ReadFull(r, fr.header[:2])
-	nn += int64(n)
+	dst.mask = dst.mask[:cap(dst.mask)]
+	n = copy(dst.mask, h.mask)
+	dst.mask = dst.mask[:n]
+}
 
+func (h *FrameHeader) CopyToFrame(dst *Frame) {
+	h.CopyTo(dst.FrameHeader)
+}
+
+func (h *FrameHeader) Read(b []byte, r io.Reader) (int64, error) {
+	var nt int64 = 0
+
+	n, err := io.ReadFull(r, h.header[:2])
+	nt += int64(n)
 	if err == nil {
-		m := fr.readMore()
-		if m > 0 {
-			n, err = io.ReadFull(r, fr.header[2:m+2])
-			nn += int64(n)
+		more := h.readMore()
+		if more > 0 {
+			n, err = io.ReadFull(r, h.header[2:more+2])
+			nt += int64(n)
 
 			if err == nil {
-				if fr.Len() > MaxFramePayloadSize {
-					return nn, ErrPayloadTooBig
+				if h.PayloadLen() > MaxFramePayloadSize {
+					err = ErrPayloadTooBig
 				}
 			}
 		}
 
-		if err == nil && fr.IsMasked() {
-			n, err = io.ReadFull(r, fr.mask[:4])
-			nn += int64(n)
+		if err == nil && h.IsMasked() {
+			n, err = io.ReadFull(r, h.mask[:4])
+			nt += int64(n)
 		}
 
 		if err == nil {
-			if payloadLen := int(fr.Len()); payloadLen > 0 {
-				fr.payload = util.ExtendBytes(fr.payload, payloadLen)
-				n, err = io.ReadFull(r, fr.payload[:payloadLen])
-				nn += int64(n)
-			} else if payloadLen == 0 {
-				fr.payload = fr.payload[:0]
-			} else if payloadLen < 0 {
-				panic("invalid uint64 to int conversion")
+			if pn := f.PayloadLen(); pn > 0 {
+				if pn > MaxFramePayloadSize {
+					return nt, ErrPayloadTooBig
+				} else {
+					f.payload = util.ExtendBytes(f.payload, pn)
+
+					var n int
+					n, err = io.ReadFull(r, f.payload[:pn])
+					nt += int64(n)
+				}
+			} else if pn == 0 {
+				f.payload = f.payload[:0]
 			}
 		}
+
 	}
 
-	return
+	return nt, err
 }
 
-func (fr *Frame) CopyTo(dst *Frame) {
-	dst.header = dst.header[:cap(dst.header)]
-	n := copy(dst.header, fr.header)
-	dst.header = dst.header[:n]
+func (h *FrameHeader) Write(b []byte, w io.Writer) (int, error) {
+	nt := 0
 
-	dst.mask = dst.mask[:cap(dst.mask)]
-	n = copy(dst.mask, fr.mask)
-	dst.mask = dst.mask[:n]
-
-	dst.payload = dst.payload[:cap(dst.payload)]
-	n = copy(dst.payload, fr.payload)
-	dst.payload = dst.payload[:n]
-}
-
-func (fr *Frame) WriteTo(w io.Writer) (n int64, err error) {
-	var nn int
-
-	nn, err = w.Write(fr.header[:2+fr.setPayloadLen()])
-	n += int64(nn)
+	n, err := w.Write(h.header[:2+h.setPayloadLen(b)])
+	nt += n
 
 	if err == nil {
-		if fr.IsMasked() {
-			nn, err = w.Write(fr.mask[:])
-			n += int64(nn)
+		if h.IsMasked() {
+			n, err = w.Write(h.mask[:])
+			nt += n
 		}
 
-		if err == nil && len(fr.payload) > 0 {
-			nn, err = w.Write(fr.payload)
-			n += int64(nn)
+		if err == nil && len(b) > 0 {
+			n, err = w.Write(b)
+			nt += n
 		}
 	}
 
-	return
+	return nt, err
 }
 
-func (fr *Frame) setPayloadLen() (bytes int) {
-	n := len(fr.payload)
+func (h *FrameHeader) setPayloadLen(b []byte) (bytes int) {
+	n := len(b)
 
 	switch {
 	case n > 65535: // more than two bytes needed for extra length
 		bytes = 8
-		fr.setLength(127)
-		binary.BigEndian.PutUint64(fr.header[2:], uint64(n))
+		h.header[1] |= uint8(127)
+		binary.BigEndian.PutUint64(h.header[2:], uint64(n))
 	case n > 125:
 		bytes = 2
-		fr.setLength(126)
-		binary.BigEndian.PutUint16(fr.header[2:], uint16(n))
+		h.header[1] |= uint8(126)
+		binary.BigEndian.PutUint16(h.header[2:], uint16(n))
 		return 2
 	default:
 		bytes = 0
-		fr.setLength(n)
+		h.header[1] |= uint8(n)
 	}
 	return
 }
 
-func (fr *Frame) setLength(n int) {
-	fr.header[1] |= uint8(n)
-}
-
-func (fr *Frame) readMore() (n int) {
-	switch fr.header[1] & 127 {
+func (h *FrameHeader) readMore() (n int) {
+	switch h.header[1] & 127 {
 	case 127:
 		n = 8
 	case 126:
@@ -139,164 +137,217 @@ func (fr *Frame) readMore() (n int) {
 	return
 }
 
-func (fr *Frame) Reset() {
-	copy(fr.header[:], zeroBytes)
-	copy(fr.mask[:], zeroBytes)
-	fr.payload = fr.payload[:0]
+func (h *FrameHeader) Reset() {
+	copy(h.header[:], zeroBytes)
+	copy(h.mask[:], zeroBytes)
 }
 
-func (fr *Frame) IsFin() bool {
-	return fr.header[0]&finBit != 0
+func (h *FrameHeader) IsFin() bool {
+	return h.header[0]&finBit != 0
 }
 
-func (fr *Frame) IsRSV1() bool {
-	return fr.header[0]&rsv1Bit != 0
+func (h *FrameHeader) IsRSV1() bool {
+	return h.header[0]&rsv1Bit != 0
 }
 
-func (fr *Frame) IsRSV2() bool {
-	return fr.header[0]&rsv2Bit != 0
+func (h *FrameHeader) IsRSV2() bool {
+	return h.header[0]&rsv2Bit != 0
 }
 
-func (fr *Frame) IsRSV3() bool {
-	return fr.header[0]&rsv3Bit != 0
+func (h *FrameHeader) IsRSV3() bool {
+	return h.header[0]&rsv3Bit != 0
 }
 
-func (fr *Frame) Opcode() Opcode {
-	return Opcode(fr.header[0] & 15)
+func (h *FrameHeader) Opcode() Opcode {
+	return Opcode(h.header[0] & 15)
 }
 
-func (fr *Frame) IsContinuation() bool {
-	return fr.Opcode() == OpcodeContinuation
+func (h *FrameHeader) IsContinuation() bool {
+	return h.Opcode() == OpcodeContinuation
 }
 
-func (fr *Frame) IsText() bool {
-	return fr.Opcode() == OpcodeText
+func (h *FrameHeader) IsText() bool {
+	return h.Opcode() == OpcodeText
 }
 
-func (fr *Frame) IsBinary() bool {
-	return fr.Opcode() == OpcodeBinary
+func (h *FrameHeader) IsBinary() bool {
+	return h.Opcode() == OpcodeBinary
 }
 
-func (fr *Frame) IsClose() bool {
-	return fr.Opcode() == OpcodeClose
+func (h *FrameHeader) IsClose() bool {
+	return h.Opcode() == OpcodeClose
 }
 
-func (fr *Frame) IsPing() bool {
-	return fr.Opcode() == OpcodePing
+func (h *FrameHeader) IsPing() bool {
+	return h.Opcode() == OpcodePing
 }
 
-func (fr *Frame) IsPong() bool {
-	return fr.Opcode() == OpcodePong
+func (h *FrameHeader) IsPong() bool {
+	return h.Opcode() == OpcodePong
 }
 
-func (fr *Frame) IsControl() bool {
-	return fr.IsClose() || fr.IsPing() || fr.IsPong()
+func (h *FrameHeader) IsControl() bool {
+	return h.IsClose() || h.IsPing() || h.IsPong()
 }
 
-func (fr *Frame) IsMasked() bool {
-	return fr.header[1]&maskBit != 0
+func (h *FrameHeader) IsMasked() bool {
+	return h.header[1]&maskBit != 0
 }
 
-func (fr *Frame) SetFin() {
-	fr.header[0] |= finBit
+func (h *FrameHeader) SetFin() {
+	h.header[0] |= finBit
 }
 
-func (fr *Frame) SetRSV1() {
-	fr.header[0] |= rsv1Bit
+func (h *FrameHeader) SetRSV1() {
+	h.header[0] |= rsv1Bit
 }
 
-func (fr *Frame) SetRSV2() {
-	fr.header[0] |= rsv2Bit
+func (h *FrameHeader) SetRSV2() {
+	h.header[0] |= rsv2Bit
 }
 
-func (fr *Frame) SetRSV3() {
-	fr.header[0] |= rsv3Bit
+func (h *FrameHeader) SetRSV3() {
+	h.header[0] |= rsv3Bit
 }
 
-func (fr *Frame) SetOpcode(c Opcode) {
+func (h *FrameHeader) SetOpcode(c Opcode) {
 	c &= 15
-	fr.header[0] &= 15 << 4
-	fr.header[0] |= uint8(c)
+	h.header[0] &= 15 << 4
+	h.header[0] |= uint8(c)
 }
 
-func (fr *Frame) SetContinuation() {
-	fr.SetOpcode(OpcodeContinuation)
+func (h *FrameHeader) SetContinuation() {
+	h.SetOpcode(OpcodeContinuation)
 }
 
-func (fr *Frame) SetText() {
-	fr.SetOpcode(OpcodeText)
+func (h *FrameHeader) SetText() {
+	h.SetOpcode(OpcodeText)
 }
 
-func (fr *Frame) SetBinary() {
-	fr.SetOpcode(OpcodeBinary)
+func (h *FrameHeader) SetBinary() {
+	h.SetOpcode(OpcodeBinary)
 }
 
-func (fr *Frame) SetClose() {
-	fr.SetOpcode(OpcodeClose)
+func (h *FrameHeader) SetClose() {
+	h.SetOpcode(OpcodeClose)
 }
 
-func (fr *Frame) SetPing() {
-	fr.SetOpcode(OpcodePing)
+func (h *FrameHeader) SetPing() {
+	h.SetOpcode(OpcodePing)
 }
 
-func (fr *Frame) SetPong() {
-	fr.SetOpcode(OpcodePong)
+func (h *FrameHeader) SetPong() {
+	h.SetOpcode(OpcodePong)
 }
 
-func (fr *Frame) SetMask(b []byte) {
-	fr.header[1] |= maskBit
-	copy(fr.mask[:], b[:4])
-}
-
-func (fr *Frame) UnsetMask() {
-	fr.header[1] ^= maskBit
-}
-
-func (fr *Frame) SetPayload(b []byte) {
-	fr.payload = append(fr.payload[:0], b...)
-}
-
-func (fr *Frame) Len() uint64 {
-	length := uint64(fr.header[1] & 127)
+func (h *FrameHeader) PayloadLen() int {
+	length := uint64(h.header[1] & 127)
 	switch length {
 	case 126:
-		length = uint64(binary.BigEndian.Uint16(fr.header[2:]))
+		length = uint64(binary.BigEndian.Uint16(h.header[2:]))
 	case 127:
-		length = uint64(binary.BigEndian.Uint64(fr.header[2:]))
+		length = binary.BigEndian.Uint64(h.header[2:])
 	}
-	return length
+	return int(length)
 }
 
-func (fr *Frame) MaskKey() []byte {
-	return fr.mask[:]
+func (h *FrameHeader) MaskKey() []byte {
+	return h.mask[:]
 }
 
-func (fr *Frame) Payload() []byte {
-	return fr.payload // TODO might be different for close frames
-}
-
-func (fr *Frame) Mask() {
-	fr.header[1] |= maskBit
-	genMask(fr.mask[:])
-	if len(fr.payload) > 0 {
-		mask(fr.mask[:], fr.payload)
+func (h *FrameHeader) Mask(b []byte) {
+	h.header[1] |= maskBit
+	genMask(h.mask[:])
+	if len(b) > 0 {
+		mask(h.mask[:], b)
 	}
 }
 
-func (fr *Frame) Unmask() {
-	if len(fr.payload) > 0 {
-		key := fr.MaskKey()
-		mask(key, fr.payload)
+func (h *FrameHeader) Unmask(b []byte) {
+	h.header[1] ^= maskBit
+	if len(b) > 0 {
+		key := h.MaskKey()
+		mask(key, b)
 	}
-	fr.UnsetMask()
+}
+
+func (h *FrameHeader) String() string {
+	return fmt.Sprintf(`
+FIN: %v
+--------
+OPCODE: %d
+--------
+MASK: %v
+--------
+LENGTH: %d
+--------
+MASK-KEY: %v
+`,
+		h.IsFin(), h.Opcode(), h.IsMasked(),
+		h.PayloadLen(), h.MaskKey(),
+	)
+}
+
+type Frame struct {
+	*FrameHeader
+	payload []byte
+}
+
+func NewFrame() *Frame {
+	f := &Frame{}
+	f.FrameHeader = NewFrameHeader()
+	f.payload = make([]byte, DefaultPayloadSize)
+	return f
+}
+
+func (fr *Frame) CopyTo(dst *Frame) {
+	fr.FrameHeader.CopyTo(dst.FrameHeader)
+
+	dst.payload = dst.payload[:cap(dst.payload)]
+	n := copy(dst.payload, fr.payload)
+	dst.payload = dst.payload[:n]
+}
+
+func (f *Frame) ReadFrom(r io.Reader) (int64, error) {
+	var nt int64 = 0
+
+	n, err := f.FrameHeader.ReadFrom(r)
+	nt += int64(n)
+
+	if err == nil {
+	}
+	return int64(n), err
+}
+
+func (f *Frame) WriteTo(w io.Writer) (int64, error) {
+	n, err := f.Write(f.payload, w)
+	return int64(n), err
+}
+
+func (f *Frame) Reset() {
+	f.FrameHeader.Reset()
+	f.payload = f.payload[:0]
+}
+
+func (f *Frame) SetPayload(b []byte) {
+	f.payload = append(f.payload[:0], b...)
+}
+
+func (f *Frame) Payload() []byte {
+	return f.payload
+}
+
+func (f *Frame) Mask(_ []byte) {
+	f.FrameHeader.Mask(f.payload)
+}
+
+func (f *Frame) Unmask(_ []byte) {
+	f.FrameHeader.Unmask(f.payload)
 }
 
 func (fr *Frame) String() string {
 	return fmt.Sprintf(`
 FIN: %v
-RSV1: %v
-RSV2: %v
-RSV3: %v
 --------
 OPCODE: %d
 --------
@@ -308,15 +359,14 @@ MASK-KEY: %v
 --------
 PAYLOAD: %v`,
 
-		fr.IsFin(), fr.IsRSV1(), fr.IsRSV2(), fr.IsRSV3(),
-		fr.Opcode(), fr.IsMasked(), fr.Len(), fr.MaskKey(),
-		fr.Payload(),
+		fr.IsFin(), fr.Opcode(), fr.IsMasked(),
+		fr.PayloadLen(), fr.MaskKey(), fr.Payload(),
 	)
 }
 
 var framePool = sync.Pool{
 	New: func() interface{} {
-		return newFrame()
+		return NewFrame()
 	},
 }
 
@@ -327,4 +377,19 @@ func AcquireFrame() *Frame {
 func ReleaseFrame(f *Frame) {
 	f.Reset()
 	framePool.Put(f)
+}
+
+var frameHeaderPool = sync.Pool{
+	New: func() interface{} {
+		return NewFrameHeader()
+	},
+}
+
+func AcquireFrameHeader() *FrameHeader {
+	return frameHeaderPool.Get().(*FrameHeader)
+}
+
+func ReleaseFrameHeader(h *FrameHeader) {
+	h.Reset()
+	frameHeaderPool.Put(h)
 }

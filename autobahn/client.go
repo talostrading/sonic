@@ -25,7 +25,10 @@ func main() {
 
 	flag.Parse()
 
-	n := getCaseCount()
+	n, err := getCaseCount()
+	if err != nil {
+		panic(err)
+	}
 
 	if *testCase == -1 {
 		fmt.Printf("running against all %d cases\n", n)
@@ -44,51 +47,114 @@ func main() {
 	}
 }
 
-func getCaseCount() int {
+func getCaseCount() (n int, err error) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	stream, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
+	s, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
 
-	err = stream.Handshake(*addr + "/getCaseCount")
+	err = s.Handshake(*addr + "/getCaseCount")
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
+
 	b := make([]byte, 128)
-	t, n, err := stream.Read(b)
+	_, n, err = s.Read(b)
 	if err != nil {
-		panic(err)
+		return 0, err
 	}
-	fmt.Println(t, n, err, b)
 	b = b[:n]
-	nn, err := strconv.ParseInt(string(b), 10, 32)
-	if err != nil {
-		panic(err)
-	}
 
-	return int(nn)
+	var nn int64
+	nn, err = strconv.ParseInt(string(b), 10, 32)
+
+	return int(nn), err
 }
 
 func runTest(i int) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	s, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
+	if err != nil {
+		panic(err)
+	}
+
+	done := false
+	s.AsyncHandshake(fmt.Sprintf("%s/runCase?case=%d&agent=sonic", *addr, i), func(err error) {
+		if err != nil {
+			panic(err)
+		}
+
+		b := make([]byte, 128)
+		var onAsyncRead sonicwebsocket.AsyncCallback
+
+		onAsyncRead = func(err error, n int, t sonicwebsocket.MessageType) {
+			if err != nil {
+				panic(err)
+			}
+
+			b = b[:n]
+
+			fmt.Println(err, n, t, string(b), s.Pending())
+
+			switch t {
+			case sonicwebsocket.TypeText:
+				fr := sonicwebsocket.AcquireFrame()
+				fr.SetFin()
+				fr.SetPayload(nil)
+				fr.SetText()
+
+				s.AsyncWriteFrame(fr, func(err error) {
+					sonicwebsocket.ReleaseFrame(fr)
+
+					if err != nil {
+						panic(err)
+					}
+
+					s.AsyncRead(b, onAsyncRead)
+				})
+			case sonicwebsocket.TypeClose:
+				fmt.Println(s.State(), "READ CLOSE", len(b), n)
+				s.AsyncFlush(func(err error) {
+					if err != nil {
+						panic(err)
+					}
+				})
+				done = true
+			default:
+				panic(fmt.Errorf("unexpected frame type=%s", t))
+			}
+		}
+
+		s.AsyncRead(b, onAsyncRead)
+	})
+
+	for {
+		ioc.RunOne()
+		if done {
+			break
+		}
+	}
 }
 
 func updateReports() {
 	fmt.Println("updating reports")
 	ioc := sonic.MustIO()
 
-	stream, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
+	s, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
 	if err != nil {
 		panic("could not update reports")
 	}
 
-	stream.AsyncHandshake(*addr+"/updateReports?agent=sonic", func(err error) {
+	s.AsyncHandshake(*addr+"/updateReports?agent=sonic", func(err error) {
 		if err != nil {
 			panic("could not update reports")
 		} else {
-			stream.AsyncClose(sonicwebsocket.CloseNormal, "", func(err error) {
+			s.AsyncClose(sonicwebsocket.CloseNormal, "", func(err error) {
 				if err != nil {
 					panic(err)
 				} else {
@@ -98,5 +164,5 @@ func updateReports() {
 		}
 	})
 
-	ioc.Run()
+	ioc.RunOne()
 }

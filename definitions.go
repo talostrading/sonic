@@ -95,7 +95,7 @@ type File interface {
 	io.Seeker
 }
 
-// Stream represents a full-duplex connection between two programs or hosts,
+// Stream represents a full-duplex connection between two processes,
 // where data represented as bytes may be received reliably in the same order
 // they were written.
 type Stream interface {
@@ -111,13 +111,10 @@ type AsyncStream interface {
 
 type AsyncReadStream interface {
 	AsyncReader
-	// TODO sergiu: maybe also: Executor() sonic.IO
-	// also need to abstract sonic.IO if you want to support strands etc.
 }
 
 type AsyncWriteStream interface {
 	AsyncWriter
-	// TODO sergiu: maybe also: Executor() sonic.IO
 }
 
 type SyncStream interface {
@@ -127,18 +124,33 @@ type SyncStream interface {
 
 type SyncReadStream interface {
 	io.Reader
-	// TODO sergiu: maybe also: Executor() sonic.IO
 }
 
 type SyncWriteStream interface {
 	io.Writer
-	// TODO sergiu: maybe also: Executor() sonic.IO
 }
 
 // Conn is a generic stream-oriented network connection.
 type Conn interface {
 	FileDescriptor
 	net.Conn
+}
+
+// Codec defines a generic interface through which one can encode/decode
+// a raw stream of bytes.
+//
+// This interface is used when constructing an instance implementing
+// `sonic.Stream`.
+type Codec[Item any] interface {
+	// Decode decodes the given stream into an `Item`.
+	//
+	// An implementation of Codec takes a byte stream that has already
+	// been buffered in `src` and decodes the data into a stream of
+	// `Item` objects.
+	Decode(src *BytesBuffer) (Item, error)
+
+	// Encode encodes the given item into the `dst` byte stream.
+	Encode(item Item, dst *BytesBuffer) error
 }
 
 // TODO

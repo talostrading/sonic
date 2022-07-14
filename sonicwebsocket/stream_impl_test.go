@@ -152,7 +152,7 @@ func TestClientAsyncReadMaskedFrame(t *testing.T) {
 		fr.SetText()
 		fr.SetFin()
 		fr.SetPayload([]byte(expected))
-		fr.Mask()
+		fr.Mask(nil)
 
 		_, err = srv.Write(fr)
 		if err != nil {

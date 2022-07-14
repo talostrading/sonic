@@ -21,14 +21,14 @@ func (r Role) String() string {
 type AsyncControlCallback func(Opcode, []byte)
 
 const (
-	frameHeaderSize uint64 = 10
-	frameMaskSize   uint64 = 4
+	FrameHeaderSize int = 10
+	FrameMaskSize   int = 4
 
-	DefaultPayloadSize  uint64 = 4096
-	MaxFramePayloadSize uint64 = 1024 * 512
-	MaxPending          uint64 = 16392
+	DefaultPayloadSize  int = 4096
+	MaxFramePayloadSize int = 1024 * 512
+	MaxPending          int = 16392
 
-	DefaultFrameSize = frameHeaderSize + frameMaskSize + DefaultPayloadSize
+	DefaultFrameSize = FrameHeaderSize + FrameMaskSize + DefaultPayloadSize
 )
 
 type MessageType uint8
