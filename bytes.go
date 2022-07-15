@@ -23,8 +23,8 @@ var (
 // BytesBuffer provides operations that make it easier to handle byte slices in networking code.
 //
 // Invariants:
-//   - ri <= wi
-//   - wi = len(data)
+//   - ri <= wi at all times
+//   - wi = len(data) after each function call
 type BytesBuffer struct {
 	ri int // End index of the read area, always smaller or equal to wi.
 	wi int // End index of the write area.
@@ -43,9 +43,11 @@ func NewBytesBuffer() *BytesBuffer {
 
 // Prepare prepares the buffer to hold `n` bytes.
 func (b *BytesBuffer) Prepare(n int) {
-	if need := n - len(b.data); need > 0 {
+	if need := n - cap(b.data); need > 0 {
+		b.data = b.data[:cap(b.data)]
 		b.data = append(b.data, make([]byte, need)...)
 	}
+	b.data = b.data[:b.wi]
 }
 
 // Commit moves `n` bytes from the write area to the read area.
@@ -184,7 +186,7 @@ func (b *BytesBuffer) WriteString(s string) (int, error) {
 // WriteTo consumes and writes the bytes from the read area to the provided writer.
 func (b *BytesBuffer) WriteTo(w io.Writer) (int64, error) {
 	n, err := w.Write(b.data[:b.ri])
-	b.Consume(int(n))
+	b.Consume(n)
 	return int64(n), err
 }
 

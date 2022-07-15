@@ -11,14 +11,13 @@ import (
 func TestBytesBufferReads1(t *testing.T) {
 	b := NewBytesBuffer()
 
-	// prepare the buffer for a read
 	b.Prepare(512)
-	if b.Len() != 512 {
+	if b.Cap() < 512 {
 		t.Fatal("invalid write area length")
 	}
 
 	b.Prepare(1024)
-	if b.Len() != 1024 {
+	if b.Cap() < 1024 {
 		t.Fatal("invalid write area length")
 	}
 
