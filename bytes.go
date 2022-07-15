@@ -32,7 +32,7 @@ type BytesBuffer struct {
 
 func NewBytesBuffer() *BytesBuffer {
 	b := &BytesBuffer{
-		data: make([]byte, 512),
+		data: make([]byte, 0, 512),
 	}
 	return b
 }
@@ -44,6 +44,7 @@ func (b *BytesBuffer) Prepare(n int) {
 	if need := n - cap(b.data); need > 0 {
 		b.data = append(b.data, make([]byte, need)...)
 	}
+	b.data = b.data[:n]
 }
 
 // Commit moves `n` bytes from the write area to the read area.
@@ -165,19 +166,13 @@ func (b *BytesBuffer) WriteString(s string) (int, error) {
 	return n, nil
 }
 
+// WriteTo consumes and writes the bytes from the read area to the provider writer.
 func (b *BytesBuffer) WriteTo(w io.Writer) (int64, error) {
 	n, err := w.Write(b.data[:b.ri])
-	if err == nil {
-		b.Consume(n)
-	}
 	return int64(n), err
 }
 
+// WriteTo writes the bytes from the read area to the provider writer asynchronously.
 func (b *BytesBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
-	w.AsyncWriteAll(b.data[:b.ri], func(err error, n int) {
-		if err == nil {
-			b.Consume(n)
-		}
-		cb(err, n)
-	})
+	w.AsyncWriteAll(b.data[:b.ri], cb)
 }

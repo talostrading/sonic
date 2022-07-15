@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"bufio"
 	"bytes"
 	"math/rand"
 	"testing"
@@ -77,6 +78,55 @@ func TestBytesBufferReads(t *testing.T) {
 	}
 	if b.ri != 0 || b.wi != 0 {
 		t.Fatal("invalid read/write areas")
+	}
+}
+
+func TestBytesBufferWrites(t *testing.T) {
+	b := NewBytesBuffer()
+
+	n, err := b.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Fatal("wrong number of bytes written")
+	}
+	if b.ReadLen() != 0 {
+		t.Fatal("wrong read area length")
+	}
+	if b.WriteLen() != 5 {
+		t.Fatal("wrong write area length")
+	}
+
+	b.Commit(5)
+	if b.ReadLen() != 5 {
+		t.Fatal("wrong read area length")
+	}
+	if b.WriteLen() != 0 {
+		t.Fatal("wrong write area length")
+	}
+
+	w := bufio.NewWriter(nil)
+	nn, err := b.WriteTo(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nn != 5 {
+		t.Fatal("wrong number of bytes written")
+	}
+	if b.ReadLen() != 5 {
+		t.Fatal("wrong read area length")
+	}
+	if b.WriteLen() != 0 {
+		t.Fatal("wrong write area length")
+	}
+
+	b.Consume(5)
+	if b.ReadLen() != 0 {
+		t.Fatal("wrong read area length")
+	}
+	if b.WriteLen() != 0 {
+		t.Fatal("wrong write area length")
 	}
 }
 
