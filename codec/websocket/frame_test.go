@@ -5,10 +5,12 @@ import (
 	"bytes"
 	"crypto/rand"
 	"testing"
+
+	"github.com/talostrading/sonic"
 )
 
 func TestUnder125Frame(t *testing.T) {
-	raw := []byte{0x81, 5}
+	raw := []byte{0x81, 5} // fin=1 opcode=1 (text) payload_len=5
 	raw = append(raw, genRandBytes(5)...)
 
 	f := AcquireFrame()
@@ -86,6 +88,52 @@ func TestWriteFrame(t *testing.T) {
 
 	if !bytes.Equal(under[2:], payload) {
 		t.Fatalf("payload is not the same; given=%s expected=%s", under[2:], payload)
+	}
+}
+
+func TestSameFrameWriteRead(t *testing.T) {
+	// deserialize
+	f := AcquireFrame()
+	defer ReleaseFrame(f)
+
+	header := []byte{0x81, 5}
+	payload := genRandBytes(5)
+
+	buf := sonic.NewBytesBuffer()
+	buf.Write(header)
+	buf.Write(payload)
+	buf.Commit(7)
+
+	n, err := f.ReadFrom(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 7 {
+		t.Fatalf("frame is corrupt")
+	}
+	if !(f.IsFin() && f.IsText() && f.PayloadLen() == 5 && bytes.Equal(f.Payload(), payload)) {
+		t.Fatalf("invalid frame")
+	}
+
+	buf.Consume(7)
+
+	// serialize
+	n, err = f.WriteTo(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 7 {
+		t.Fatalf("short frame write")
+	}
+
+	if buf.WriteLen() != 7 {
+		t.Fatalf("BytesBuffer is not working properly")
+	}
+	buf.Commit(7)
+
+	raw := append(header, payload...)
+	if !bytes.Equal(raw, buf.Data()) {
+		t.Fatalf("wrong frame serialization")
 	}
 }
 

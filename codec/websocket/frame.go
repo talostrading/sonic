@@ -123,8 +123,8 @@ func (f *Frame) WriteTo(w io.Writer) (n int64, err error) {
 			n += int64(nn)
 		}
 
-		if err == nil && len(f.payload) > 0 {
-			nn, err = w.Write(f.payload)
+		if err == nil && f.PayloadLen() > 0 {
+			nn, err = w.Write(f.payload[:f.PayloadLen()])
 			n += int64(nn)
 		}
 	}

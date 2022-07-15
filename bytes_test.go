@@ -13,13 +13,13 @@ func TestBytesBufferReads1(t *testing.T) {
 
 	// prepare the buffer for a read
 	b.Prepare(512)
-	if len(b.data) != 512 {
-		t.Fatal("invalid length")
+	if b.Len() != 512 {
+		t.Fatal("invalid write area length")
 	}
 
 	b.Prepare(1024)
-	if len(b.data) != 1024 {
-		t.Fatal("invalid length")
+	if b.Len() != 1024 {
+		t.Fatal("invalid write area length")
 	}
 
 	// read something
@@ -67,8 +67,8 @@ func TestBytesBufferReads1(t *testing.T) {
 	// commit more than needed
 	msg = append(msg[1:], msg2...)
 	b.Commit(100)
-	if string(b.Data()) != string(append(msg)) {
-		t.Fatal("invalid data")
+	if given, expected := string(b.Data()), string(msg); given != expected {
+		t.Fatalf("invalid data given=%s expected=%s", given, expected)
 	}
 
 	// consume more than needed
@@ -133,7 +133,7 @@ func TestBytesBufferWrites(t *testing.T) {
 	if nn != 5 {
 		t.Fatal("wrong number of bytes written")
 	}
-	if b.ReadLen() != 5 {
+	if b.ReadLen() != 0 { // the WriteTo consumed the data
 		t.Fatal("wrong read area length")
 	}
 	if b.WriteLen() != 0 {
