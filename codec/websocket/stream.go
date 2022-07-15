@@ -7,22 +7,13 @@ import (
 var _ Stream = &WebsocketStream{}
 
 type WebsocketStream struct {
-	ioc *sonic.IO
-
-	stream sonic.Stream
-
-	src *sonic.BytesBuffer // buffer for stream reads
-	dst *sonic.BytesBuffer // buffer for stream writes
-
-	frame *Frame // last read frame
-
-	codec sonic.Codec[*Frame]
-
-	state StreamState
-
-	lt   MessageType // type of the last read message
-	done bool        // true if we read a complete message from the stream
-
+	ioc     *sonic.IO
+	stream  sonic.Stream
+	src     *sonic.BytesBuffer // buffer for stream reads
+	dst     *sonic.BytesBuffer // buffer for stream writes
+	state   StreamState
+	frame   *Frame // last read frame
+	codec   sonic.Codec[*Frame]
 	pending []*Frame
 }
 
@@ -59,23 +50,32 @@ func (s *WebsocketStream) Read(b []byte) (n int, err error) {
 			return
 		}
 		n += nn
-		if s.done {
+		if s.frame.IsFin() {
 			return
 		}
 	}
 }
 
 func (s *WebsocketStream) ReadSome(b []byte) (n int, err error) {
-	fr, err := s.codec.Decode(s.src)
-	if err == nil {
+	s.frame.payload = b
+	for {
+		fr, err := s.codec.Decode(s.src)
+
+		if err != nil {
+			return 0, err
+		}
+
+		if fr != nil {
+			return s.frame.PayloadLen(), nil
+		}
+
 		if fr == nil {
-			var nn int64
-			nn, err = s.src.ReadFrom(s.stream)
-			n = int(nn)
+			_, err = s.src.ReadFrom(s.stream)
+			if err != nil {
+				return 0, err
+			}
 		}
 	}
-
-	return
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
@@ -89,7 +89,7 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb sonic.AsyncCallb
 			return
 		}
 		readBytes += n
-		if s.done {
+		if s.frame.IsFin() {
 			cb(err, readBytes)
 		} else {
 			s.asyncRead(b, readBytes, cb)
@@ -175,5 +175,5 @@ func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 }
 
 func (s *WebsocketStream) GotType() MessageType {
-	return s.lt
+	return MessageType(s.frame.Opcode())
 }
