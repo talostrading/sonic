@@ -11,13 +11,12 @@ type WebsocketStream struct {
 
 	stream sonic.Stream
 
-	bi *sonic.BytesBuffer // buffer for stream reads
-	bo *sonic.BytesBuffer // buffer for stream writes
+	src *sonic.BytesBuffer // buffer for stream reads
+	dst *sonic.BytesBuffer // buffer for stream writes
 
-	f *Frame // last read frame
+	frame *Frame // last read frame
 
-	codecState *FrameCodecState
-	codec      sonic.Codec[*Frame]
+	codec sonic.Codec[*Frame]
 
 	state StreamState
 
@@ -30,16 +29,15 @@ type WebsocketStream struct {
 func NewWebsocketStream(ioc *sonic.IO) *WebsocketStream {
 	s := &WebsocketStream{
 		ioc:   ioc,
-		bi:    sonic.NewBytesBuffer(),
-		bo:    sonic.NewBytesBuffer(),
-		f:     NewFrame(),
+		src:   sonic.NewBytesBuffer(),
+		dst:   sonic.NewBytesBuffer(),
+		frame: NewFrame(),
 		state: StateHandshake,
 	}
-	s.codecState = NewFrameCodecState(s.f)
-	s.codec = NewFrameCodec(s.codecState)
+	s.codec = NewFrameCodec(s.frame, s.src, s.dst)
 
-	s.bi.Prepare(4096)
-	s.bo.Prepare(4096)
+	s.src.Prepare(4096)
+	s.dst.Prepare(4096)
 
 	return s
 }
@@ -68,11 +66,11 @@ func (s *WebsocketStream) Read(b []byte) (n int, err error) {
 }
 
 func (s *WebsocketStream) ReadSome(b []byte) (n int, err error) {
-	fr, err := s.codec.Decode(s.bi)
+	fr, err := s.codec.Decode(s.src)
 	if err == nil {
 		if fr == nil {
 			var nn int64
-			nn, err = s.bi.ReadFrom(s.stream)
+			nn, err = s.src.ReadFrom(s.stream)
 			n = int(nn)
 		}
 	}
@@ -102,7 +100,7 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb sonic.AsyncCallb
 func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
 	n := 0
 
-	fr, err := s.codec.Decode(s.bi)
+	fr, err := s.codec.Decode(s.src)
 	if err == nil {
 		if fr == nil {
 			s.scheduleAsyncRead(b, cb)
@@ -115,7 +113,7 @@ func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) scheduleAsyncRead(b []byte, cb sonic.AsyncCallback) {
-	s.bi.AsyncReadFrom(s.stream, func(err error, n int) {
+	s.src.AsyncReadFrom(s.stream, func(err error, n int) {
 		if err != nil {
 			cb(err, n)
 		} else {

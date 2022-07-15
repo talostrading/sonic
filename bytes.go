@@ -197,3 +197,16 @@ func (b *BytesBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
 		cb(err, n)
 	})
 }
+
+// PrepareRead prepares n bytes to be read from the read area. If less than n bytes are
+// available, io.EOF is returned.
+func (b *BytesBuffer) PrepareRead(n int) (err error) {
+	if need := n - b.ReadLen(); need > 0 {
+		if b.WriteLen() >= need {
+			b.Commit(need)
+		} else {
+			err = io.EOF
+		}
+	}
+	return
+}

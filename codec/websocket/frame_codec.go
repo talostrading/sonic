@@ -6,42 +6,30 @@ import (
 
 var _ sonic.Codec[*Frame] = &FrameCodec{}
 
-// FrameCodecState is the state machine of the frame codec.
-//
-// The state machine reset on every successful decode of a frame.
-type FrameCodecState struct {
-	// The frame in which the raw bytes are decoded. Not owned by
-	// the state machine.
-	f *Frame
-
-	// The number of bytes read in the current state machine run.
-	readBytes int
-}
-
-func NewFrameCodecState(f *Frame) *FrameCodecState {
-	s := &FrameCodecState{
-		f: f,
-	}
-	return s
-}
-
-// Reset prepares the state machine for a new frame decode run.
-func (s *FrameCodecState) Reset(src *sonic.BytesBuffer) {
-	src.Consume(s.readBytes)
-
-	s.f.Reset()
-	s.readBytes = 0
-}
-
 // FrameCodec is a stateful streaming parser handling the encoding
 // and decoding of WebSocket frames.
 type FrameCodec struct {
-	state *FrameCodecState
+	src *sonic.BytesBuffer // buffer we decode from
+	dst *sonic.BytesBuffer // buffer we encode to
+
+	decodeFrame *Frame // frame we decode into
+	decodeBytes int    // the number of bytes of the last successfully decoded frame
+	decodeReset bool   // true if we must reset the state on the next decode
 }
 
-func NewFrameCodec(state *FrameCodecState) *FrameCodec {
+func NewFrameCodec(frame *Frame, src, dst *sonic.BytesBuffer) *FrameCodec {
 	return &FrameCodec{
-		state: state,
+		decodeFrame: frame,
+		src:         src,
+		dst:         dst,
+	}
+}
+
+func (c *FrameCodec) tryDecodeReset() {
+	if c.decodeReset {
+		c.decodeReset = false
+		c.src.Consume(c.decodeBytes)
+		c.decodeBytes = 0
 	}
 }
 
@@ -63,60 +51,50 @@ func NewFrameCodec(state *FrameCodecState) *FrameCodec {
 //	In this case we try to decode the first frame. The rest of the bytes stay
 //	in `src`. An appropriate error is returned if the frame is corrupt.
 func (c *FrameCodec) Decode(src *sonic.BytesBuffer) (*Frame, error) {
-	need := 2
-	if src.ReadLen() < need {
-		if more := src.ReadLen() - need; src.WriteLen() >= more {
-			src.Commit(more)
-		} else {
+	c.tryDecodeReset()
+
+	// read fixed size header
+	n := 2
+	err := src.PrepareRead(n)
+	if err != nil {
+		return nil, nil
+	}
+	c.decodeFrame.header = src.Data()[:n]
+
+	// read extra header length
+	n += c.decodeFrame.ExtraHeaderLen()
+	if err := src.PrepareRead(n); err != nil {
+		return nil, nil
+	}
+	c.decodeFrame.header = src.Data()[:n]
+
+	// read mask if any
+	if c.decodeFrame.IsMasked() {
+		n += 4
+		if err := src.PrepareRead(n); err != nil {
 			return nil, nil
 		}
+		c.decodeFrame.mask = src.Data()[n-4 : n]
 	}
 
-	c.state.f.header = src.Data()[:need]
-	if extra := c.state.f.ExtraHeaderLen(); extra > 0 {
-		need += extra
-		if src.ReadLen() < need {
-			if more := src.ReadLen() - need; src.WriteLen() >= more {
-				src.Commit(more)
-			} else {
-				return nil, nil
-			}
-		}
-		c.state.f.header = src.Data()[:need]
-
-		if c.state.f.PayloadLen() > MaxPayloadLen {
-			return nil, ErrPayloadTooBig
-		}
-
+	// check payload length
+	npayload := c.decodeFrame.PayloadLen()
+	if npayload > MaxPayloadLen {
+		return nil, ErrPayloadTooBig
 	}
 
-	if c.state.f.IsMasked() {
-		need += 4
-		if src.ReadLen() < need {
-			if more := src.ReadLen() - need; src.WriteLen() >= more {
-				src.Commit(more)
-			} else {
-				return nil, nil
-			}
-		}
-		c.state.f.mask = src.Data()[need-4 : need]
+	// prepare to read the payload
+	n += npayload
+	if err := src.PrepareRead(n); err != nil {
+		return nil, nil
 	}
 
-	pn := c.state.f.PayloadLen()
-	need += pn
-	if src.ReadLen() < need {
-		if more := src.ReadLen() - need; src.WriteLen() >= more {
-			src.Commit(more)
-		}
-		c.state.f.payload = src.Data()[need-pn : need]
+	// at this point, we have a full frame in src
+	c.decodeFrame.payload = src.Data()[n-npayload : n]
+	c.decodeBytes = n
+	c.decodeReset = true
 
-		// We parsed a frame so we can reset the state on the next decode call.
-		c.state.readBytes = need
-
-		return c.state.f, nil
-	}
-
-	return nil, nil
+	return c.decodeFrame, nil
 }
 
 // Encode encodes the frame and place the raw bytes into `dst`.

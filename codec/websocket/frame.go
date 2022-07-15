@@ -84,12 +84,6 @@ func (f *Frame) ReadFrom(r io.Reader) (nt int64, err error) {
 		if m > 0 {
 			n, err = io.ReadFull(r, f.header[2:m+2])
 			nt += int64(n)
-
-			if err == nil {
-				if f.PayloadLen() > MaxPayloadLen {
-					err = ErrPayloadTooBig
-				}
-			}
 		}
 
 		if err == nil && f.IsMasked() {
@@ -99,9 +93,13 @@ func (f *Frame) ReadFrom(r io.Reader) (nt int64, err error) {
 
 		if err == nil {
 			if pn := f.PayloadLen(); pn > 0 {
-				f.payload = util.ExtendBytes(f.payload, pn)
-				n, err = io.ReadFull(r, f.payload[:pn])
-				nt += int64(n)
+				if pn > MaxPayloadLen {
+					err = ErrPayloadTooBig
+				} else {
+					f.payload = util.ExtendBytes(f.payload, pn)
+					n, err = io.ReadFull(r, f.payload[:pn])
+					nt += int64(n)
+				}
 			} else if pn == 0 {
 				f.payload = f.payload[:0]
 			}

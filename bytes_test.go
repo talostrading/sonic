@@ -3,6 +3,8 @@ package sonic
 import (
 	"bufio"
 	"bytes"
+	"errors"
+	"io"
 	"math/rand"
 	"testing"
 	"time"
@@ -145,6 +147,35 @@ func TestBytesBufferWrites(t *testing.T) {
 	}
 	if b.WriteLen() != 0 {
 		t.Fatal("wrong write area length")
+	}
+}
+
+func TestBytesBufferPrepareRead(t *testing.T) {
+	b := NewBytesBuffer()
+
+	b.Write([]byte("hello"))
+	err := b.PrepareRead(3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.ReadLen() != 3 {
+		t.Fatal("invalid read length")
+	}
+	if b.WriteLen() != 2 {
+		t.Fatal("invalid write length")
+	}
+
+	err = b.PrepareRead(5)
+	if b.ReadLen() != 5 {
+		t.Fatal("invalid write length")
+	}
+	if b.WriteLen() != 0 {
+		t.Fatal("invalid write length")
+	}
+
+	err = b.PrepareRead(10)
+	if !errors.Is(err, io.EOF) {
+		t.Fatal("should not be able to prepare read")
 	}
 }
 
