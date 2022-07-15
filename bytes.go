@@ -99,23 +99,24 @@ func (b *BytesBuffer) Reset() {
 	b.ri = 0
 }
 
-// Reads reads into `dst` by consuming the bytes in the read area.
+// Reads reads the bytes from the read area into `dst`.
 func (b *BytesBuffer) Read(dst []byte) (int, error) {
-	if b.ri == b.wi {
+	if len(dst) == 0 {
 		return 0, nil
 	}
 
-	n := copy(dst, b.data[b.ri:b.wi])
-	b.Consume(n)
-
+	if b.ri == 0 {
+		return 0, io.EOF
+	}
+	n := copy(dst, b.data[:b.ri])
 	return n, nil
 }
 
-// ReadByte consumes and returns one byte from the read area.
+// ReadByte returns one byte from the read area.
 func (b *BytesBuffer) ReadByte() (byte, error) {
 	n, err := b.Read(b.oneByte[:])
 	if n == 0 && err == nil {
-		err = io.ErrNoProgress
+		err = io.EOF
 	}
 	return b.oneByte[0], err
 }
@@ -134,7 +135,7 @@ func (b *BytesBuffer) UnreadByte() error {
 		b.wi -= 1
 		return nil
 	}
-	return io.ErrNoProgress
+	return io.EOF
 }
 
 func (b *BytesBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestBytesBufferReads(t *testing.T) {
+func TestBytesBufferReads1(t *testing.T) {
 	b := NewBytesBuffer()
 
 	// prepare the buffer for a read
@@ -78,6 +78,25 @@ func TestBytesBufferReads(t *testing.T) {
 	}
 	if b.ri != 0 || b.wi != 0 {
 		t.Fatal("invalid read/write areas")
+	}
+}
+
+func TestBytesBufferReads2(t *testing.T) {
+	b := NewBytesBuffer()
+
+	msg := []byte("hello")
+	b.Write(msg)
+	b.Commit(5)
+
+	into := make([]byte, 10)
+	n, err := b.Read(into)
+	if err != nil {
+		t.Fatal(err)
+	}
+	into = into[:n]
+
+	if given, expected := string(into), string(msg); given != expected {
+		t.Fatalf("invalid read given=%s expected=%s", given, expected)
 	}
 }
 
