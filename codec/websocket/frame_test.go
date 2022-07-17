@@ -99,7 +99,7 @@ func TestSameFrameWriteRead(t *testing.T) {
 	header := []byte{0x81, 5}
 	payload := genRandBytes(5)
 
-	buf := sonic.NewBytesBuffer()
+	buf := sonic.NewByteBuffer()
 	buf.Write(header)
 	buf.Write(payload)
 	buf.Commit(7)

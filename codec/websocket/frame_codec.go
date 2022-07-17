@@ -9,17 +9,17 @@ var _ sonic.Codec[*Frame] = &FrameCodec{}
 // FrameCodec is a stateful streaming parser handling the encoding
 // and decoding of WebSocket frames.
 type FrameCodec struct {
-	src *sonic.BytesBuffer // buffer we decode from
-	dst *sonic.BytesBuffer // buffer we encode to
+	src *sonic.ByteBuffer // buffer we decode from
+	dst *sonic.ByteBuffer // buffer we encode to
 
 	decodeFrame *Frame // frame we decode into
 	decodeBytes int    // the number of bytes of the last successfully decoded frame
 	decodeReset bool   // true if we must reset the state on the next decode
 }
 
-func NewFrameCodec(frame *Frame, src, dst *sonic.BytesBuffer) *FrameCodec {
+func NewFrameCodec(src, dst *sonic.ByteBuffer) *FrameCodec {
 	return &FrameCodec{
-		decodeFrame: frame,
+		decodeFrame: NewFrame(),
 		src:         src,
 		dst:         dst,
 	}
@@ -50,7 +50,7 @@ func (c *FrameCodec) tryDecodeReset() {
 //
 //	In this case we try to decode the first frame. The rest of the bytes stay
 //	in `src`. An appropriate error is returned if the frame is corrupt.
-func (c *FrameCodec) Decode(src *sonic.BytesBuffer) (*Frame, error) {
+func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 	c.tryDecodeReset()
 
 	// read fixed size header
@@ -98,6 +98,6 @@ func (c *FrameCodec) Decode(src *sonic.BytesBuffer) (*Frame, error) {
 }
 
 // Encode encodes the frame and place the raw bytes into `dst`.
-func (c *FrameCodec) Encode(fr *Frame, dst *sonic.BytesBuffer) error {
+func (c *FrameCodec) Encode(fr *Frame, dst *sonic.ByteBuffer) error {
 	return nil
 }

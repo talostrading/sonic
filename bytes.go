@@ -4,28 +4,12 @@ import (
 	"io"
 )
 
-// Interfaces to which BytesBuffer adheres to.
-var (
-	_ io.Reader      = &BytesBuffer{}
-	_ io.ByteReader  = &BytesBuffer{}
-	_ io.ByteScanner = &BytesBuffer{}
-
-	_ io.Writer     = &BytesBuffer{}
-	_ io.ByteWriter = &BytesBuffer{}
-
-	_ io.ReaderFrom   = &BytesBuffer{}
-	_ AsyncReaderFrom = &BytesBuffer{}
-
-	_ io.WriterTo   = &BytesBuffer{}
-	_ AsyncWriterTo = &BytesBuffer{}
-)
-
-// BytesBuffer provides operations that make it easier to handle byte slices in networking code.
+// ByteBuffer provides operations that make it easier to handle byte slices in networking code.
 //
 // Invariants:
 //   - ri <= wi at all times
 //   - wi = len(data) after each function call
-type BytesBuffer struct {
+type ByteBuffer struct {
 	ri int // End index of the read area, always smaller or equal to wi.
 	wi int // End index of the write area.
 
@@ -34,15 +18,31 @@ type BytesBuffer struct {
 	data []byte
 }
 
-func NewBytesBuffer() *BytesBuffer {
-	b := &BytesBuffer{
+// Interfaces which ByteBuffer implements.
+var (
+	_ io.Reader      = &ByteBuffer{}
+	_ io.ByteReader  = &ByteBuffer{}
+	_ io.ByteScanner = &ByteBuffer{}
+
+	_ io.Writer     = &ByteBuffer{}
+	_ io.ByteWriter = &ByteBuffer{}
+
+	_ io.ReaderFrom   = &ByteBuffer{}
+	_ AsyncReaderFrom = &ByteBuffer{}
+
+	_ io.WriterTo   = &ByteBuffer{}
+	_ AsyncWriterTo = &ByteBuffer{}
+)
+
+func NewByteBuffer() *ByteBuffer {
+	b := &ByteBuffer{
 		data: make([]byte, 0, 512),
 	}
 	return b
 }
 
 // Prepare prepares the buffer to hold `n` bytes.
-func (b *BytesBuffer) Prepare(n int) {
+func (b *ByteBuffer) Prepare(n int) {
 	if need := n - cap(b.data); need > 0 {
 		b.data = b.data[:cap(b.data)]
 		b.data = append(b.data, make([]byte, need)...)
@@ -51,7 +51,7 @@ func (b *BytesBuffer) Prepare(n int) {
 }
 
 // Commit moves `n` bytes from the write area to the read area.
-func (b *BytesBuffer) Commit(n int) {
+func (b *ByteBuffer) Commit(n int) {
 	if n < 0 {
 		n = 0
 	}
@@ -63,32 +63,32 @@ func (b *BytesBuffer) Commit(n int) {
 }
 
 // Data returns the bytes in the read area.
-func (b *BytesBuffer) Data() []byte {
+func (b *ByteBuffer) Data() []byte {
 	return b.data[:b.ri]
 }
 
 // Len returns the length of the read area.
-func (b *BytesBuffer) ReadLen() int {
+func (b *ByteBuffer) ReadLen() int {
 	return len(b.data[:b.ri])
 }
 
 // UnreadLen returns the length of the write area.
-func (b *BytesBuffer) WriteLen() int {
+func (b *ByteBuffer) WriteLen() int {
 	return len(b.data[b.ri:b.wi])
 }
 
 // Len returns the length of the whole buffer.
-func (b *BytesBuffer) Len() int {
+func (b *ByteBuffer) Len() int {
 	return len(b.data)
 }
 
 // Cap returns the capacity of the underlying byte slice.
-func (b *BytesBuffer) Cap() int {
+func (b *ByteBuffer) Cap() int {
 	return cap(b.data)
 }
 
 // Consume removes `n` bytes from the read area.
-func (b *BytesBuffer) Consume(n int) {
+func (b *ByteBuffer) Consume(n int) {
 	if n > b.ri {
 		n = b.ri
 	}
@@ -103,14 +103,14 @@ func (b *BytesBuffer) Consume(n int) {
 	b.data = b.data[:b.wi]
 }
 
-func (b *BytesBuffer) Reset() {
+func (b *ByteBuffer) Reset() {
 	b.data = b.data[:0]
 	b.wi = 0
 	b.ri = 0
 }
 
 // Reads reads and consumes the bytes from the read area into `dst`.
-func (b *BytesBuffer) Read(dst []byte) (int, error) {
+func (b *ByteBuffer) Read(dst []byte) (int, error) {
 	if len(dst) == 0 {
 		return 0, nil
 	}
@@ -126,13 +126,13 @@ func (b *BytesBuffer) Read(dst []byte) (int, error) {
 }
 
 // ReadByte returns and consumes one byte from the read area.
-func (b *BytesBuffer) ReadByte() (byte, error) {
+func (b *ByteBuffer) ReadByte() (byte, error) {
 	_, err := b.Read(b.oneByte[:])
 	return b.oneByte[0], err
 }
 
 // ReadFrom reads from the provided Reader, placing the bytes in the write area.
-func (b *BytesBuffer) ReadFrom(r io.Reader) (int64, error) {
+func (b *ByteBuffer) ReadFrom(r io.Reader) (int64, error) {
 	n, err := r.Read(b.data[b.wi:cap(b.data)])
 	if err == nil {
 		b.wi += n
@@ -141,7 +141,7 @@ func (b *BytesBuffer) ReadFrom(r io.Reader) (int64, error) {
 	return int64(n), err
 }
 
-func (b *BytesBuffer) UnreadByte() error {
+func (b *ByteBuffer) UnreadByte() error {
 	if can := b.wi - b.ri; can > 0 {
 		b.wi -= 1
 		b.data = b.data[:b.wi]
@@ -150,7 +150,7 @@ func (b *BytesBuffer) UnreadByte() error {
 	return io.EOF
 }
 
-func (b *BytesBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
+func (b *ByteBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
 	r.AsyncRead(b.data[b.wi:cap(b.data)], func(err error, n int) {
 		if err == nil {
 			b.wi += n
@@ -160,7 +160,7 @@ func (b *BytesBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
 	})
 }
 
-func (b *BytesBuffer) Write(bb []byte) (int, error) {
+func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	b.data = append(b.data, bb...)
 	n := len(bb)
 	b.wi += n
@@ -168,14 +168,14 @@ func (b *BytesBuffer) Write(bb []byte) (int, error) {
 	return n, nil
 }
 
-func (b *BytesBuffer) WriteByte(bb byte) error {
+func (b *ByteBuffer) WriteByte(bb byte) error {
 	b.data = append(b.data, bb)
 	b.wi += 1
 	b.data = b.data[:b.wi]
 	return nil
 }
 
-func (b *BytesBuffer) WriteString(s string) (int, error) {
+func (b *ByteBuffer) WriteString(s string) (int, error) {
 	b.data = append(b.data, s...)
 	n := len(s)
 	b.wi += n
@@ -184,14 +184,14 @@ func (b *BytesBuffer) WriteString(s string) (int, error) {
 }
 
 // WriteTo consumes and writes the bytes from the read area to the provided writer.
-func (b *BytesBuffer) WriteTo(w io.Writer) (int64, error) {
+func (b *ByteBuffer) WriteTo(w io.Writer) (int64, error) {
 	n, err := w.Write(b.data[:b.ri])
 	b.Consume(n)
 	return int64(n), err
 }
 
 // WriteTo writes the bytes from the read area to the provided writer asynchronously.
-func (b *BytesBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
+func (b *ByteBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
 	w.AsyncWriteAll(b.data[:b.ri], func(err error, n int) {
 		b.Consume(n)
 		cb(err, n)
@@ -200,7 +200,7 @@ func (b *BytesBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
 
 // PrepareRead prepares n bytes to be read from the read area. If less than n bytes are
 // available, io.EOF is returned.
-func (b *BytesBuffer) PrepareRead(n int) (err error) {
+func (b *ByteBuffer) PrepareRead(n int) (err error) {
 	if need := n - b.ReadLen(); need > 0 {
 		if b.WriteLen() >= need {
 			b.Commit(need)

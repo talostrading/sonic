@@ -37,8 +37,7 @@ type AsyncReader interface {
 type AsyncWriter interface {
 	// AsyncWrite writes up to len(b) bytes into the underlying data stream asynchronously.
 	//
-	// This call should not block. The provided completion handler is called
-	// in the following cases:
+	// This call should not block. The provided completion handler is called in the following cases:
 	//  - a write of n bytes completes
 	//  - an error occurs
 	//
@@ -102,6 +101,12 @@ type Stream interface {
 	AsyncStream
 	SyncStream
 	io.Closer
+
+	// Cancel cancells all asynchronous operations on the stream.
+	Cancel()
+
+	// Closed returns true if the underlying file descriptor is closed.
+	Closed() bool
 }
 
 type AsyncStream interface {
@@ -134,23 +139,6 @@ type SyncWriteStream interface {
 type Conn interface {
 	FileDescriptor
 	net.Conn
-}
-
-// Codec defines a generic interface through which one can encode/decode
-// a raw stream of bytes.
-//
-// Implementations are optionally able to track their state which enables
-// implementing stateful streaming parsers.
-type Codec[Item any] interface {
-	// Decode decodes the given stream into an `Item`.
-	//
-	// An implementation of Codec takes a byte stream that has already
-	// been buffered in `src` and decodes the data into a stream of
-	// `Item` objects.
-	Decode(src *BytesBuffer) (Item, error)
-
-	// Encode encodes the given item into the `dst` byte stream.
-	Encode(item Item, dst *BytesBuffer) error
 }
 
 // TODO

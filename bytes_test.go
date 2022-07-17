@@ -11,7 +11,7 @@ import (
 )
 
 func TestBytesBufferReads1(t *testing.T) {
-	b := NewBytesBuffer()
+	b := NewByteBuffer()
 
 	b.Prepare(512)
 	if b.Cap() < 512 {
@@ -83,7 +83,7 @@ func TestBytesBufferReads1(t *testing.T) {
 }
 
 func TestBytesBufferReads2(t *testing.T) {
-	b := NewBytesBuffer()
+	b := NewByteBuffer()
 
 	msg := []byte("hello")
 	b.Write(msg)
@@ -102,7 +102,7 @@ func TestBytesBufferReads2(t *testing.T) {
 }
 
 func TestBytesBufferWrites(t *testing.T) {
-	b := NewBytesBuffer()
+	b := NewByteBuffer()
 
 	n, err := b.Write([]byte("hello"))
 	if err != nil {
@@ -151,7 +151,7 @@ func TestBytesBufferWrites(t *testing.T) {
 }
 
 func TestBytesBufferPrepareRead(t *testing.T) {
-	b := NewBytesBuffer()
+	b := NewByteBuffer()
 
 	b.Write([]byte("hello"))
 	err := b.PrepareRead(3)
@@ -194,7 +194,7 @@ func BenchmarkBytesBuffer(b *testing.B) {
 	n := 10
 	msg := make([]byte, n)
 	msg = genRand(msg)
-	buf := NewBytesBuffer()
+	buf := NewByteBuffer()
 
 	for i := 0; i < b.N; i++ {
 		buf.Write(msg)

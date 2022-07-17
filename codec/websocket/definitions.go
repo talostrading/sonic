@@ -106,35 +106,14 @@ type Stream interface {
 	// https://datatracker.ietf.org/doc/html/rfc7692
 	DeflateSupported() bool
 
-	// Reads reads a complete message into b.
-	//
-	// If b cannot hold the message, ErrPayloadTooBig is returned.
-	Read(b []byte) (n int, err error)
+	Read([]byte) (int, error)
+	ReadFrame() (*Frame, error)
 
-	// ReadSome reads some part of a message into b.
-	//
-	// The chunk of the message should come from a valid WebSocket frame.
-	//
-	// If b cannot hold the message, ErrPayloadTooBig is returned
-	ReadSome(b []byte) (n int, err error)
+	AsyncRead([]byte, sonic.AsyncCallback)
+	AsyncReadFrame(func(error, *Frame))
 
-	// AsyncRead reads a complete message into b asynchronously.
-	//
-	// If b cannot hold the message, ErrPayloadTooBig is provided in the handler invocation.
-	AsyncRead(b []byte, cb sonic.AsyncCallback)
-
-	// AsyncReadSome reads some part of a message into b asynchronously.
-	//
-	// The message chunk is a valid WebSocket frame.
-	//
-	// If b cannot hold the message, ErrPayloadTooBig is provided in the handler invocation.
-	AsyncReadSome(b []byte, cb sonic.AsyncCallback)
-
-	// WriteFrame writes the given frame to the stream.
-	WriteFrame(fr *Frame) error
-
-	// AsyncWriteFrame writes the given frame to the stream asynchronously.
-	AsyncWriteFrame(fr *Frame, cb func(error))
+	WriteFrame(fr *Frame) (int, error)
+	AsyncWriteFrame(fr *Frame, cb sonic.AsyncCallback)
 
 	// Flush writes any pending operations such as Pong or Close.
 	Flush() error

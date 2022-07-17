@@ -21,18 +21,26 @@ import (
 var _ Stream = &WebsocketStream{}
 
 type WebsocketStream struct {
-	ioc     *sonic.IO           // async operations executor
-	tls     *tls.Config         // nil if we don't use TLS
-	role    Role                // are we client or server
-	stream  sonic.Stream        // underlying transport stream
-	src     *sonic.BytesBuffer  // buffer for stream reads
-	dst     *sonic.BytesBuffer  // buffer for stream writes
-	state   StreamState         // state of the stream
-	frame   *Frame              // last read frame
-	codec   sonic.Codec[*Frame] // codec which can decode/encode frames for us
-	pending []*Frame            // frames pending to be written on the wire
-	hasher  hash.Hash           // hashes the Sec-Websocket-Key when the stream is a client
-	hb      []byte              // handshake buffer - the handshake response is read into this buffer
+	ioc *sonic.IO   // async operations executor
+	tls *tls.Config // nil if we don't use TLS
+
+	role Role // are we client or server
+
+	src *sonic.ByteBuffer // buffer for stream reads
+	dst *sonic.ByteBuffer // buffer for stream writes
+
+	state StreamState // state of the stream
+
+	pending []*Frame // frames pending to be written on the wire
+
+	hasher hash.Hash // hashes the Sec-Websocket-Key when the stream is a client
+
+	hb []byte // handshake buffer - the handshake response is read into this buffer
+
+	lastFrame *Frame
+
+	stream sonic.Stream
+	cs     *sonic.BlockingCodecStream[Frame]
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketStream, error) {
@@ -40,14 +48,12 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketSt
 		ioc:    ioc,
 		tls:    tls,
 		role:   role,
-		src:    sonic.NewBytesBuffer(),
-		dst:    sonic.NewBytesBuffer(),
-		frame:  NewFrame(),
+		src:    sonic.NewByteBuffer(),
+		dst:    sonic.NewByteBuffer(),
 		state:  StateHandshake,
 		hasher: sha1.New(),
 		hb:     make([]byte, 1024),
 	}
-	s.codec = NewFrameCodec(s.frame, s.src, s.dst)
 
 	s.src.Prepare(4096)
 	s.dst.Prepare(4096)
@@ -55,49 +61,57 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketSt
 	return s, nil
 }
 
+// init is run when we transition into StateActive
+func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
+	s.stream = stream
+	codec := NewFrameCodec(s.src, s.dst)
+	s.cs, err = sonic.NewBlockingCodecStream[Frame](stream, codec, s.src, s.dst)
+	return
+}
+
 func (s *WebsocketStream) NextLayer() sonic.Stream {
-	return s.stream
+	return s.cs.NextLayer()
 }
 
 func (s *WebsocketStream) DeflateSupported() bool {
 	return false
 }
 
-func (s *WebsocketStream) Read(b []byte) (n int, err error) {
-	var nn int
-
-	for {
-		nn, err = s.ReadSome(b)
-		if err != nil {
-			return
-		}
-		n += nn
-		if s.frame.IsFin() {
-			return
-		}
-	}
+func (s *WebsocketStream) ReadFrame() (*Frame, error) {
+	f, err := s.cs.ReadNext()
+	s.lastFrame = f
+	return f, err
 }
 
-func (s *WebsocketStream) ReadSome(b []byte) (n int, err error) {
-	s.frame.payload = b
+func (s *WebsocketStream) AsyncReadFrame(cb func(error, *Frame)) {
+	s.cs.AsyncReadNext(func(err error, f *Frame) {
+		s.lastFrame = f
+		cb(err, f)
+	})
+}
+
+func (s *WebsocketStream) Read(b []byte) (int, error) {
+	readBytes := 0
+
 	for {
-		fr, err := s.codec.Decode(s.src)
-
+		f, err := s.ReadFrame()
 		if err != nil {
-			return 0, err
+			return readBytes, err
 		}
 
-		if fr != nil {
-			return s.frame.PayloadLen(), nil
+		n := copy(b[readBytes:], f.Payload())
+		readBytes += n
+
+		if n != f.PayloadLen() {
+			return readBytes, ErrPayloadTooBig
 		}
 
-		if fr == nil {
-			_, err = s.src.ReadFrom(s.stream)
-			if err != nil {
-				return 0, err
-			}
+		if f.IsFin() {
+			break
 		}
 	}
+
+	return readBytes, nil
 }
 
 func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
@@ -105,51 +119,28 @@ func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
 }
 
 func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
-	s.AsyncReadSome(b[readBytes:], func(err error, n int) {
+	s.AsyncReadFrame(func(err error, f *Frame) {
 		if err != nil {
 			cb(err, readBytes)
-			return
-		}
-		readBytes += n
-		if s.frame.IsFin() {
-			cb(err, readBytes)
 		} else {
-			s.asyncRead(b, readBytes, cb)
+			n := copy(b[readBytes:], f.Payload())
+			readBytes += n
+
+			if n != f.PayloadLen() {
+				cb(ErrPayloadTooBig, readBytes)
+			} else {
+				s.asyncRead(b, readBytes, cb)
+			}
 		}
 	})
 }
 
-func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
-	n := 0
-
-	fr, err := s.codec.Decode(s.src)
-	if err == nil {
-		if fr == nil {
-			s.scheduleAsyncRead(b, cb)
-		} else {
-			n, err = s.handle(fr)
-		}
-	}
-
-	cb(err, n)
+func (s *WebsocketStream) WriteFrame(f *Frame) (n int, err error) {
+	return s.cs.WriteNext(f)
 }
 
-func (s *WebsocketStream) scheduleAsyncRead(b []byte, cb sonic.AsyncCallback) {
-	s.src.AsyncReadFrom(s.stream, func(err error, n int) {
-		if err != nil {
-			cb(err, n)
-		} else {
-			s.AsyncReadSome(b, cb)
-		}
-	})
-}
-
-func (s *WebsocketStream) WriteFrame(f *Frame) (err error) {
-	return
-}
-
-func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {
-
+func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb sonic.AsyncCallback) {
+	s.cs.AsyncWriteNext(f, cb)
 }
 
 func (s *WebsocketStream) handle(fr *Frame) (n int, err error) {
@@ -284,7 +275,9 @@ func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
 
 	if err == nil {
 		sonic.NewAsyncAdapter(s.ioc, sc, conn, func(err error, stream *sonic.AsyncAdapter) {
-			s.stream = stream
+			if err == nil {
+				err = s.init(stream)
+			}
 			cb(err)
 		})
 	} else {
@@ -383,5 +376,5 @@ func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 }
 
 func (s *WebsocketStream) GotType() MessageType {
-	return MessageType(s.frame.Opcode())
+	return MessageType(s.lastFrame.Opcode())
 }
