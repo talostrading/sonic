@@ -7,7 +7,9 @@ import (
 )
 
 var (
-	ErrPayloadTooBig = errors.New("frame payload too big")
+	ErrPayloadTooBig      = errors.New("frame payload too big")
+	ErrWrongHandshakeRole = errors.New("wrong role when initiating/accepting the handshake")
+	ErrCannotUpgrade      = errors.New("cannot upgrade connection to WebSocket")
 )
 
 const (

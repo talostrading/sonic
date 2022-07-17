@@ -1,4 +1,4 @@
-package sonicwebsocket
+package websocket
 
 import (
 	"bufio"
@@ -7,15 +7,20 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-
-	"github.com/talostrading/sonic"
+	"sync"
 )
 
-type testServer struct {
-	conn net.Conn
+// MockServer is a server which can be used to test the WebSocket client.
+type MockServer struct {
+	conn   net.Conn
+	lck    sync.Mutex // so it can be used concurrently
+	closed bool
 }
 
-func (s *testServer) Accept(addr string) error {
+func (s *MockServer) Accept(addr string) error {
+	s.lck.Lock()
+	defer s.lck.Unlock()
+
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
@@ -26,6 +31,7 @@ func (s *testServer) Accept(addr string) error {
 		return err
 	}
 	s.conn = conn
+
 	b := make([]byte, 4096)
 	n, err := s.conn.Read(b)
 	if err != nil {
@@ -54,55 +60,39 @@ func (s *testServer) Accept(addr string) error {
 	res.Write([]byte("\r\n"))
 
 	_, err = res.WriteTo(s.conn)
-	return err
-}
 
-func (s *testServer) Write(fr *Frame) (n int, err error) {
+	return nil
+}
+func (s *MockServer) Write(fr *Frame) (n int, err error) {
+	s.lck.Lock()
+	defer s.lck.Unlock()
+
 	var nn int64
 	nn, err = fr.WriteTo(s.conn)
 	n = int(nn)
 	return
 }
 
-func (s *testServer) Read(fr *Frame) (n int, err error) {
+func (s *MockServer) Read(fr *Frame) (n int, err error) {
+	s.lck.Lock()
+	defer s.lck.Unlock()
+
 	nn, err := fr.ReadFrom(s.conn)
 	return int(nn), err
 }
 
-func (s *testServer) Close() {
+func (s *MockServer) Close() {
+	s.lck.Lock()
+	defer s.lck.Unlock()
+
+	if s.closed {
+		return
+	}
+	s.closed = true
+
 	s.conn.Close()
 }
 
-type testClient struct {
-	ws *WebsocketStream
-}
-
-func AsyncNewTestClient(ioc *sonic.IO, addr string, cb func(err error, cl *testClient)) {
-	cl := &testClient{}
-	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-	if err != nil {
-		cb(err, nil)
-		return
-	}
-
-	cl.ws = ws.(*WebsocketStream)
-
-	cl.ws.AsyncHandshake(addr, func(err error) {
-		cb(err, cl)
-	})
-}
-
-func (c *testClient) RunReadLoop(b []byte, cb AsyncCallback) {
-	c.asyncRead(b, cb)
-}
-
-func (c *testClient) asyncRead(b []byte, cb AsyncCallback) {
-	b = b[:cap(b)]
-	c.ws.AsyncRead(b, func(err error, n int, mt MessageType) {
-		cb(err, n, mt)
-
-		if err == nil {
-			c.asyncRead(b, cb)
-		}
-	})
+func (s *MockServer) IsClosed() bool {
+	return s.closed
 }

@@ -1,36 +1,58 @@
 package websocket
 
 import (
+	"bufio"
+	"bytes"
+	"crypto/rand"
+	"crypto/sha1"
+	"crypto/tls"
+	"encoding/base64"
+	"fmt"
+	"hash"
+	"net"
+	"net/http"
+	"net/http/httputil"
+	"net/url"
+	"syscall"
+
 	"github.com/talostrading/sonic"
 )
 
 var _ Stream = &WebsocketStream{}
 
 type WebsocketStream struct {
-	ioc     *sonic.IO
-	stream  sonic.Stream
-	src     *sonic.BytesBuffer // buffer for stream reads
-	dst     *sonic.BytesBuffer // buffer for stream writes
-	state   StreamState
-	frame   *Frame // last read frame
-	codec   sonic.Codec[*Frame]
-	pending []*Frame
+	ioc     *sonic.IO           // async operations executor
+	tls     *tls.Config         // nil if we don't use TLS
+	role    Role                // are we client or server
+	stream  sonic.Stream        // underlying transport stream
+	src     *sonic.BytesBuffer  // buffer for stream reads
+	dst     *sonic.BytesBuffer  // buffer for stream writes
+	state   StreamState         // state of the stream
+	frame   *Frame              // last read frame
+	codec   sonic.Codec[*Frame] // codec which can decode/encode frames for us
+	pending []*Frame            // frames pending to be written on the wire
+	hasher  hash.Hash           // hashes the Sec-Websocket-Key when the stream is a client
+	hb      []byte              // handshake buffer - the handshake response is read into this buffer
 }
 
-func NewWebsocketStream(ioc *sonic.IO) *WebsocketStream {
+func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketStream, error) {
 	s := &WebsocketStream{
-		ioc:   ioc,
-		src:   sonic.NewBytesBuffer(),
-		dst:   sonic.NewBytesBuffer(),
-		frame: NewFrame(),
-		state: StateHandshake,
+		ioc:    ioc,
+		tls:    tls,
+		role:   role,
+		src:    sonic.NewBytesBuffer(),
+		dst:    sonic.NewBytesBuffer(),
+		frame:  NewFrame(),
+		state:  StateHandshake,
+		hasher: sha1.New(),
+		hb:     make([]byte, 1024),
 	}
 	s.codec = NewFrameCodec(s.frame, s.src, s.dst)
 
 	s.src.Prepare(4096)
 	s.dst.Prepare(4096)
 
-	return s
+	return s, nil
 }
 
 func (s *WebsocketStream) NextLayer() sonic.Stream {
@@ -105,7 +127,7 @@ func (s *WebsocketStream) AsyncReadSome(b []byte, cb sonic.AsyncCallback) {
 		if fr == nil {
 			s.scheduleAsyncRead(b, cb)
 		} else {
-			n, err = s.update(fr)
+			n, err = s.handle(fr)
 		}
 	}
 
@@ -130,7 +152,7 @@ func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {
 
 }
 
-func (s *WebsocketStream) update(fr *Frame) (n int, err error) {
+func (s *WebsocketStream) handle(fr *Frame) (n int, err error) {
 	return
 }
 
@@ -150,12 +172,198 @@ func (s *WebsocketStream) State() StreamState {
 	return s.state
 }
 
-func (s *WebsocketStream) Handshake(addr string) error {
-	return nil
+func (s *WebsocketStream) Handshake(addr string) (err error) {
+	if s.role != RoleClient {
+		return ErrWrongHandshakeRole
+	}
+
+	done := make(chan struct{}, 1)
+	s.handshake(addr, func(herr error) {
+		done <- struct{}{}
+		err = herr
+	})
+	<-done
+	return
 }
 
 func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
+	if s.role != RoleClient {
+		cb(ErrWrongHandshakeRole)
+		return
+	}
 
+	// I know, this is horrible, but if you help me write a TLS client for sonic
+	// we can asynchronously dial endpoints and remove the need for a goroutine here
+	go func() {
+		s.handshake(addr, func(err error) {
+			s.ioc.Post(func() {
+				cb(err)
+			})
+		})
+	}()
+}
+
+func (s *WebsocketStream) handshake(addr string, cb func(err error)) {
+	s.state = StateHandshake
+
+	url, err := s.resolve(addr)
+	if err == nil {
+		s.dial(url, func(err error) {
+			if err == nil {
+				err = s.upgrade(url)
+				if err == nil {
+					s.state = StateActive
+				}
+			}
+
+			if err != nil {
+				s.state = StateTerminated
+			}
+
+			cb(err)
+		})
+	} else {
+		s.state = StateTerminated
+		cb(err)
+	}
+}
+
+func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
+	url, err = url.Parse(addr)
+	if err == nil {
+		switch url.Scheme {
+		case "ws":
+			url.Scheme = "http"
+		case "wss":
+			url.Scheme = "https"
+		default:
+			err = fmt.Errorf("invalid address=%s", addr)
+		}
+	}
+
+	return
+}
+
+func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
+	var (
+		err  error
+		conn net.Conn
+		sc   syscall.Conn
+
+		port = url.Port()
+	)
+
+	switch url.Scheme {
+	case "http":
+		if port == "" {
+			port = "80"
+		}
+		addr := url.Hostname() + ":" + port
+		conn, err = net.Dial("tcp", addr)
+		if err == nil {
+			sc = conn.(syscall.Conn)
+		}
+	case "https":
+		if s.tls == nil {
+			err = fmt.Errorf("wss:// scheme endpoints require a TLS configuration.")
+		}
+
+		if err == nil {
+			if port == "" {
+				port = "443"
+			}
+			addr := url.Hostname() + ":" + port
+			conn, err = tls.Dial("tcp", addr, s.tls)
+			if err == nil {
+				sc = conn.(*tls.Conn).NetConn().(syscall.Conn)
+			}
+		}
+	default:
+		err = fmt.Errorf("invalid url scheme=%s", url.Scheme)
+	}
+
+	if err == nil {
+		sonic.NewAsyncAdapter(s.ioc, sc, conn, func(err error, stream *sonic.AsyncAdapter) {
+			s.stream = stream
+			cb(err)
+		})
+	} else {
+		cb(err)
+	}
+}
+
+func (s *WebsocketStream) upgrade(uri *url.URL) error {
+	req, err := http.NewRequest("GET", uri.String(), nil)
+	if err != nil {
+		return err
+	}
+
+	sentKey, expectedKey := s.makeHandshakeKey()
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Connection", "upgrade")
+	req.Header.Set("Sec-WebSocket-Key", string(sentKey))
+	req.Header.Set("Sec-Websocket-Version", "13")
+
+	err = req.Write(s.stream)
+	if err != nil {
+		return err
+	}
+
+	n, err := s.stream.Read(s.hb)
+	if err != nil {
+		return err
+	}
+	s.hb = s.hb[:n]
+	rd := bytes.NewReader(s.hb)
+	res, err := http.ReadResponse(bufio.NewReader(rd), req)
+	if err != nil {
+		return err
+	}
+
+	rawRes, err := httputil.DumpResponse(res, true)
+	if err != nil {
+		return err
+	}
+
+	resLen := len(rawRes)
+	extra := len(s.hb) - resLen
+	if extra > 0 {
+		// we got some frames as well with the handshake so we can put
+		// them in src for later decoding before clearing the handshake
+		// buffer
+		s.src.Write(s.hb[resLen:])
+	}
+	s.hb = s.hb[:0]
+
+	if !IsUpgradeRes(res) {
+		return ErrCannotUpgrade
+	}
+
+	if key := res.Header.Get("Sec-WebSocket-Accept"); key != expectedKey {
+		return ErrCannotUpgrade
+	}
+
+	return nil
+}
+
+// makeHandshakeKey generates the key of Sec-WebSocket-Key header as well as the expected
+// response present in Sec-WebSocket-Accept header.
+func (s *WebsocketStream) makeHandshakeKey() (req, res string) {
+	// request
+	b := make([]byte, 16)
+	rand.Read(b)
+	req = base64.StdEncoding.EncodeToString(b)
+
+	// response
+	var resKey []byte
+	resKey = append(resKey, []byte(req)...)
+	resKey = append(resKey, GUID...)
+
+	s.hasher.Reset()
+	s.hasher.Write(resKey)
+	res = base64.StdEncoding.EncodeToString(s.hasher.Sum(nil))
+
+	return
 }
 
 func (s *WebsocketStream) Accept() error {

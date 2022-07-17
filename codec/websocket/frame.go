@@ -1,7 +1,6 @@
 package websocket
 
 import (
-	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -283,14 +282,4 @@ func AcquireFrame() *Frame {
 func ReleaseFrame(f *Frame) {
 	f.Reset()
 	framePool.Put(f)
-}
-
-func mask(mask, b []byte) {
-	for i := range b {
-		b[i] ^= mask[i&3]
-	}
-}
-
-func genMask(b []byte) {
-	rand.Read(b)
 }
