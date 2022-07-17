@@ -7,7 +7,7 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-func TestDecodeShort(t *testing.T) {
+func TestDecodeShortFrame(t *testing.T) {
 	src := sonic.NewBytesBuffer()
 	src.Write([]byte{0x81, 1}) // fin=1 opcode=1 (text) payload_len=1
 
@@ -18,9 +18,8 @@ func TestDecodeShort(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f != nil {
-		t.Fatal(err)
+		t.Fatal("should have gotten a frame")
 	}
-
 	if codec.decodeReset {
 		t.Fatal("should not reset decoder state")
 	}
@@ -29,7 +28,7 @@ func TestDecodeShort(t *testing.T) {
 	}
 }
 
-func TestDecodeExactlyOne(t *testing.T) {
+func TestDecodeExactlyOneFrame(t *testing.T) {
 	src := sonic.NewBytesBuffer()
 	src.Write([]byte{0x81, 1, 0xFF}) // fin=1 opcode=1 (text) payload_len=1
 
@@ -40,7 +39,7 @@ func TestDecodeExactlyOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f == nil {
-		t.Fatal(err)
+		t.Fatal("should have gotten a frame")
 	}
 
 	if !(f.IsFin() && f.IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
@@ -55,7 +54,7 @@ func TestDecodeExactlyOne(t *testing.T) {
 	}
 }
 
-func TestDecodeMoreThanOne(t *testing.T) {
+func TestDecodeOneAndShortFrame(t *testing.T) {
 	src := sonic.NewBytesBuffer()
 	src.Write([]byte{0x81, 1, 0xFF, 0xFF, 0xFF, 0xFF}) // fin=1 opcode=1 (text) payload_len=1
 
@@ -66,7 +65,7 @@ func TestDecodeMoreThanOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	if f == nil {
-		t.Fatal(err)
+		t.Fatal("should have gotten a frame")
 	}
 
 	if !(f.IsFin() && f.IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
@@ -79,5 +78,79 @@ func TestDecodeMoreThanOne(t *testing.T) {
 
 	if codec.decodeBytes != 3 {
 		t.Fatal("should have decoded 3 bytes")
+	}
+}
+
+func TestDecodeTwoFrames(t *testing.T) {
+	src := sonic.NewBytesBuffer()
+	src.Write([]byte{
+		0x81, 1, 0xFF, // first complete frame
+		0x81, 5, 0x01, 0x02, 0x03, 0x04, 0x05, // second complete frame
+		0x81, 10}) // third short frame
+
+	codec := NewFrameCodec(NewFrame(), src, nil)
+
+	if src.WriteLen() != 12 {
+		t.Fatal("should have 12 bytes in the write area")
+	}
+
+	// first frame
+	f, err := codec.Decode(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f == nil {
+		t.Fatal("should have gotten a frame")
+	}
+	if !(f.IsFin() && f.IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
+		t.Fatal("corrupt frame")
+	}
+	if !codec.decodeReset {
+		t.Fatal("should have reset decoder state")
+	}
+	if codec.decodeBytes != 3 {
+		t.Fatal("should have decoded 3 bytes")
+	}
+	if src.ReadLen() != 3 {
+		t.Fatal("should have 3 bytes in read area")
+	}
+
+	// second frame
+	f, err = codec.Decode(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f == nil {
+		t.Fatal("should have gotten a frame")
+	}
+	if !(f.IsFin() && f.IsText() && bytes.Equal(f.Payload(), []byte{0x01, 0x02, 0x03, 0x04, 0x05})) {
+		t.Fatal("corrupt frame")
+	}
+	if !codec.decodeReset {
+		t.Fatal("should have reset decoder state")
+	}
+	if codec.decodeBytes != 7 {
+		t.Fatal("should have decoded 3 bytes")
+	}
+	if src.ReadLen() != 7 {
+		t.Fatal("should have 7 bytes in read area")
+	}
+	if src.WriteLen() != 2 {
+		t.Fatal("should have 2 bytes in write area")
+	}
+
+	// third try on short frame
+	f, err = codec.Decode(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f != nil {
+		t.Fatal("should not have gotten a frame")
+	}
+	if src.ReadLen() != 2 {
+		t.Fatal("should have 2 bytes in the read area")
+	}
+	if src.WriteLen() != 0 {
+		t.Fatal("should have 0 bytes in the write area")
 	}
 }
