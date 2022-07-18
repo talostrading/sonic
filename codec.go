@@ -20,17 +20,17 @@ type Codec[Item any] interface {
 // BlockingCodecStream handles the decoding/encoding of bytes funneled through a
 // provided blocking file descriptor.
 type BlockingCodecStream[T any] struct {
-	fd    FileDescriptor
-	codec Codec[*T]
-	src   *ByteBuffer
-	dst   *ByteBuffer
+	stream Stream
+	codec  Codec[*T]
+	src    *ByteBuffer
+	dst    *ByteBuffer
 }
 
-func NewBlockingCodecStream[T any](fd FileDescriptor, codec Codec[*T], src, dst *ByteBuffer) (*BlockingCodecStream[T], error) {
+func NewBlockingCodecStream[T any](stream Stream, codec Codec[*T], src, dst *ByteBuffer) (*BlockingCodecStream[T], error) {
 	s := &BlockingCodecStream[T]{
-		fd:    fd,
-		codec: codec,
-		src:   src,
+		stream: stream,
+		codec:  codec,
+		src:    src,
 	}
 	return s, nil
 }
@@ -49,7 +49,7 @@ func (s *BlockingCodecStream[T]) AsyncReadNext(cb func(error, *T)) {
 }
 
 func (s *BlockingCodecStream[T]) scheduleAsyncRead(cb func(error, *T)) {
-	s.src.AsyncReadFrom(s.fd, func(err error, _ int) {
+	s.src.AsyncReadFrom(s.stream, func(err error, _ int) {
 		if err != nil {
 			cb(err, nil)
 		} else {
@@ -68,7 +68,7 @@ func (s *BlockingCodecStream[T]) ReadNext() (*T, error) {
 		if frame != nil {
 			return frame, nil
 		} else {
-			_, err = s.src.ReadFrom(s.fd)
+			_, err = s.src.ReadFrom(s.stream)
 			if err != nil {
 				return nil, err
 			}
@@ -80,7 +80,7 @@ func (s *BlockingCodecStream[T]) WriteNext(frame *T) (n int, err error) {
 	err = s.codec.Encode(frame, s.dst)
 	if err == nil {
 		var nn int64
-		nn, err = s.dst.WriteTo(s.fd)
+		nn, err = s.dst.WriteTo(s.stream)
 		n = int(nn)
 	}
 	return
@@ -89,12 +89,12 @@ func (s *BlockingCodecStream[T]) WriteNext(frame *T) (n int, err error) {
 func (s *BlockingCodecStream[T]) AsyncWriteNext(frame *T, cb AsyncCallback) {
 	err := s.codec.Encode(frame, s.dst)
 	if err == nil {
-		s.dst.AsyncWriteTo(s.fd, cb)
+		s.dst.AsyncWriteTo(s.stream, cb)
 	} else {
 		cb(err, 0)
 	}
 }
 
-func (s *BlockingCodecStream[T]) NextLayer() FileDescriptor {
-	return s.fd
+func (s *BlockingCodecStream[T]) NextLayer() Stream {
+	return s.stream
 }
