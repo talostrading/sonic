@@ -77,6 +77,15 @@ func (s *WebsocketStream) DeflateSupported() bool {
 }
 
 func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
+	err = s.Flush()
+	if err == nil {
+		f, err = s.nextFrame()
+	}
+
+	return
+}
+
+func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
 	f, err = s.cs.ReadNext()
 	if err == nil && f.IsControl() {
 		err = s.handleControlFrame(f)
@@ -85,6 +94,16 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 }
 
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
+	s.AsyncFlush(func(err error) {
+		if err == nil {
+			s.asyncNextFrame(cb)
+		} else {
+			cb(err, nil)
+		}
+	})
+}
+
+func (s *WebsocketStream) asyncNextFrame(cb AsyncFrameHandler) {
 	s.cs.AsyncReadNext(func(err error, f *Frame) {
 		if err == nil && f.IsControl() {
 			err = s.handleControlFrame(f)
