@@ -137,6 +137,9 @@ type Stream interface {
 	WriteFrame(fr *Frame) error
 	AsyncWriteFrame(fr *Frame, cb func(err error))
 
+	Write(b []byte, mt MessageType) error
+	AsyncWrite(b []byte, mt MessageType, cb func(err error))
+
 	// Flush writes any pending operations such as Pong or Close.
 	Flush() error
 

@@ -225,6 +225,15 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	return
 }
 
+func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
+	f := AcquireFrame()
+	f.SetFin()
+	f.SetOpcode(Opcode(mt))
+	f.SetPayload(b)
+
+	return s.WriteFrame(f)
+}
+
 func (s *WebsocketStream) WriteFrame(f *Frame) error {
 	if s.state == StateActive {
 		s.prepareWrite(f)
@@ -232,6 +241,15 @@ func (s *WebsocketStream) WriteFrame(f *Frame) error {
 	} else {
 		return ErrSendAfterClose
 	}
+}
+
+func (s *WebsocketStream) AsyncWrite(b []byte, mt MessageType, cb func(err error)) {
+	f := AcquireFrame()
+	f.SetFin()
+	f.SetOpcode(Opcode(mt))
+	f.SetPayload(b)
+
+	s.AsyncWriteFrame(f, cb)
 }
 
 func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {

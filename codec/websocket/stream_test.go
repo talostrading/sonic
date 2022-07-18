@@ -650,6 +650,93 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 	}
 }
 
+func TestClientWrite(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock := NewMockStream()
+	ws.state = StateActive
+	ws.init(mock)
+
+	err = ws.Write([]byte{1, 2, 3, 4, 5}, TypeText)
+	if err != nil {
+		t.Fatal(err)
+	} else {
+		mock.b.Commit(mock.b.WriteLen())
+
+		f := AcquireFrame()
+		defer ReleaseFrame(f)
+
+		_, err = f.ReadFrom(mock.b)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !(f.IsFin() && f.IsMasked() && f.IsText()) {
+			t.Fatal("frame is corrupt, something went wrong with the encoder")
+		}
+
+		f.Unmask()
+
+		if !bytes.Equal(f.Payload(), []byte{1, 2, 3, 4, 5}) {
+			t.Fatal("frame payload is corrupt, something went wrong with the encoder")
+		}
+
+		if ws.state != StateActive {
+			t.Fatal("wrong state")
+		}
+	}
+}
+
+func TestClientAsyncWrite(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mock := NewMockStream()
+	ws.state = StateActive
+	ws.init(mock)
+
+	ws.AsyncWrite([]byte{1, 2, 3, 4, 5}, TypeText, func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		} else {
+			mock.b.Commit(mock.b.WriteLen())
+
+			f := AcquireFrame()
+			defer ReleaseFrame(f)
+
+			_, err = f.ReadFrom(mock.b)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if !(f.IsFin() && f.IsMasked() && f.IsText()) {
+				t.Fatal("frame is corrupt, something went wrong with the encoder")
+			}
+
+			f.Unmask()
+
+			if !bytes.Equal(f.Payload(), []byte{1, 2, 3, 4, 5}) {
+				t.Fatal("frame payload is corrupt, something went wrong with the encoder")
+			}
+
+			if ws.state != StateActive {
+				t.Fatal("wrong state")
+			}
+		}
+	})
+}
+
 func TestClientClose(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
