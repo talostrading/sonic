@@ -25,7 +25,7 @@ func NewFrameCodec(src, dst *sonic.ByteBuffer) *FrameCodec {
 	}
 }
 
-func (c *FrameCodec) tryDecodeReset() {
+func (c *FrameCodec) reset() {
 	if c.decodeReset {
 		c.decodeReset = false
 		c.src.Consume(c.decodeBytes)
@@ -51,7 +51,7 @@ func (c *FrameCodec) tryDecodeReset() {
 //	In this case we try to decode the first frame. The rest of the bytes stay
 //	in `src`. An appropriate error is returned if the frame is corrupt.
 func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
-	c.tryDecodeReset()
+	c.reset()
 
 	// read fixed size header
 	n := 2

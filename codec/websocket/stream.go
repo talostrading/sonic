@@ -121,21 +121,29 @@ func (s *WebsocketStream) NextMessage(b []byte) (MessageType, int, error) {
 }
 
 func (s *WebsocketStream) AsyncNextMessage(b []byte, cb AsyncMessageHandler) {
-	s.asyncRead(b, 0, cb)
+	s.asyncRead(b, 0, TypeNone, cb)
 }
 
-func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb AsyncMessageHandler) {
+func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb AsyncMessageHandler) {
 	s.AsyncNextFrame(func(err error, f *Frame) {
 		if err != nil {
-			cb(err, readBytes, TypeNone)
+			cb(err, readBytes, mt)
 		} else {
 			n := copy(b[readBytes:], f.Payload())
 			readBytes += n
 
+			if mt == TypeNone {
+				mt = MessageType(f.Opcode())
+			}
+
 			if n != f.PayloadLen() {
-				cb(ErrPayloadTooBig, readBytes, MessageType(f.Opcode()))
+				cb(ErrPayloadTooBig, readBytes, mt)
 			} else {
-				s.asyncRead(b, readBytes, cb)
+				if !f.IsFin() {
+					s.asyncRead(b, readBytes, mt, cb)
+				} else {
+					cb(nil, n, mt)
+				}
 			}
 		}
 	})

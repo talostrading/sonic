@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/talostrading/sonic"
@@ -54,39 +55,77 @@ func TestClientHandshake(t *testing.T) {
 	}
 }
 
-func TestReadSingleUnfragmentedMessage(t *testing.T) {
-	//ioc := sonic.MustIO()
-	//defer ioc.Close()
+func TestReadUnfragmentedMessage(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
 
-	//ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-	//if err != nil {
-	//t.Fatal(err)
-	//}
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	//// skip the handshake
-	//ws.state = StateActive
+	// Skip the handshake and the stream initialization.
+	// We put the messages in the buffer such that the codec stream
+	// does not need to do any reads.
+	ws.state = StateActive
+	ws.init(nil)
 
-	//ws.src.Write([]byte{0x81, 2, 0x01, 0x02}) // fin=true type=text payload_len=2
+	ws.src.Write([]byte{0x81, 2, 0x01, 0x02}) // fin=true type=text payload_len=2
 
-	//b := make([]byte, 128)
-	//n, err := ws.Read(b)
-	//if err != nil {
-	//t.Fatal(err)
-	//}
-	//b = b[:n]
+	b := make([]byte, 128)
+	mt, n, err := ws.NextMessage(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mt != TypeText {
+		t.Fatal("wrong message type")
+	}
+
+	b = b[:n]
+	if !bytes.Equal(b, []byte{0x01, 0x02}) {
+		t.Fatal("wrong payload")
+	}
 }
 
 func TestAsyncReadUnfragmentedMessage(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
 
-}
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-func TestReadControlMessage(t *testing.T) {
+	ws.state = StateActive
+	ws.init(nil)
 
-}
+	ws.src.Write([]byte{0x81, 2, 0x01, 0x02}) // fin=true type=text payload_len=2
 
-func TestAsyncReadControlMessage(t *testing.T) {
+	b := make([]byte, 128)
+	ran := false
+	ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
+		ran = true
+		if err != nil {
+			t.Fatal(err)
+		} else {
+			if mt != TypeText {
+				t.Fatal("wrong message type")
+			}
 
+			b = b[:n]
+			if !bytes.Equal(b, []byte{0x01, 0x02}) {
+				t.Fatal("wrong payload")
+			}
+		}
+	})
+
+	if !ran {
+		t.Fatal("async read did not run")
+	}
 }
 
 func TestReadFragmentedMessage(t *testing.T) {
+}
+
+func TestAsyncReadFragmentedMessage(t *testing.T) {
 }
