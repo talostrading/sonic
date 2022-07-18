@@ -118,6 +118,10 @@ type AsyncFrameHandler = func(err error, f *Frame)
 //
 // The interface uses the layered stream model. A WebSocket stream object contains
 // another stream object, called the "next layer", which it uses to perform IO.
+//
+// Implementations handle the replies to control frames. Before closing the stream,
+// it is important to call Flush or AsyncFlush in order to write any pending
+// control frame replies to the underlying stream.
 type Stream interface {
 	// NextLayer returns the underlying stream object.
 	//
@@ -128,22 +132,107 @@ type Stream interface {
 	// https://datatracker.ietf.org/doc/html/rfc7692
 	DeflateSupported() bool
 
+	// NextMessage reads the payload of the next message into the supplied buffer.
+	// Message fragmentation is automatically handled by the implementation.
+	//
+	// This call first flushes any pending control frames to the underlying stream.
+	//
+	// This call blocks until one of the following conditions is true:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs when reading/decoding the message bytes from the underlying stream
+	//  - the payload of the message is successfully read into the supplied buffer
 	NextMessage([]byte) (mt MessageType, n int, err error)
+
+	// NextFrame reads and returns the next frame.
+	//
+	// This call first flushes any pending control frames to the underlying stream.
+	//
+	// This call blocks until one of the following conditions is true:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs when reading/decoding the message bytes from the underlying stream
+	//  - a frame is successfully read from the underlying stream
 	NextFrame() (*Frame, error)
 
+	// AsyncNextMessage reads the payload of the next message into the supplied buffer
+	// asynchronously. Message fragmentation is automatically handled by the implementation.
+	//
+	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	//
+	// This call does not block. The provided completion handler is invoked when one of the
+	// following happens:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs when reading/decoding the message bytes from the underlying stream
+	//  - the payload of the message is successfully read into the supplied buffer
 	AsyncNextMessage([]byte, AsyncMessageHandler)
+
+	// AsyncNextFrame reads and returns the next frame asynchronously.
+	//
+	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	//
+	// This call does not block. The provided completion handler is invoked when one of the
+	// following happens:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs when reading/decoding the message bytes from the underlying stream
+	//  - a frame is successfully read from the underlying stream
 	AsyncNextFrame(AsyncFrameHandler)
 
+	// WriteFrame writes the supplied frame to the underlying stream.
+	//
+	// This call first flushes any pending control frames to the underlying stream.
+	//
+	// This call blocks until one of the following conditions is true:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs during the write
+	//  - the frame is successfully written to the underlying stream
 	WriteFrame(fr *Frame) error
+
+	// AsyncWriteFrame writes the supplied frame to the underlying stream asynchronously.
+	//
+	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	//
+	// This call does not block. The provided completion handler is invoked when one of the
+	// following happens:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs during the write
+	//  - the frame is successfully written to the underlying stream
 	AsyncWriteFrame(fr *Frame, cb func(err error))
 
+	// Write writes the supplied buffer to the underlying stream.
+	//
+	// This call first flushes any pending control frames to the underlying stream.
+	//
+	// This call blocks until one of the following conditions is true:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs during the write
+	//  - the message is successfully written to the underlying stream
+	//
+	// The message can only be written as a single frame. Fragmentation should be handled
+	// by the caller through multiple calls to WriteFrame.
 	Write(b []byte, mt MessageType) error
+
+	// AsyncWrite writes the supplied buffer with the given type to the underlying stream
+	// asynchronously.
+	//
+	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	//
+	// This call does not block. The provided completion handler is invoked when one of the
+	// following happens:
+	//  - an error occurs while flushing the pending operations
+	//  - an error occurs during the write
+	//  - the message is successfully written to the underlying stream
+	//
+	// The message can only be written as a single frame. Fragmentation should be handled
+	// by the caller through multiple calls to AsyncWriteFrame.
 	AsyncWrite(b []byte, mt MessageType, cb func(err error))
 
-	// Flush writes any pending operations such as Pong or Close.
+	// Flush writes any pending control frames to the underlying stream.
+	//
+	// This call blocks.
 	Flush() error
 
-	// Flush writes any pending operations such as Pong or Close asynchronously.
+	// Flush writes any pending control frames to the underlying stream asynchronously.
+	//
+	// This call does not block.
 	AsyncFlush(cb func(err error))
 
 	// Pending returns the number of currently pending operations.
@@ -162,7 +251,7 @@ type Stream interface {
 	// AsyncHandshake performs the WebSocket handshake asynchronously in the client role.
 	//
 	// This call does not block. The provided completion handler is called when the request is
-	// send and the response is received or when an error occurs.
+	// sent and the response is received or when an error occurs.
 	//
 	// Regardless of  whether the asynchronous operation completes immediately or not,
 	// the handler will not be invoked from within this function. Invocation of the handler

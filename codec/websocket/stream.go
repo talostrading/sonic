@@ -552,9 +552,9 @@ func (s *WebsocketStream) makeHandshakeKey() (req, res string) {
 }
 
 func (s *WebsocketStream) Accept() error {
-	return nil
+	panic("implement me")
 }
 
 func (s *WebsocketStream) AsyncAccept(func(error)) {
-
+	panic("implement me")
 }
