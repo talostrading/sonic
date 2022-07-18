@@ -4,14 +4,14 @@ import (
 	"fmt"
 
 	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/sonicwebsocket"
+	"github.com/talostrading/sonic/codec/websocket"
 )
 
 func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	client, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
+	client, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
 	if err != nil {
 		panic(err)
 	}
@@ -20,18 +20,17 @@ func main() {
 		if err != nil {
 			panic(err)
 		} else {
-			client.AsyncWrite([]byte("hello"), func(err error, n int) {
+			client.AsyncWrite([]byte("hello"), websocket.TypeText, func(err error) {
 				if err != nil {
 					panic(err)
 				} else {
-					fmt.Println("wrote", n, "bytes")
-					buf := make([]byte, 128)
-					client.AsyncReadSome(buf, func(err error, n int) {
+					b := make([]byte, 128)
+					client.AsyncNextMessage(b, func(err error, n int, mt websocket.MessageType) {
 						if err != nil {
 							panic(err)
 						} else {
-							buf = buf[:n]
-							fmt.Println("read", n, "bytes", string(buf), err)
+							b = b[:n]
+							fmt.Println("read", n, "bytes", string(b), err)
 						}
 					})
 				}
