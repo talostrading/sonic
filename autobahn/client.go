@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/sonicwebsocket"
+	"github.com/talostrading/sonic/codec/websocket"
 )
 
 var (
@@ -51,7 +51,7 @@ func getCaseCount() (n int, err error) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	s, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
+	s, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
 	if err != nil {
 		return 0, err
 	}
@@ -62,7 +62,7 @@ func getCaseCount() (n int, err error) {
 	}
 
 	b := make([]byte, 128)
-	_, n, err = s.Read(b)
+	_, n, err = s.NextMessage(b)
 	if err != nil {
 		return 0, err
 	}
@@ -78,7 +78,7 @@ func runTest(i int) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	s, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
+	s, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
 	if err != nil {
 		panic(err)
 	}
@@ -90,35 +90,33 @@ func runTest(i int) {
 		}
 
 		b := make([]byte, 128)
-		var onAsyncRead sonicwebsocket.AsyncCallback
 
-		onAsyncRead = func(err error, n int, t sonicwebsocket.MessageType) {
+		var onAsyncRead websocket.AsyncMessageHandler
+
+		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
 			if err != nil {
 				panic(err)
 			}
 
 			b = b[:n]
 
-			fmt.Println(err, n, t, string(b), s.Pending())
+			fmt.Println(err, n, mt, string(b), s.Pending())
 
-			switch t {
-			case sonicwebsocket.TypeText:
-				fr := sonicwebsocket.AcquireFrame()
+			switch mt {
+			case websocket.TypeText:
+				fr := websocket.AcquireFrame()
 				fr.SetFin()
 				fr.SetPayload(nil)
 				fr.SetText()
 
 				s.AsyncWriteFrame(fr, func(err error) {
-					sonicwebsocket.ReleaseFrame(fr)
-
 					if err != nil {
 						panic(err)
 					}
 
-					s.AsyncRead(b, onAsyncRead)
+					s.AsyncNextMessage(b, onAsyncRead)
 				})
-			case sonicwebsocket.TypeClose:
-				fmt.Println(s.State(), "READ CLOSE", len(b), n)
+			case websocket.TypeClose:
 				s.AsyncFlush(func(err error) {
 					if err != nil {
 						panic(err)
@@ -126,11 +124,11 @@ func runTest(i int) {
 				})
 				done = true
 			default:
-				panic(fmt.Errorf("unexpected frame type=%s", t))
+				panic(fmt.Errorf("unexpected frame type=%s", mt))
 			}
 		}
 
-		s.AsyncRead(b, onAsyncRead)
+		s.AsyncNextMessage(b, onAsyncRead)
 	})
 
 	for {
@@ -145,7 +143,7 @@ func updateReports() {
 	fmt.Println("updating reports")
 	ioc := sonic.MustIO()
 
-	s, err := sonicwebsocket.NewWebsocketStream(ioc, nil, sonicwebsocket.RoleClient)
+	s, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
 	if err != nil {
 		panic("could not update reports")
 	}
@@ -154,7 +152,7 @@ func updateReports() {
 		if err != nil {
 			panic("could not update reports")
 		} else {
-			s.AsyncClose(sonicwebsocket.CloseNormal, "", func(err error) {
+			s.AsyncClose(websocket.CloseNormal, "", func(err error) {
 				if err != nil {
 					panic(err)
 				} else {
