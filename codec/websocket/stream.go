@@ -77,33 +77,39 @@ func (s *WebsocketStream) DeflateSupported() bool {
 	return false
 }
 
-func (s *WebsocketStream) ReadFrame() (*Frame, error) {
+func (s *WebsocketStream) NextFrame() (*Frame, error) {
 	f, err := s.cs.ReadNext()
 	s.lastFrame = f
 	return f, err
 }
 
-func (s *WebsocketStream) AsyncReadFrame(cb func(error, *Frame)) {
+func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 	s.cs.AsyncReadNext(func(err error, f *Frame) {
 		s.lastFrame = f
 		cb(err, f)
 	})
 }
 
-func (s *WebsocketStream) Read(b []byte) (int, error) {
+func (s *WebsocketStream) NextMessage(b []byte) (MessageType, int, error) {
 	readBytes := 0
 
+	mt := TypeNone
+
 	for {
-		f, err := s.ReadFrame()
+		f, err := s.NextFrame()
 		if err != nil {
-			return readBytes, err
+			return mt, readBytes, err
 		}
 
 		n := copy(b[readBytes:], f.Payload())
 		readBytes += n
 
+		if mt == TypeNone {
+			mt = MessageType(f.Opcode())
+		}
+
 		if n != f.PayloadLen() {
-			return readBytes, ErrPayloadTooBig
+			return mt, readBytes, ErrPayloadTooBig
 		}
 
 		if f.IsFin() {
@@ -111,23 +117,23 @@ func (s *WebsocketStream) Read(b []byte) (int, error) {
 		}
 	}
 
-	return readBytes, nil
+	return mt, readBytes, nil
 }
 
-func (s *WebsocketStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+func (s *WebsocketStream) AsyncNextMessage(b []byte, cb AsyncMessageHandler) {
 	s.asyncRead(b, 0, cb)
 }
 
-func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb sonic.AsyncCallback) {
-	s.AsyncReadFrame(func(err error, f *Frame) {
+func (s *WebsocketStream) asyncRead(b []byte, readBytes int, cb AsyncMessageHandler) {
+	s.AsyncNextFrame(func(err error, f *Frame) {
 		if err != nil {
-			cb(err, readBytes)
+			cb(err, readBytes, TypeNone)
 		} else {
 			n := copy(b[readBytes:], f.Payload())
 			readBytes += n
 
 			if n != f.PayloadLen() {
-				cb(ErrPayloadTooBig, readBytes)
+				cb(ErrPayloadTooBig, readBytes, MessageType(f.Opcode()))
 			} else {
 				s.asyncRead(b, readBytes, cb)
 			}

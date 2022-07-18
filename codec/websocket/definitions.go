@@ -42,6 +42,8 @@ const (
 	TypeClose  = MessageType(OpcodeClose)
 	TypePing   = MessageType(OpcodePing)
 	TypePong   = MessageType(OpcodePong)
+
+	TypeNone MessageType = 0xFF
 )
 
 func (t MessageType) String() string {
@@ -91,6 +93,9 @@ func (s StreamState) String() string {
 	}
 }
 
+type AsyncMessageHandler = func(err error, n int, mt MessageType)
+type AsyncFrameHandler = func(err error, f *Frame)
+
 // Stream is an interface for representing a stateful WebSocket connection
 // on the server or client side.
 //
@@ -106,11 +111,11 @@ type Stream interface {
 	// https://datatracker.ietf.org/doc/html/rfc7692
 	DeflateSupported() bool
 
-	Read([]byte) (int, error)
-	ReadFrame() (*Frame, error)
+	NextMessage([]byte) (mt MessageType, n int, err error)
+	NextFrame() (*Frame, error)
 
-	AsyncRead([]byte, sonic.AsyncCallback)
-	AsyncReadFrame(func(error, *Frame))
+	AsyncNextMessage([]byte, AsyncMessageHandler)
+	AsyncNextFrame(AsyncFrameHandler)
 
 	WriteFrame(fr *Frame) (int, error)
 	AsyncWriteFrame(fr *Frame, cb sonic.AsyncCallback)
@@ -188,7 +193,4 @@ type Stream interface {
 	// pings, or pongs. Instead, the program should continue reading message data until
 	// an error occurs.
 	Close(cc CloseCode, reason string) error
-
-	// GotType returns the type of the last read message.
-	GotType() MessageType
 }
