@@ -9,7 +9,7 @@ import (
 	"net/http/httputil"
 
 	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/sonichttp"
+	sonichttp "github.com/talostrading/sonic/codec/http"
 )
 
 var (

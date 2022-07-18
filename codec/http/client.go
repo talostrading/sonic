@@ -1,4 +1,4 @@
-package sonichttp
+package http
 
 import (
 	"bufio"
