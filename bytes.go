@@ -185,9 +185,25 @@ func (b *ByteBuffer) WriteString(s string) (int, error) {
 
 // WriteTo consumes and writes the bytes from the read area to the provided writer.
 func (b *ByteBuffer) WriteTo(w io.Writer) (int64, error) {
-	n, err := w.Write(b.data[:b.ri])
-	b.Consume(n)
-	return int64(n), err
+	var (
+		n            int
+		err          error
+		writtenBytes = 0
+	)
+
+	for {
+		if writtenBytes >= b.ri {
+			break
+		}
+
+		n, err = w.Write(b.data[writtenBytes:b.ri])
+		writtenBytes += n
+		if err != nil {
+			break
+		}
+	}
+	b.Consume(writtenBytes)
+	return int64(writtenBytes), err
 }
 
 // WriteTo writes the bytes from the read area to the provided writer asynchronously.

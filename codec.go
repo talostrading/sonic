@@ -31,6 +31,7 @@ func NewBlockingCodecStream[T any](stream Stream, codec Codec[*T], src, dst *Byt
 		stream: stream,
 		codec:  codec,
 		src:    src,
+		dst:    dst,
 	}
 	return s, nil
 }
