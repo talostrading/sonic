@@ -125,7 +125,73 @@ func TestAsyncReadUnfragmentedMessage(t *testing.T) {
 }
 
 func TestReadFragmentedMessage(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ws.state = StateActive
+	ws.init(nil)
+
+	ws.src.Write([]byte{
+		0x01, 2, 0x01, 0x02, // fin=false, type=text, payload_len=2
+		0x80, 2, 0x03, 0x04, // fin=true, type=continuation payload_len=2
+	})
+
+	b := make([]byte, 128)
+	mt, n, err := ws.NextMessage(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mt != TypeText {
+		t.Fatal("wrong message type")
+	}
+
+	b = b[:n]
+	if !bytes.Equal(b, []byte{0x01, 0x02, 0x03, 0x04}) {
+		t.Fatal("wrong payload")
+	}
 }
 
 func TestAsyncReadFragmentedMessage(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ws.state = StateActive
+	ws.init(nil)
+
+	ws.src.Write([]byte{
+		0x01, 2, 0x01, 0x02, // fin=false, type=text, payload_len=2
+		0x80, 2, 0x03, 0x04, // fin=true, type=continuation payload_len=2
+	})
+
+	b := make([]byte, 128)
+	ran := false
+	ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
+		ran = true
+		if err != nil {
+			t.Fatal(err)
+		} else {
+			if mt != TypeText {
+				t.Fatal("wrong message type")
+			}
+
+			b = b[:n]
+			if !bytes.Equal(b, []byte{0x01, 0x02, 0x03, 0x04}) {
+				t.Fatal("wrong payload")
+			}
+		}
+	})
+
+	if !ran {
+		t.Fatal("async read did not run")
+	}
 }

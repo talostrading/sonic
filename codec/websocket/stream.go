@@ -142,7 +142,7 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 				if !f.IsFin() {
 					s.asyncRead(b, readBytes, mt, cb)
 				} else {
-					cb(nil, n, mt)
+					cb(nil, readBytes, mt)
 				}
 			}
 		}
