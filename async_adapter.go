@@ -211,6 +211,11 @@ func (a *AsyncAdapter) Close() error {
 	return syscall.Close(a.fd)
 }
 
+func (a *AsyncAdapter) AsyncClose(cb func(err error)) {
+	err := a.Close()
+	cb(err)
+}
+
 func (a *AsyncAdapter) Closed() bool {
 	return atomic.LoadUint32(&a.closed) == 1
 }

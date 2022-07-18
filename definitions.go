@@ -65,33 +65,21 @@ type AsyncWriterTo interface {
 	AsyncWriteTo(AsyncWriter, AsyncCallback)
 }
 
-// AsyncCloser is the interface that wraps the AsyncClose methods.
-type AsyncCloser interface {
-	// AsyncClose closes the underlying data stream asynchronously.
-	//
-	// This call does not block. If the close is successful, a nil
-	// error should be provided.
-	//
-	// The behaviour of AsyncClose after the first call is undefined.
-	// Specific implementations may document their own behaviour.
-	AsyncClose(cb func(err error))
-}
-
 type FileDescriptor interface {
 	io.Closer
 	io.ReadWriter
 	AsyncReadWriter
-
-	// Closed returns true if the underlying file descriptor is closed.
-	Closed() bool
-
-	// Cancel cancells all asynchronous operations on the file descriptor.
-	Cancel()
+	AsyncCanceller
 }
 
 type File interface {
 	FileDescriptor
 	io.Seeker
+}
+
+type AsyncCanceller interface {
+	// Cancel cancells all asynchronous operations on the next layer.
+	Cancel()
 }
 
 // Stream represents a full-duplex connection between two processes,
@@ -100,13 +88,6 @@ type File interface {
 type Stream interface {
 	AsyncStream
 	SyncStream
-	io.Closer
-
-	// Cancel cancells all asynchronous operations on the stream.
-	Cancel()
-
-	// Closed returns true if the underlying file descriptor is closed.
-	Closed() bool
 }
 
 type AsyncStream interface {
@@ -116,23 +97,28 @@ type AsyncStream interface {
 
 type AsyncReadStream interface {
 	AsyncReader
+	AsyncCanceller
 }
 
 type AsyncWriteStream interface {
 	AsyncWriter
+	AsyncCanceller
 }
 
 type SyncStream interface {
 	SyncReadStream
 	SyncWriteStream
+	io.Closer
 }
 
 type SyncReadStream interface {
 	io.Reader
+	io.Closer
 }
 
 type SyncWriteStream interface {
 	io.Writer
+	io.Closer
 }
 
 // Conn is a generic stream-oriented network connection.
