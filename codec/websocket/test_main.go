@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"sync"
+
+	"github.com/talostrading/sonic"
 )
 
 // MockServer is a server which can be used to test the WebSocket client.
@@ -95,4 +97,59 @@ func (s *MockServer) Close() {
 
 func (s *MockServer) IsClosed() bool {
 	return s.closed
+}
+
+var _ sonic.Stream = &MockStream{}
+
+// MockStream is a stream that's not attached to any operating system IO object.
+// It is used to test WebSocket servers and clients.
+type MockStream struct {
+	b *sonic.ByteBuffer
+}
+
+func NewMockStream() *MockStream {
+	s := &MockStream{
+		b: sonic.NewByteBuffer(),
+	}
+	return s
+}
+
+func (s *MockStream) Read(b []byte) (n int, err error) {
+	return s.b.Read(b)
+}
+
+func (s *MockStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+	n, err := s.b.Read(b)
+	cb(err, n)
+}
+
+func (s *MockStream) AsyncReadAll(b []byte, cb sonic.AsyncCallback) {
+	n, err := s.b.Read(b)
+	cb(err, n)
+}
+
+func (s *MockStream) Write(b []byte) (n int, err error) {
+	return s.b.Write(b)
+}
+
+func (s *MockStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
+	n, err := s.b.Write(b)
+	cb(err, n)
+}
+
+func (s *MockStream) AsyncWriteAll(b []byte, cb sonic.AsyncCallback) {
+	n, err := s.b.Write(b)
+	cb(err, n)
+}
+
+func (s *MockStream) Cancel() {
+
+}
+
+func (s *MockStream) AsyncClose(cb func(err error)) {
+
+}
+
+func (s *MockStream) Close() error {
+	return nil
 }

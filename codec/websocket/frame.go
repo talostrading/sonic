@@ -21,7 +21,7 @@ func NewFrame() *Frame {
 	f := &Frame{
 		header:  make([]byte, 10),
 		mask:    make([]byte, 4),
-		payload: make([]byte, 1024),
+		payload: make([]byte, 0, 1024),
 	}
 	return f
 }

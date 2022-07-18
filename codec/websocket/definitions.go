@@ -11,6 +11,7 @@ var (
 	ErrWrongHandshakeRole  = errors.New("wrong role when initiating/accepting the handshake")
 	ErrCannotUpgrade       = errors.New("cannot upgrade connection to WebSocket")
 	ErrInvalidControlFrame = errors.New("invalid control frame")
+	ErrSendAfterClose      = errors.New("sending on a closed stream")
 )
 
 const (
@@ -67,12 +68,27 @@ func (t MessageType) String() string {
 type StreamState uint8
 
 const (
-	StateHandshake    StreamState = iota // (start state) the handshake is ongoing
-	StateActive                          // (intermediate state) connection is active
-	StateClosedByUs                      // (intermediate state) we initiated the close handshake
-	StateClosedByPeer                    // (terminal state) the peer initiated the close handshake
-	StateCloseAcked                      // (terminal state) the peer replied to our close handshake
-	StateTerminated                      // (terminal state) the connection is closed
+	// start state - handshake is ongoing.
+	StateHandshake StreamState = iota
+
+	// intermediate state - connection is active
+	StateActive
+
+	// intermediate state - we initiated the close handshake and
+	// are waiting for a reply from the peer.
+	StateClosedByUs
+
+	// terminal state - the peer initiated the close handshake,
+	// we received a close frame and immediately replied.
+	StateClosedByPeer
+
+	// terminal state - the peer replied to our close handshake.
+	// Can only end up here from StateClosedByUs.
+	StateCloseAcked
+
+	// terminal state - the connection is closed or some error
+	// occurred which rendered the stream unusable.
+	StateTerminated
 )
 
 func (s StreamState) String() string {
@@ -118,8 +134,8 @@ type Stream interface {
 	AsyncNextMessage([]byte, AsyncMessageHandler)
 	AsyncNextFrame(AsyncFrameHandler)
 
-	WriteFrame(fr *Frame) (int, error)
-	AsyncWriteFrame(fr *Frame, cb sonic.AsyncCallback)
+	WriteFrame(fr *Frame) error
+	AsyncWriteFrame(fr *Frame, cb func(err error))
 
 	// Flush writes any pending operations such as Pong or Close.
 	Flush() error

@@ -25,7 +25,7 @@ func NewFrameCodec(src, dst *sonic.ByteBuffer) *FrameCodec {
 	}
 }
 
-func (c *FrameCodec) reset() {
+func (c *FrameCodec) resetDecode() {
 	if c.decodeReset {
 		c.decodeReset = false
 		c.src.Consume(c.decodeBytes)
@@ -51,7 +51,7 @@ func (c *FrameCodec) reset() {
 //	In this case we try to decode the first frame. The rest of the bytes stay
 //	in `src`. An appropriate error is returned if the frame is corrupt.
 func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
-	c.reset()
+	c.resetDecode()
 
 	// read fixed size header
 	n := 2
@@ -99,5 +99,10 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 
 // Encode encodes the frame and place the raw bytes into `dst`.
 func (c *FrameCodec) Encode(fr *Frame, dst *sonic.ByteBuffer) error {
-	return nil
+	n, err := fr.WriteTo(dst)
+	dst.Commit(int(n))
+	if err != nil {
+		dst.Consume(int(n))
+	}
+	return err
 }

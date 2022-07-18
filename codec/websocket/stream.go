@@ -16,6 +16,7 @@ import (
 	"syscall"
 
 	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 var _ Stream = &WebsocketStream{}
@@ -75,12 +76,21 @@ func (s *WebsocketStream) DeflateSupported() bool {
 	return false
 }
 
-func (s *WebsocketStream) NextFrame() (*Frame, error) {
-	return s.cs.ReadNext()
+func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
+	f, err = s.cs.ReadNext()
+	if err == nil && f.IsControl() {
+		err = s.handleControlFrame(f)
+	}
+	return
 }
 
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
-	s.cs.AsyncReadNext(cb)
+	s.cs.AsyncReadNext(func(err error, f *Frame) {
+		if err == nil && f.IsControl() {
+			err = s.handleControlFrame(f)
+		}
+		cb(err, f)
+	})
 }
 
 func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, err error) {
@@ -99,10 +109,6 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 
 			if n != f.PayloadLen() {
 				err = ErrPayloadTooBig
-			}
-
-			if err == nil && f.IsControl() {
-				err = s.handleControlFrame(f)
 			}
 		}
 
@@ -130,10 +136,6 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 
 			if n != f.PayloadLen() {
 				err = ErrPayloadTooBig
-			}
-
-			if err == nil && f.IsControl() {
-				err = s.handleControlFrame(f)
 			}
 		}
 
@@ -191,7 +193,7 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 			}
 			s.pending = append(s.pending, closeFrame)
 		case StateClosedByPeer, StateCloseAcked:
-			// ignore as we already closed
+			// ignore
 		case StateClosedByUs:
 			// we received a reply from the peer
 			s.state = StateCloseAcked
@@ -204,12 +206,69 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	return
 }
 
-func (s *WebsocketStream) WriteFrame(f *Frame) (n int, err error) {
-	return s.cs.WriteNext(f)
+func (s *WebsocketStream) WriteFrame(f *Frame) error {
+	if s.state == StateActive {
+		s.prepareWrite(f)
+		return s.Flush()
+	} else {
+		return ErrSendAfterClose
+	}
 }
 
-func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb sonic.AsyncCallback) {
-	s.cs.AsyncWriteNext(f, cb)
+func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {
+	if s.state == StateActive {
+		s.prepareWrite(f)
+		s.AsyncFlush(cb)
+	} else {
+		cb(ErrSendAfterClose)
+	}
+}
+
+func (s *WebsocketStream) prepareWrite(f *Frame) {
+	switch s.role {
+	case RoleClient:
+		if !f.IsMasked() {
+			f.Mask()
+		}
+	case RoleServer:
+		if f.IsMasked() {
+			f.Unmask()
+		}
+	}
+
+	s.pending = append(s.pending, f)
+}
+
+func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
+	if s.state == StateActive {
+		s.prepareClose(cc, reason)
+		s.AsyncFlush(cb)
+	} else {
+		cb(sonicerrors.ErrCancelled)
+	}
+}
+
+func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
+	if s.state == StateActive {
+		s.prepareClose(cc, reason)
+		return s.Flush()
+	} else {
+		return sonicerrors.ErrCancelled
+	}
+}
+
+func (s *WebsocketStream) prepareClose(cc CloseCode, reason string) {
+	s.state = StateClosedByUs
+
+	closeFrame := AcquireFrame()
+	closeFrame.SetFin()
+	closeFrame.SetClose()
+	closeFrame.SetPayload(EncodeCloseFramePayload(cc, reason))
+	if s.role == RoleClient {
+		closeFrame.Mask()
+	}
+
+	s.pending = append(s.pending, closeFrame)
 }
 
 func (s *WebsocketStream) handle(fr *Frame) (n int, err error) {
@@ -218,12 +277,13 @@ func (s *WebsocketStream) handle(fr *Frame) (n int, err error) {
 
 func (s *WebsocketStream) Flush() (err error) {
 	flushed := 0
-	for _, frame := range s.pending {
-		_, err = s.cs.WriteNext(frame)
+	for i := 0; i < len(s.pending); i++ {
+		_, err = s.cs.WriteNext(s.pending[i])
 		if err != nil {
 			break
 		}
-		flushed++
+		ReleaseFrame(s.pending[i])
+		flushed = i
 	}
 	s.pending = s.pending[flushed:]
 	return
@@ -243,6 +303,7 @@ func (s *WebsocketStream) asyncFlush(flushed int, cb func(err error)) {
 				s.pending = s.pending[flushed:]
 				cb(err)
 			} else {
+				ReleaseFrame(s.pending[flushed])
 				s.asyncFlush(flushed+1, cb)
 			}
 		})
@@ -459,12 +520,4 @@ func (s *WebsocketStream) Accept() error {
 
 func (s *WebsocketStream) AsyncAccept(func(error)) {
 
-}
-
-func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
-
-}
-
-func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
-	return nil
 }
