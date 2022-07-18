@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/binary"
 	"net/http"
 	"strings"
 )
@@ -117,6 +118,16 @@ const (
 	// This code is reserved and may not be sent.
 	CloseReserved3 CloseCode = 1015
 )
+
+func EncodeCloseCode(cc CloseCode) []byte {
+	b := make([]byte, 2)
+	binary.BigEndian.PutUint16(b, uint16(cc))
+	return b
+}
+
+func DecodeCloseCode(b []byte) CloseCode {
+	return CloseCode(binary.BigEndian.Uint16(b[:2]))
+}
 
 type Opcode uint8
 

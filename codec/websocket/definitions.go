@@ -7,9 +7,10 @@ import (
 )
 
 var (
-	ErrPayloadTooBig      = errors.New("frame payload too big")
-	ErrWrongHandshakeRole = errors.New("wrong role when initiating/accepting the handshake")
-	ErrCannotUpgrade      = errors.New("cannot upgrade connection to WebSocket")
+	ErrPayloadTooBig       = errors.New("frame payload too big")
+	ErrWrongHandshakeRole  = errors.New("wrong role when initiating/accepting the handshake")
+	ErrCannotUpgrade       = errors.New("cannot upgrade connection to WebSocket")
+	ErrInvalidControlFrame = errors.New("invalid control frame")
 )
 
 const (
@@ -66,12 +67,12 @@ func (t MessageType) String() string {
 type StreamState uint8
 
 const (
-	StateHandshake    StreamState = iota // the handshake is ongoing
-	StateActive                          // connection is active
-	StateClosedByUs                      // we initiated the close handshake
-	StateClosedByPeer                    // the peer initiated the close handshake
-	StateCloseAcked                      // the peer replied to our close handshake
-	StateTerminated                      // the connection is closed
+	StateHandshake    StreamState = iota // (start state) the handshake is ongoing
+	StateActive                          // (intermediate state) connection is active
+	StateClosedByUs                      // (intermediate state) we initiated the close handshake
+	StateClosedByPeer                    // (terminal state) the peer initiated the close handshake
+	StateCloseAcked                      // (terminal state) the peer replied to our close handshake
+	StateTerminated                      // (terminal state) the connection is closed
 )
 
 func (s StreamState) String() string {

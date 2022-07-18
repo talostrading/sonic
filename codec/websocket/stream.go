@@ -37,8 +37,6 @@ type WebsocketStream struct {
 
 	hb []byte // handshake buffer - the handshake response is read into this buffer
 
-	lastFrame *Frame
-
 	stream sonic.Stream
 	cs     *sonic.BlockingCodecStream[Frame]
 }
@@ -78,57 +76,20 @@ func (s *WebsocketStream) DeflateSupported() bool {
 }
 
 func (s *WebsocketStream) NextFrame() (*Frame, error) {
-	f, err := s.cs.ReadNext()
-	s.lastFrame = f
-	return f, err
+	return s.cs.ReadNext()
 }
 
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
-	s.cs.AsyncReadNext(func(err error, f *Frame) {
-		s.lastFrame = f
-		cb(err, f)
-	})
+	s.cs.AsyncReadNext(cb)
 }
 
-func (s *WebsocketStream) NextMessage(b []byte) (MessageType, int, error) {
-	readBytes := 0
-
-	mt := TypeNone
+func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, err error) {
+	var f *Frame
+	mt = TypeNone
 
 	for {
-		f, err := s.NextFrame()
-		if err != nil {
-			return mt, readBytes, err
-		}
-
-		n := copy(b[readBytes:], f.Payload())
-		readBytes += n
-
-		if mt == TypeNone {
-			mt = MessageType(f.Opcode())
-		}
-
-		if n != f.PayloadLen() {
-			return mt, readBytes, ErrPayloadTooBig
-		}
-
-		if f.IsFin() {
-			break
-		}
-	}
-
-	return mt, readBytes, nil
-}
-
-func (s *WebsocketStream) AsyncNextMessage(b []byte, cb AsyncMessageHandler) {
-	s.asyncRead(b, 0, TypeNone, cb)
-}
-
-func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb AsyncMessageHandler) {
-	s.AsyncNextFrame(func(err error, f *Frame) {
-		if err != nil {
-			cb(err, readBytes, mt)
-		} else {
+		f, err = s.NextFrame()
+		if err == nil {
 			n := copy(b[readBytes:], f.Payload())
 			readBytes += n
 
@@ -137,16 +98,110 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 			}
 
 			if n != f.PayloadLen() {
-				cb(ErrPayloadTooBig, readBytes, mt)
-			} else {
-				if !f.IsFin() {
-					s.asyncRead(b, readBytes, mt, cb)
-				} else {
-					cb(nil, readBytes, mt)
-				}
+				err = ErrPayloadTooBig
+			}
+
+			if err == nil && f.IsControl() {
+				err = s.handleControlFrame(f)
 			}
 		}
+
+		if err != nil || f.IsFin() {
+			break
+		}
+	}
+
+	return
+}
+
+func (s *WebsocketStream) AsyncNextMessage(b []byte, cb AsyncMessageHandler) {
+	s.asyncRead(b, 0, TypeNone, cb)
+}
+
+func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb AsyncMessageHandler) {
+	s.AsyncNextFrame(func(err error, f *Frame) {
+		if err == nil {
+			n := copy(b[readBytes:], f.Payload())
+			readBytes += n
+
+			if mt == TypeNone {
+				mt = MessageType(f.Opcode())
+			}
+
+			if n != f.PayloadLen() {
+				err = ErrPayloadTooBig
+			}
+
+			if err == nil && f.IsControl() {
+				err = s.handleControlFrame(f)
+			}
+		}
+
+		if err != nil || f.IsFin() {
+			cb(err, readBytes, mt)
+		} else {
+			s.asyncRead(b, readBytes, mt, cb)
+		}
 	})
+}
+
+func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
+	if !f.IsFin() {
+		return ErrInvalidControlFrame
+	}
+
+	if s.role == RoleClient && f.IsMasked() {
+		// must not receive masked frames from server
+		return ErrInvalidControlFrame
+	}
+
+	if s.role == RoleServer && !f.IsMasked() {
+		// must receive masked frames from client
+		return ErrInvalidControlFrame
+	}
+
+	switch f.Opcode() {
+	case OpcodePing:
+		if s.state == StateActive {
+			pongFrame := AcquireFrame()
+			pongFrame.SetFin()
+			pongFrame.SetPong()
+			pongFrame.SetPayload(f.payload)
+			if s.role == RoleClient {
+				pongFrame.Mask()
+			}
+			s.pending = append(s.pending, pongFrame)
+		}
+	case OpcodePong:
+	case OpcodeClose:
+		switch s.state {
+		case StateHandshake:
+			panic("unreachable")
+		case StateActive:
+			// the peer closed the connection so we reply with the same
+			// close frame
+			s.state = StateClosedByPeer
+
+			closeFrame := AcquireFrame()
+			closeFrame.SetFin()
+			closeFrame.SetClose()
+			closeFrame.SetPayload(f.payload)
+			if s.role == RoleClient {
+				closeFrame.Mask()
+			}
+			s.pending = append(s.pending, closeFrame)
+		case StateClosedByPeer, StateCloseAcked:
+			// ignore as we already closed
+		case StateClosedByUs:
+			// we received a reply from the peer
+			s.state = StateCloseAcked
+		case StateTerminated:
+			panic("unreachable")
+		}
+	default:
+		err = ErrInvalidControlFrame
+	}
+	return
 }
 
 func (s *WebsocketStream) WriteFrame(f *Frame) (n int, err error) {
@@ -161,12 +216,37 @@ func (s *WebsocketStream) handle(fr *Frame) (n int, err error) {
 	return
 }
 
-func (s *WebsocketStream) Flush() error {
-	return nil
+func (s *WebsocketStream) Flush() (err error) {
+	flushed := 0
+	for _, frame := range s.pending {
+		_, err = s.cs.WriteNext(frame)
+		if err != nil {
+			break
+		}
+		flushed++
+	}
+	s.pending = s.pending[flushed:]
+	return
 }
 
 func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
+	s.asyncFlush(0, cb)
+}
 
+func (s *WebsocketStream) asyncFlush(flushed int, cb func(err error)) {
+	if flushed >= len(s.pending) {
+		s.pending = s.pending[:0]
+		cb(nil)
+	} else {
+		s.cs.AsyncWriteNext(s.pending[flushed], func(err error, _ int) {
+			if err != nil {
+				s.pending = s.pending[flushed:]
+				cb(err)
+			} else {
+				s.asyncFlush(flushed+1, cb)
+			}
+		})
+	}
 }
 
 func (s *WebsocketStream) Pending() int {
@@ -387,8 +467,4 @@ func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err er
 
 func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 	return nil
-}
-
-func (s *WebsocketStream) GotType() MessageType {
-	return MessageType(s.lastFrame.Opcode())
 }

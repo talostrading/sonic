@@ -31,3 +31,15 @@ func makeResponseKey(reqKey []byte) string {
 	hasher.Write(resKey)
 	return base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 }
+
+func EncodeCloseFramePayload(cc CloseCode, reason string) []byte {
+	b := EncodeCloseCode(cc)
+	b = append(b, []byte(reason)...)
+	return b
+}
+
+func DecodeCloseFramePayload(b []byte) (cc CloseCode, reason string) {
+	cc = DecodeCloseCode(b[:2])
+	reason = string(b[2:])
+	return
+}
