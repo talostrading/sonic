@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"hash"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -104,11 +105,15 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	err = s.Flush()
 	if err == nil && !s.canRead() {
 		s.state = StateTerminated
-		err = sonicerrors.ErrCancelled
+		err = io.EOF
 	}
 
 	if err == nil {
 		f, err = s.nextFrame()
+	}
+
+	if err == io.EOF {
+		s.state = StateTerminated
 	}
 
 	return
@@ -126,7 +131,7 @@ func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 	s.AsyncFlush(func(err error) {
 		if err == nil && !s.canRead() {
 			s.state = StateTerminated
-			err = sonicerrors.ErrCancelled
+			err = io.EOF
 		}
 
 		if err == nil {
@@ -141,32 +146,49 @@ func (s *WebsocketStream) asyncNextFrame(cb AsyncFrameHandler) {
 	s.cs.AsyncReadNext(func(err error, f *Frame) {
 		if err == nil {
 			err = s.handleFrame(f)
+		} else if err == io.EOF {
+			s.state = StateTerminated
 		}
 		cb(err, f)
 	})
 }
 
 func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, err error) {
-	var f *Frame
+	var (
+		f            *Frame
+		continuation = false
+	)
+
 	mt = TypeNone
 
 	for {
 		f, err = s.NextFrame()
-		if err == nil {
-			n := copy(b[readBytes:], f.Payload())
-			readBytes += n
+		fmt.Println("calling", err, f)
+		if err != nil {
+			return mt, readBytes, err
+		}
 
+		if f.IsControl() {
+			fmt.Println("is control", err)
+			if s.ccb != nil {
+				s.ccb(MessageType(f.Opcode()), f.payload)
+			}
+		} else {
 			if mt == TypeNone {
 				mt = MessageType(f.Opcode())
 			}
 
+			n := copy(b[readBytes:], f.Payload())
+			readBytes += n
+
 			if n != f.PayloadLen() {
 				err = ErrPayloadTooBig
 			}
-		}
 
-		if err != nil || f.IsFin() {
-			break
+			continuation = !f.IsFin()
+			if err != nil || !continuation {
+				break
+			}
 		}
 	}
 
@@ -368,20 +390,26 @@ func (s *WebsocketStream) prepareWrite(f *Frame) {
 }
 
 func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
-	if s.state == StateActive {
+	switch s.state {
+	case StateActive:
 		s.prepareClose(cc, reason)
 		s.AsyncFlush(cb)
-	} else {
+	case StateClosedByUs, StateHandshake:
 		cb(sonicerrors.ErrCancelled)
+	default:
+		cb(io.EOF)
 	}
 }
 
 func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
-	if s.state == StateActive {
+	switch s.state {
+	case StateActive:
 		s.prepareClose(cc, reason)
 		return s.Flush()
-	} else {
+	case StateClosedByUs, StateHandshake:
 		return sonicerrors.ErrCancelled
+	default:
+		return io.EOF
 	}
 }
 

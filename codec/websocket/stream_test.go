@@ -3,6 +3,7 @@ package websocket
 import (
 	"bytes"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/talostrading/sonic"
@@ -86,6 +87,10 @@ func TestClientReadUnfragmentedMessage(t *testing.T) {
 	if !bytes.Equal(b, []byte{0x01, 0x02}) {
 		t.Fatal("wrong payload")
 	}
+
+	if ws.state != StateActive {
+		t.Fatal("invalid state")
+	}
 }
 
 func TestClientAsyncReadUnfragmentedMessage(t *testing.T) {
@@ -123,6 +128,10 @@ func TestClientAsyncReadUnfragmentedMessage(t *testing.T) {
 	if !ran {
 		t.Fatal("async read did not run")
 	}
+
+	if ws.state != StateActive {
+		t.Fatal("invalid state")
+	}
 }
 
 func TestClientReadFragmentedMessage(t *testing.T) {
@@ -154,6 +163,10 @@ func TestClientReadFragmentedMessage(t *testing.T) {
 	b = b[:n]
 	if !bytes.Equal(b, []byte{0x01, 0x02, 0x03, 0x04}) {
 		t.Fatal("wrong payload")
+	}
+
+	if ws.state != StateActive {
+		t.Fatal("invalid state")
 	}
 }
 
@@ -195,6 +208,10 @@ func TestClientAsyncReadFragmentedMessage(t *testing.T) {
 	if !ran {
 		t.Fatal("async read did not run")
 	}
+
+	if ws.state != StateActive {
+		t.Fatal("invalid state")
+	}
 }
 
 func TestClientReadCorruptControlFrame(t *testing.T) {
@@ -224,8 +241,17 @@ func TestClientReadCorruptControlFrame(t *testing.T) {
 		t.Fatal("should have reported corrupt frame")
 	}
 
-	if ws.Pending() != 0 {
-		t.Fatal("should have no pending operations")
+	if ws.Pending() != 1 {
+		t.Fatal("should have one pending operation")
+	}
+
+	if ws.state != StateActive {
+		t.Fatal("invalid state")
+	}
+
+	cc, _ := DecodeCloseFramePayload(ws.pending[0].payload)
+	if cc != CloseProtocolError {
+		t.Fatal("should have closed with protocol error")
 	}
 }
 
@@ -257,8 +283,18 @@ func TestClientAsyncReadCorruptControlFrame(t *testing.T) {
 			t.Fatal("should have reported corrupt frame")
 		}
 
-		if ws.Pending() != 0 {
-			t.Fatal("should have no pending operations")
+		// we should be notifying the server that it violated the protocol
+		if ws.Pending() != 1 {
+			t.Fatal("should have one pending operation")
+		}
+
+		if ws.state != StateActive {
+			t.Fatal("invalid state")
+		}
+
+		cc, _ := DecodeCloseFramePayload(ws.pending[0].payload)
+		if cc != CloseProtocolError {
+			t.Fatal("should have closed with protocol error")
 		}
 	})
 
@@ -277,72 +313,23 @@ func TestClientReadPingFrame(t *testing.T) {
 	}
 
 	ws.state = StateActive
-	ws.init(nil)
+	mock := NewMockStream()
+	ws.init(mock)
 
 	ws.src.Write([]byte{
 		byte(OpcodePing) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
 	})
 
-	b := make([]byte, 128)
-	mt, n, err := ws.NextMessage(b)
-	b = b[:n]
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mt != TypePing {
-		t.Fatal("wrong message type", mt)
-	}
-	if ws.Pending() != 1 {
-		t.Fatal("should have a pending pong")
-	}
-	if !bytes.Equal(b, []byte{0x01, 0x02}) {
-		t.Fatal("invalid payload")
-	}
+	invoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		invoked = true
 
-	reply := ws.pending[0]
-	if !(reply.IsPong() && reply.IsMasked()) {
-		t.Fatal("invalid pong reply")
-	}
-
-	reply.Unmask()
-	if !bytes.Equal(reply.Payload(), []byte{0x01, 0x02}) {
-		t.Fatal("invalid pong reply")
-	}
-}
-
-func TestClientAsyncReadPingFrame(t *testing.T) {
-	ioc := sonic.MustIO()
-	defer ioc.Close()
-
-	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ws.state = StateActive
-	ws.init(nil)
-
-	ws.src.Write([]byte{
-		byte(OpcodePing) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
-	})
-
-	b := make([]byte, 128)
-	ran := false
-	ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
-		ran = true
-
-		b = b[:n]
-		if err != nil {
-			t.Fatal(err)
+		if !(mt == TypePing && bytes.Equal(b, []byte{1, 2})) {
+			t.Fatal("invalid ping")
 		}
-		if mt != TypePing {
-			t.Fatal("wrong message type", mt)
-		}
+
 		if ws.Pending() != 1 {
 			t.Fatal("should have a pending pong")
-		}
-		if !bytes.Equal(b, []byte{0x01, 0x02}) {
-			t.Fatal("invalid payload")
 		}
 
 		reply := ws.pending[0]
@@ -356,8 +343,80 @@ func TestClientAsyncReadPingFrame(t *testing.T) {
 		}
 	})
 
+	b := make([]byte, 128)
+	_, _, err = ws.NextMessage(b)
+	if err != io.EOF {
+		t.Fatalf("should have received EOF but got=%v", err)
+	}
+
+	if !invoked {
+		t.Fatal("control callback not invoked")
+	}
+
+	if ws.state != StateTerminated {
+		t.Fatal("connection should be terminated")
+	}
+}
+
+func TestClientAsyncReadPingFrame(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	ws.src.Write([]byte{
+		byte(OpcodePing) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
+	})
+
+	invoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		invoked = true
+
+		if !(mt == TypePing && bytes.Equal(b, []byte{1, 2})) {
+			t.Fatal("invalid ping")
+		}
+
+		if ws.Pending() != 1 {
+			t.Fatal("should have a pending pong")
+		}
+
+		reply := ws.pending[0]
+		if !(reply.IsPong() && reply.IsMasked()) {
+			t.Fatal("invalid pong reply")
+		}
+
+		reply.Unmask()
+		if !bytes.Equal(reply.Payload(), []byte{0x01, 0x02}) {
+			t.Fatal("invalid pong reply")
+		}
+	})
+
+	b := make([]byte, 128)
+	ran := false
+	ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
+		ran = true
+		if err != io.EOF {
+			t.Fatal("should have received EOF")
+		}
+
+		if ws.state != StateTerminated {
+			t.Fatal("connection should be terminated")
+		}
+	})
+
 	if !ran {
 		t.Fatal("async read did not run")
+	}
+
+	if !invoked {
+		t.Fatal("control callback not invoked")
 	}
 }
 
@@ -371,26 +430,44 @@ func TestClientReadPongFrame(t *testing.T) {
 	}
 
 	ws.state = StateActive
-	ws.init(nil)
+	mock := NewMockStream()
+	ws.init(mock)
 
 	ws.src.Write([]byte{
 		byte(OpcodePong) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
 	})
 
+	invoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		invoked = true
+
+		if !(mt == TypePong && bytes.Equal(b, []byte{1, 2})) {
+			t.Fatal("invalid pong")
+		}
+
+		if mt != TypePong {
+			t.Fatal("wrong message type", mt)
+		}
+		if ws.Pending() != 0 {
+			t.Fatal("should have no pending operations")
+		}
+		if !bytes.Equal(b, []byte{0x01, 0x02}) {
+			t.Fatal("invalid payload")
+		}
+	})
+
 	b := make([]byte, 128)
-	mt, n, err := ws.NextMessage(b)
-	b = b[:n]
-	if err != nil {
-		t.Fatal(err)
+	_, _, err = ws.NextMessage(b)
+	if err != io.EOF {
+		t.Fatal("should have received EOF")
 	}
-	if mt != TypePong {
-		t.Fatal("wrong message type", mt)
+
+	if ws.state != StateTerminated {
+		t.Fatal("connection should be terminated")
 	}
-	if ws.Pending() != 0 {
-		t.Fatal("should have no pending operations")
-	}
-	if !bytes.Equal(b, []byte{0x01, 0x02}) {
-		t.Fatal("invalid payload")
+
+	if !invoked {
+		t.Fatal("control callback not invoked")
 	}
 }
 
@@ -404,34 +481,45 @@ func TestClientAsyncReadPongFrame(t *testing.T) {
 	}
 
 	ws.state = StateActive
-	ws.init(nil)
+	mock := NewMockStream()
+	ws.init(mock)
 
 	ws.src.Write([]byte{
 		byte(OpcodePong) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
+	})
+
+	invoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		invoked = true
+
+		if !(mt == TypePong && bytes.Equal(b, []byte{1, 2})) {
+			t.Fatal("invalid pong")
+		}
+
+		if ws.Pending() != 0 {
+			t.Fatal("should have no pending operations")
+		}
 	})
 
 	b := make([]byte, 128)
 	ran := false
 	ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
 		ran = true
-
-		b = b[:n]
-		if err != nil {
+		if err != io.EOF {
 			t.Fatal(err)
 		}
-		if mt != TypePong {
-			t.Fatal("wrong message type", mt)
-		}
-		if ws.Pending() != 0 {
-			t.Fatal("should have no pending operations")
-		}
-		if !bytes.Equal(b, []byte{0x01, 0x02}) {
-			t.Fatal("invalid payload")
+
+		if ws.state != StateTerminated {
+			t.Fatal("connection should be terminated")
 		}
 	})
 
 	if !ran {
 		t.Fatal("async read did not run")
+	}
+
+	if !invoked {
+		t.Fatal("control callback not invoked")
 	}
 }
 
@@ -445,7 +533,8 @@ func TestClientReadCloseFrame(t *testing.T) {
 	}
 
 	ws.state = StateActive
-	ws.init(nil)
+	mock := NewMockStream()
+	ws.init(mock)
 
 	payload := EncodeCloseFramePayload(CloseNormal, "bye")
 	ws.src.Write([]byte{
@@ -453,73 +542,16 @@ func TestClientReadCloseFrame(t *testing.T) {
 	})
 	ws.src.Write(payload)
 
-	b := make([]byte, 128)
-	mt, n, err := ws.NextMessage(b)
-	b = b[:n]
-	if err != nil {
-		t.Fatal(err)
-	}
-	if mt != TypeClose {
-		t.Fatal("wrong message type", mt)
-	}
-	if ws.Pending() != 1 {
-		t.Fatal("should one pending operation")
-	}
-	if !bytes.Equal(b, payload) {
-		t.Fatal("invalid payload")
-	}
+	invoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		invoked = true
 
-	reply := ws.pending[0]
-	if !reply.IsMasked() {
-		t.Fatal("reply should be masked")
-	}
-	reply.Unmask()
-
-	cc, reason := DecodeCloseFramePayload(reply.payload)
-	if !(cc == CloseNormal && reason == "bye") {
-		t.Fatal("invalid close frame reply")
-	}
-
-	if ws.state != StateClosedByPeer {
-		t.Fatal("invalid stream state")
-	}
-}
-
-func TestClientAsyncReadCloseFrame(t *testing.T) {
-	ioc := sonic.MustIO()
-	defer ioc.Close()
-
-	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ws.state = StateActive
-	ws.init(nil)
-
-	payload := EncodeCloseFramePayload(CloseNormal, "bye")
-	ws.src.Write([]byte{
-		byte(OpcodeClose) | 1<<7, byte(len(payload)),
-	})
-	ws.src.Write(payload)
-
-	b := make([]byte, 128)
-	ran := false
-	ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
-		ran = true
-
-		b = b[:n]
-		if err != nil {
-			t.Fatal(err)
+		if !(mt == TypeClose && bytes.Equal(b, payload)) {
+			t.Fatal("invalid close reply", mt)
 		}
-		if mt != TypeClose {
-			t.Fatal("wrong message type", mt)
-		}
+
 		if ws.Pending() != 1 {
-			t.Fatal("should one pending operation")
-		}
-		if !bytes.Equal(b, payload) {
-			t.Fatal("invalid payload")
+			t.Fatal("should have one pending operation")
 		}
 
 		reply := ws.pending[0]
@@ -538,8 +570,87 @@ func TestClientAsyncReadCloseFrame(t *testing.T) {
 		}
 	})
 
+	b := make([]byte, 128)
+	_, _, err = ws.NextMessage(b)
+	if !errors.Is(err, io.EOF) {
+		t.Fatal("should have received EOF")
+	}
+
+	if ws.state != StateTerminated {
+		t.Fatal("connection should be terminated")
+	}
+
+	if !invoked {
+		t.Fatal("control callback not invoked")
+	}
+}
+
+func TestClientAsyncReadCloseFrame(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	payload := EncodeCloseFramePayload(CloseNormal, "bye")
+	ws.src.Write([]byte{
+		byte(OpcodeClose) | 1<<7, byte(len(payload)),
+	})
+	ws.src.Write(payload)
+
+	invoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		invoked = true
+
+		if !(mt == TypeClose && bytes.Equal(b, payload)) {
+			t.Fatal("invalid close reply", mt)
+		}
+
+		if ws.Pending() != 1 {
+			t.Fatal("should have one pending operation")
+		}
+
+		reply := ws.pending[0]
+		if !reply.IsMasked() {
+			t.Fatal("reply should be masked")
+		}
+		reply.Unmask()
+
+		cc, reason := DecodeCloseFramePayload(reply.payload)
+		if !(cc == CloseNormal && reason == "bye") {
+			t.Fatal("invalid close frame reply")
+		}
+
+		if ws.state != StateClosedByPeer {
+			t.Fatal("invalid stream state")
+		}
+	})
+
+	b := make([]byte, 128)
+	ran := false
+	ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
+		ran = true
+		if !errors.Is(err, io.EOF) {
+			t.Fatal("should have received EOF")
+		}
+
+		if ws.state != StateTerminated {
+			t.Fatal("connection should be terminated")
+		}
+	})
+
 	if !ran {
 		t.Fatal("async read did not run")
+	}
+
+	if !invoked {
+		t.Fatal("control callback not invoked")
 	}
 }
 
