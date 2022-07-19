@@ -122,6 +122,7 @@ func (s StreamState) String() string {
 
 type AsyncMessageHandler = func(err error, n int, mt MessageType)
 type AsyncFrameHandler = func(err error, f *Frame)
+type ControlCallback = func(mt MessageType, payload []byte)
 
 // Stream is an interface for representing a stateful WebSocket connection
 // on the server or client side.
@@ -312,4 +313,14 @@ type Stream interface {
 	// pings, or pongs. Instead, the program should continue reading message data until
 	// an error occurs.
 	Close(cc CloseCode, reason string) error
+
+	// SetControlCallback sets a function that will be invoked when a Ping/Pong/Close is received
+	// while reading a message. This callback is not invoked when AsyncNextFrame or NextFrame
+	// are called.
+	//
+	// The caller must not perform any operations on the stream in the provided callback.
+	SetControlCallback(ControlCallback)
+
+	// ControlCallback returns the control callback set with SetControlCallback.
+	ControlCallback() ControlCallback
 }

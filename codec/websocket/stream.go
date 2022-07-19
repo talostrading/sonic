@@ -22,24 +22,43 @@ import (
 var _ Stream = &WebsocketStream{}
 
 type WebsocketStream struct {
-	ioc *sonic.IO   // async operations executor
-	tls *tls.Config // nil if we don't use TLS
+	// Async operations executor.
+	ioc *sonic.IO
 
-	role Role // are we client or server
+	// User provided TLS config; nil if we don't use TLS
+	tls *tls.Config
 
-	src *sonic.ByteBuffer // buffer for stream reads
-	dst *sonic.ByteBuffer // buffer for stream writes
-
-	state StreamState // state of the stream
-
-	pending []*Frame // frames pending to be written on the wire
-
-	hasher hash.Hash // hashes the Sec-Websocket-Key when the stream is a client
-
-	hb []byte // handshake buffer - the handshake response is read into this buffer
-
+	// Underlying transport stream.
 	stream sonic.Stream
-	cs     *sonic.BlockingCodecStream[*Frame]
+
+	// Codec stream wrapping the underlying transport stream.
+	cs *sonic.BlockingCodecStream[*Frame]
+
+	// Websocket role: client or server.
+	role Role
+
+	// State of the stream.
+	state StreamState
+
+	// Hashes the Sec-Websocket-Key when the stream is a client.
+	hasher hash.Hash
+
+	// Buffer for stream reads.
+	src *sonic.ByteBuffer
+
+	// Buffer for stream writes.
+	dst *sonic.ByteBuffer
+
+	// Contains the handshake response. Is emptied after the
+	// handshake is over.
+	hb []byte
+
+	// Contains frames waiting to be sent to the peer.
+	// Is emptied by AsyncFlush or Flush.
+	pending []*Frame
+
+	// Optional callback invoked when a control frame is received.
+	ccb ControlCallback
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketStream, error) {
@@ -76,8 +95,18 @@ func (s *WebsocketStream) DeflateSupported() bool {
 	return false
 }
 
+func (s *WebsocketStream) canRead() bool {
+	// we can only read from non-terminal states after a successful handshake
+	return s.state == StateActive || s.state == StateClosedByUs
+}
+
 func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	err = s.Flush()
+	if err == nil && !s.canRead() {
+		s.state = StateTerminated
+		err = sonicerrors.ErrCancelled
+	}
+
 	if err == nil {
 		f, err = s.nextFrame()
 	}
@@ -95,6 +124,11 @@ func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
 
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 	s.AsyncFlush(func(err error) {
+		if err == nil && !s.canRead() {
+			s.state = StateTerminated
+			err = sonicerrors.ErrCancelled
+		}
+
 		if err == nil {
 			s.asyncNextFrame(cb)
 		} else {
@@ -140,28 +174,45 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 }
 
 func (s *WebsocketStream) AsyncNextMessage(b []byte, cb AsyncMessageHandler) {
-	s.asyncRead(b, 0, TypeNone, cb)
+	s.asyncNextMessage(b, 0, false, TypeNone, cb)
 }
 
-func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb AsyncMessageHandler) {
+func (s *WebsocketStream) asyncNextMessage(
+	b []byte,
+	readBytes int,
+	continuation bool,
+	mt MessageType,
+	cb AsyncMessageHandler,
+) {
 	s.AsyncNextFrame(func(err error, f *Frame) {
-		if err == nil {
-			n := copy(b[readBytes:], f.Payload())
-			readBytes += n
-
-			if mt == TypeNone {
-				mt = MessageType(f.Opcode())
-			}
-
-			if n != f.PayloadLen() {
-				err = ErrPayloadTooBig
-			}
-		}
-
-		if err != nil || f.IsFin() {
+		if err != nil {
 			cb(err, readBytes, mt)
 		} else {
-			s.asyncRead(b, readBytes, mt, cb)
+			if f.IsControl() {
+				if s.ccb != nil {
+					s.ccb(MessageType(f.Opcode()), f.payload)
+				}
+
+				s.asyncNextMessage(b, readBytes, continuation, mt, cb)
+			} else {
+				if mt == TypeNone {
+					mt = MessageType(f.Opcode())
+				}
+
+				n := copy(b[readBytes:], f.Payload())
+				readBytes += n
+
+				if n != f.PayloadLen() {
+					err = ErrPayloadTooBig
+				}
+
+				continuation = !f.IsFin()
+				if err != nil || !continuation {
+					cb(err, readBytes, mt)
+				} else {
+					s.asyncNextMessage(b, readBytes, continuation, mt, cb)
+				}
+			}
 		}
 	})
 }
@@ -175,6 +226,14 @@ func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 		} else {
 			err = s.handleDataFrame(f)
 		}
+	}
+
+	if err != nil {
+		closeFrame := AcquireFrame()
+		closeFrame.SetFin()
+		closeFrame.SetClose()
+		closeFrame.SetPayload(EncodeCloseFramePayload(CloseProtocolError, ""))
+		s.pending = append(s.pending, closeFrame)
 	}
 
 	return err
@@ -589,4 +648,12 @@ func (s *WebsocketStream) Accept() error {
 
 func (s *WebsocketStream) AsyncAccept(func(error)) {
 	panic("implement me")
+}
+
+func (s *WebsocketStream) SetControlCallback(ccb ControlCallback) {
+	s.ccb = ccb
+}
+
+func (s *WebsocketStream) ControlCallback() ControlCallback {
+	return s.ccb
 }

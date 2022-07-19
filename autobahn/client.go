@@ -34,6 +34,7 @@ func main() {
 		fmt.Printf("running against all %d cases\n", n)
 		for i := 1; i <= n; i++ {
 			runTest(i)
+			fmt.Printf("ran %d...\n", i)
 		}
 		updateReports()
 	} else {
@@ -95,12 +96,7 @@ func runTest(i int) {
 
 		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
 			if err != nil {
-				s.AsyncClose(websocket.CloseProtocolError, "", func(err error) {
-					if err != nil {
-						panic(err)
-					}
-					done = true
-				})
+				done = true
 			} else {
 				b = b[:n]
 
