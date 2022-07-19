@@ -92,7 +92,7 @@ func (f *Frame) ReadFrom(r io.Reader) (nt int64, err error) {
 
 		if err == nil {
 			if pn := f.PayloadLen(); pn > 0 {
-				if pn > MaxPayloadLen {
+				if pn > MaxPayloadSize {
 					err = ErrPayloadTooBig
 				} else {
 					f.payload = util.ExtendBytes(f.payload, pn)

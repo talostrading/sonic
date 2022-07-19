@@ -57,7 +57,7 @@ func (b *ByteBuffer) Reserve(n int) {
 }
 
 // Reserved returns the number of bytes that can be written
-// in the write area of the buffer without allocating memory.
+// in the write area of the buffer.
 func (b *ByteBuffer) Reserved() int {
 	return cap(b.data) - b.wi
 }

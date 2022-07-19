@@ -7,6 +7,7 @@ import (
 )
 
 var (
+	ErrPayloadOverMaxSize  = errors.New("payload over maximum size")
 	ErrPayloadTooBig       = errors.New("frame payload too big")
 	ErrWrongHandshakeRole  = errors.New("wrong role when initiating/accepting the handshake")
 	ErrCannotUpgrade       = errors.New("cannot upgrade connection to WebSocket")
@@ -15,7 +16,7 @@ var (
 )
 
 const (
-	MaxPayloadLen = 1024 * 512
+	MaxPayloadSize = 1024 * 512
 )
 
 type Role uint8

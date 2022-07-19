@@ -1,10 +1,16 @@
 package websocket
 
 import (
+	"errors"
+
 	"github.com/talostrading/sonic"
 )
 
 var _ sonic.Codec[*Frame] = &FrameCodec{}
+
+var (
+	ErrPartialPayload = errors.New("partial payload")
+)
 
 // FrameCodec is a stateful streaming parser handling the encoding
 // and decoding of WebSocket frames.
@@ -53,7 +59,6 @@ func (c *FrameCodec) resetDecode() {
 func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 	c.resetDecode()
 
-	// read fixed size header
 	n := 2
 	err := src.PrepareRead(n)
 	if err != nil {
@@ -79,13 +84,16 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 
 	// check payload length
 	npayload := c.decodeFrame.PayloadLen()
-	if npayload > MaxPayloadLen {
-		return nil, ErrPayloadTooBig
+	if npayload > MaxPayloadSize {
+		return nil, ErrPayloadOverMaxSize
 	}
 
 	// prepare to read the payload
 	n += npayload
 	if err := src.PrepareRead(n); err != nil {
+		// the payload might be too big for our buffer so we must allocate
+		// enough for the next Decode call to succeed
+		src.Reserve(npayload)
 		return nil, err
 	}
 
