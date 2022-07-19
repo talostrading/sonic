@@ -268,14 +268,18 @@ func (f *Frame) Unmask() {
 func (f *Frame) String() string {
 	return fmt.Sprintf(`
 FIN: %v
+RSV1: %v
+RSV2: %v
+RSV3: %v
 OPCODE: %d
 MASK: %v
 LENGTH: %d
 MASK-KEY: %v
 PAYLOAD: %v`,
 
-		f.IsFin(), f.Opcode(), f.IsMasked(),
-		f.PayloadLen(), f.MaskKey(), f.Payload(),
+		f.IsFin(), f.IsRSV1(), f.IsRSV2(), f.IsRSV3(),
+		f.Opcode(), f.IsMasked(), f.PayloadLen(),
+		f.MaskKey(), f.Payload(),
 	)
 }
 

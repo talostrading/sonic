@@ -87,8 +87,8 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 
 func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
 	f, err = s.cs.ReadNext()
-	if err == nil && f.IsControl() {
-		err = s.handleControlFrame(f)
+	if err == nil {
+		err = s.handleFrame(f)
 	}
 	return
 }
@@ -105,8 +105,8 @@ func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 
 func (s *WebsocketStream) asyncNextFrame(cb AsyncFrameHandler) {
 	s.cs.AsyncReadNext(func(err error, f *Frame) {
-		if err == nil && f.IsControl() {
-			err = s.handleControlFrame(f)
+		if err == nil {
+			err = s.handleFrame(f)
 		}
 		cb(err, f)
 	})
@@ -166,32 +166,39 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 	})
 }
 
-func (s *WebsocketStream) verifyControlFrame(f *Frame) error {
-	if !f.IsFin() {
-		return ErrInvalidControlFrame
+func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
+	err = s.verifyFrame(f)
+
+	if err == nil && f.IsControl() {
+		err = s.handleControlFrame(f)
 	}
 
-	if f.PayloadLenType() > MaxControlFramePayloadSize {
-		return ErrControlFrameTooBig
+	return err
+}
+
+func (s *WebsocketStream) verifyFrame(f *Frame) error {
+	if f.IsRSV1() || f.IsRSV2() || f.IsRSV3() {
+		return ErrNonZeroReservedBits
 	}
 
 	if s.role == RoleClient && f.IsMasked() {
-		// must not receive masked frames from server
-		return ErrInvalidControlFrame
+		return ErrMaskedFramesFromServer
 	}
 
 	if s.role == RoleServer && !f.IsMasked() {
-		// must receive masked frames from client
-		return ErrInvalidControlFrame
+		return ErrUnmaskedFramesFromClient
 	}
 
 	return nil
 }
 
 func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
-	err = s.verifyControlFrame(f)
-	if err != nil {
-		return err
+	if !f.IsFin() {
+		return ErrInvalidControlFrame
+	}
+
+	if f.PayloadLenType() > MaxControlFramePayloadSize {
+		return ErrControlFrameTooBig
 	}
 
 	switch f.Opcode() {
