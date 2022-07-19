@@ -154,6 +154,7 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 			}
 
 			if n != f.PayloadLen() {
+				fmt.Println("something", n, f.PayloadLen())
 				err = ErrPayloadTooBig
 			}
 		}

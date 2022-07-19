@@ -114,6 +114,7 @@ func runTest(i int) {
 						panic(err)
 					}
 
+					b = b[:cap(b)]
 					s.AsyncNextMessage(b, onAsyncRead)
 				})
 			case websocket.TypeClose:
