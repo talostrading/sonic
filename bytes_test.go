@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"io"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 func TestBytesBufferReads1(t *testing.T) {
@@ -174,7 +175,7 @@ func TestBytesBufferPrepareRead(t *testing.T) {
 	}
 
 	err = b.PrepareRead(10)
-	if !errors.Is(err, io.EOF) {
+	if !errors.Is(err, sonicerrors.ErrNeedMore) {
 		t.Fatal("should not be able to prepare read")
 	}
 }

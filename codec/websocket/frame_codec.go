@@ -38,7 +38,7 @@ func (c *FrameCodec) resetDecode() {
 // Three things can happen while decoding a raw stream of bytes into a frame:
 // 1. There are not enough bytes to construct a frame with.
 //
-//	In this case, a nil frame and error are returned. The caller
+//	In this case, a nil frame and ErrNeedMore are returned. The caller
 //	should perform another read into `src` later.
 //
 // 2. `src` contains the bytes of one frame.
@@ -57,14 +57,14 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 	n := 2
 	err := src.PrepareRead(n)
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	c.decodeFrame.header = src.Data()[:n]
 
 	// read extra header length
 	n += c.decodeFrame.ExtraHeaderLen()
 	if err := src.PrepareRead(n); err != nil {
-		return nil, nil
+		return nil, err
 	}
 	c.decodeFrame.header = src.Data()[:n]
 
@@ -72,7 +72,7 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 	if c.decodeFrame.IsMasked() {
 		n += 4
 		if err := src.PrepareRead(n); err != nil {
-			return nil, nil
+			return nil, err
 		}
 		c.decodeFrame.mask = src.Data()[n-4 : n]
 	}
@@ -86,7 +86,7 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 	// prepare to read the payload
 	n += npayload
 	if err := src.PrepareRead(n); err != nil {
-		return nil, nil
+		return nil, err
 	}
 
 	// at this point, we have a full frame in src

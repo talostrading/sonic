@@ -2,9 +2,11 @@ package websocket
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 
 	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 func TestDecodeShortFrame(t *testing.T) {
@@ -14,11 +16,11 @@ func TestDecodeShortFrame(t *testing.T) {
 	codec := NewFrameCodec(src, nil)
 
 	f, err := codec.Decode(src)
-	if err != nil {
-		t.Fatal(err)
+	if !errors.Is(err, sonicerrors.ErrNeedMore) {
+		t.Fatal("should have gotten ErrNeedMore")
 	}
 	if f != nil {
-		t.Fatal("should have gotten a frame")
+		t.Fatal("should not have gotten a frame")
 	}
 	if codec.decodeReset {
 		t.Fatal("should not reset decoder state")
@@ -141,7 +143,7 @@ func TestDecodeTwoFrames(t *testing.T) {
 
 	// third try on short frame
 	f, err = codec.Decode(src)
-	if err != nil {
+	if !errors.Is(err, sonicerrors.ErrNeedMore) {
 		t.Fatal(err)
 	}
 	if f != nil {

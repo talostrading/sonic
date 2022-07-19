@@ -2,5 +2,6 @@ todo.md
 bin/
 *.pem
 ./sonicwebsocket/notes.md
+./autobahn/reports/
 ./autobahn/reports/clients/*.*
 *.html

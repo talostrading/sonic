@@ -39,7 +39,7 @@ type WebsocketStream struct {
 	hb []byte // handshake buffer - the handshake response is read into this buffer
 
 	stream sonic.Stream
-	cs     *sonic.BlockingCodecStream[Frame]
+	cs     *sonic.BlockingCodecStream[*Frame]
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketStream, error) {
@@ -64,7 +64,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketSt
 func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewBlockingCodecStream[Frame](stream, codec, s.src, s.dst)
+	s.cs, err = sonic.NewBlockingCodecStream[*Frame](stream, codec, s.src, s.dst)
 	return
 }
 
@@ -154,7 +154,6 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 			}
 
 			if n != f.PayloadLen() {
-				fmt.Println("something", n, f.PayloadLen())
 				err = ErrPayloadTooBig
 			}
 		}

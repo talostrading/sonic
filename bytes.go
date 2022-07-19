@@ -2,6 +2,8 @@ package sonic
 
 import (
 	"io"
+
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 // ByteBuffer provides operations that make it easier to handle byte slices in networking code.
@@ -221,7 +223,7 @@ func (b *ByteBuffer) PrepareRead(n int) (err error) {
 		if b.WriteLen() >= need {
 			b.Commit(need)
 		} else {
-			err = io.EOF
+			err = sonicerrors.ErrNeedMore
 		}
 	}
 	return
