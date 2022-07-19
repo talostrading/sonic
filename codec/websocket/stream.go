@@ -166,9 +166,13 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 	})
 }
 
-func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
+func (s *WebsocketStream) verifyControlFrame(f *Frame) error {
 	if !f.IsFin() {
 		return ErrInvalidControlFrame
+	}
+
+	if f.PayloadLenType() > MaxControlFramePayloadSize {
+		return ErrControlFrameTooBig
 	}
 
 	if s.role == RoleClient && f.IsMasked() {
@@ -179,6 +183,15 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	if s.role == RoleServer && !f.IsMasked() {
 		// must receive masked frames from client
 		return ErrInvalidControlFrame
+	}
+
+	return nil
+}
+
+func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
+	err = s.verifyControlFrame(f)
+	if err != nil {
+		return err
 	}
 
 	switch f.Opcode() {
@@ -222,6 +235,7 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	default:
 		err = ErrInvalidControlFrame
 	}
+
 	return
 }
 

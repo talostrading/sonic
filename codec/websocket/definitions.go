@@ -12,6 +12,7 @@ var (
 	ErrWrongHandshakeRole  = errors.New("wrong role when initiating/accepting the handshake")
 	ErrCannotUpgrade       = errors.New("cannot upgrade connection to WebSocket")
 	ErrInvalidControlFrame = errors.New("invalid control frame")
+	ErrControlFrameTooBig  = errors.New("control frame too big")
 	ErrSendAfterClose      = errors.New("sending on a closed stream")
 )
 

@@ -42,6 +42,16 @@ func (f *Frame) ExtraHeaderLen() (n int) {
 	return
 }
 
+// PayloadLenType returns the payload length as indicated in the fixed
+// size header. It is always less than 127 as per the WebSocket protocol.
+// The actual payload size can be retrieved by calling PayloadLen.
+func (f *Frame) PayloadLenType() int {
+	return int(f.header[1] & 127)
+}
+
+// PayloadLen returns the actual payload length which can either be
+// in the header if the length type is 125 or less, in the next 2 bytes if the
+// length type is 126 or in the next 8 bytes if the length type is 127.
 func (f *Frame) PayloadLen() int {
 	length := uint64(f.header[1] & 127)
 	switch length {

@@ -89,43 +89,42 @@ func runTest(i int) {
 			panic(err)
 		}
 
-		b := make([]byte, 128)
+		b := make([]byte, 1024*1024)
 
 		var onAsyncRead websocket.AsyncMessageHandler
 
 		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
 			if err != nil {
-				panic(err)
-			}
-
-			b = b[:n]
-
-			fmt.Println(err, n, mt, string(b), s.Pending())
-
-			switch mt {
-			case websocket.TypeText:
-				fr := websocket.AcquireFrame()
-				fr.SetFin()
-				fr.SetPayload(nil)
-				fr.SetText()
-
-				s.AsyncWriteFrame(fr, func(err error) {
+				s.AsyncClose(websocket.CloseProtocolError, "", func(err error) {
 					if err != nil {
 						panic(err)
 					}
+					done = true
+				})
+			} else {
+				b = b[:n]
 
+				switch mt {
+				case websocket.TypeText, websocket.TypeBinary:
+					s.AsyncWrite(b, mt, func(err error) {
+						if err != nil {
+							panic(err)
+						}
+
+						b = b[:cap(b)]
+						s.AsyncNextMessage(b, onAsyncRead)
+					})
+				case websocket.TypeClose:
+					s.AsyncFlush(func(err error) {
+						if err != nil {
+							panic(err)
+						}
+						done = true
+					})
+				default:
 					b = b[:cap(b)]
 					s.AsyncNextMessage(b, onAsyncRead)
-				})
-			case websocket.TypeClose:
-				s.AsyncFlush(func(err error) {
-					if err != nil {
-						panic(err)
-					}
-				})
-				done = true
-			default:
-				panic(fmt.Errorf("unexpected frame type=%s", mt))
+				}
 			}
 		}
 
