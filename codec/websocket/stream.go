@@ -163,13 +163,11 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 
 	for {
 		f, err = s.NextFrame()
-		fmt.Println("calling", err, f)
 		if err != nil {
 			return mt, readBytes, err
 		}
 
 		if f.IsControl() {
-			fmt.Println("is control", err)
 			if s.ccb != nil {
 				s.ccb(MessageType(f.Opcode()), f.payload)
 			}
