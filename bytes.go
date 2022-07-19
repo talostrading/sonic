@@ -43,13 +43,23 @@ func NewByteBuffer() *ByteBuffer {
 	return b
 }
 
-// Prepare prepares the buffer to hold `n` bytes.
-func (b *ByteBuffer) Prepare(n int) {
-	if need := n - cap(b.data); need > 0 {
+// Reserve capacity for at least `n` more bytes to be written
+// into the ByteBuffer.
+//
+// This call grows the write area by at least `n` bytes.
+func (b *ByteBuffer) Reserve(n int) {
+	existing := cap(b.data) - b.wi
+	if need := n - existing; need > 0 {
 		b.data = b.data[:cap(b.data)]
 		b.data = append(b.data, make([]byte, need)...)
 	}
 	b.data = b.data[:b.wi]
+}
+
+// Reserved returns the number of bytes that can be written
+// in the write area of the buffer without allocating memory.
+func (b *ByteBuffer) Reserved() int {
+	return cap(b.data) - b.wi
 }
 
 // Commit moves `n` bytes from the write area to the read area.
@@ -133,7 +143,12 @@ func (b *ByteBuffer) ReadByte() (byte, error) {
 	return b.oneByte[0], err
 }
 
-// ReadFrom reads from the provided Reader, placing the bytes in the write area.
+// ReadFrom reads the data from the supplied reader into the write area
+// of the buffer.
+//
+// The buffer is not automatically grown to accommodate all data from the reader.
+// Instead, the responsibility is left to the caller which can reserve space in
+// the buffer with a call to Reserve.
 func (b *ByteBuffer) ReadFrom(r io.Reader) (int64, error) {
 	n, err := r.Read(b.data[b.wi:cap(b.data)])
 	if err == nil {
@@ -143,6 +158,10 @@ func (b *ByteBuffer) ReadFrom(r io.Reader) (int64, error) {
 	return int64(n), err
 }
 
+// UnreadByte unreads a single byte from the write area of the buffer.
+//
+// Calling this function means the unread byte might be overwritten
+// by a future write.
 func (b *ByteBuffer) UnreadByte() error {
 	if can := b.wi - b.ri; can > 0 {
 		b.wi -= 1
@@ -152,6 +171,12 @@ func (b *ByteBuffer) UnreadByte() error {
 	return io.EOF
 }
 
+// AsyncReadFrom reads the data from the supplied reader into the write area
+// of the buffer, asynchronously.
+//
+// The buffer is not automatically grown to accommodate all data from the reader.
+// Instead, the responsibility is left to the caller which can reserve space in
+// the buffer with a call to Reserve.
 func (b *ByteBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
 	r.AsyncRead(b.data[b.wi:cap(b.data)], func(err error, n int) {
 		if err == nil {
@@ -162,6 +187,8 @@ func (b *ByteBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
 	})
 }
 
+// Write writes the supplied slice into the buffer, growing the buffer
+// as needed to accommodate the new data.
 func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	b.data = append(b.data, bb...)
 	n := len(bb)
@@ -170,6 +197,8 @@ func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	return n, nil
 }
 
+// Write writes the supplied byte into the buffer, growing the buffer
+// as needed to accomodate the new data.
 func (b *ByteBuffer) WriteByte(bb byte) error {
 	b.data = append(b.data, bb)
 	b.wi += 1
@@ -177,6 +206,8 @@ func (b *ByteBuffer) WriteByte(bb byte) error {
 	return nil
 }
 
+// Write writes the supplied string into the buffer, growing the buffer
+// as needed to accomodate the new data.
 func (b *ByteBuffer) WriteString(s string) (int, error) {
 	b.data = append(b.data, s...)
 	n := len(s)
@@ -217,7 +248,7 @@ func (b *ByteBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
 }
 
 // PrepareRead prepares n bytes to be read from the read area. If less than n bytes are
-// available, io.EOF is returned.
+// available, ErrNeedMore is returned and no bytes are commited to the read area.
 func (b *ByteBuffer) PrepareRead(n int) (err error) {
 	if need := n - b.ReadLen(); need > 0 {
 		if b.WriteLen() >= need {

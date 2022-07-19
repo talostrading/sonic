@@ -11,15 +11,45 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-func TestBytesBufferReads1(t *testing.T) {
+func TestByteBufferReserve(t *testing.T) {
 	b := NewByteBuffer()
 
-	b.Prepare(512)
+	b.Reserve(512)
+	if b.Cap() != 512 {
+		t.Fatal("should have not reserved")
+	}
+	if b.Reserved() < 512 {
+		t.Fatal("wrong reserved")
+	}
+
+	b.Reserve(1024)
+	if b.Cap() < 1024 {
+		t.Fatal("should have reserved")
+	}
+
+	if b.Reserved() < 1024 {
+		t.Fatal("wrong reserved")
+	}
+
+	temp := make([]byte, 1024)
+	b.Write(temp)
+
+	b.Commit(1024)
+
+	if b.Reserved() > 1024 {
+		t.Fatal("wrong reserved")
+	}
+}
+
+func TestByteBufferReads1(t *testing.T) {
+	b := NewByteBuffer()
+
+	b.Reserve(512)
 	if b.Cap() < 512 {
 		t.Fatal("invalid write area length")
 	}
 
-	b.Prepare(1024)
+	b.Reserve(1024)
 	if b.Cap() < 1024 {
 		t.Fatal("invalid write area length")
 	}
@@ -83,7 +113,7 @@ func TestBytesBufferReads1(t *testing.T) {
 	}
 }
 
-func TestBytesBufferReads2(t *testing.T) {
+func TestByteBufferReads2(t *testing.T) {
 	b := NewByteBuffer()
 
 	msg := []byte("hello")
@@ -102,7 +132,7 @@ func TestBytesBufferReads2(t *testing.T) {
 	}
 }
 
-func TestBytesBufferWrites(t *testing.T) {
+func TestByteBufferWrites(t *testing.T) {
 	b := NewByteBuffer()
 
 	n, err := b.Write([]byte("hello"))
@@ -151,7 +181,7 @@ func TestBytesBufferWrites(t *testing.T) {
 	}
 }
 
-func TestBytesBufferPrepareRead(t *testing.T) {
+func TestByteBufferPrepareRead(t *testing.T) {
 	b := NewByteBuffer()
 
 	b.Write([]byte("hello"))
@@ -180,7 +210,7 @@ func TestBytesBufferPrepareRead(t *testing.T) {
 	}
 }
 
-func BenchmarkBytesBuffer(b *testing.B) {
+func BenchmarkByteBuffer(b *testing.B) {
 	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 	genRand := func(b []byte) []byte {

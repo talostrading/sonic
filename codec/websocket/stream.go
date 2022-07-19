@@ -54,8 +54,8 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketSt
 		hb:     make([]byte, 1024),
 	}
 
-	s.src.Prepare(4096)
-	s.dst.Prepare(4096)
+	s.src.Reserve(4096)
+	s.dst.Reserve(4096)
 
 	return s, nil
 }
