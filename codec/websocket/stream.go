@@ -169,8 +169,12 @@ func (s *WebsocketStream) asyncRead(b []byte, readBytes int, mt MessageType, cb 
 func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 	err = s.verifyFrame(f)
 
-	if err == nil && f.IsControl() {
-		err = s.handleControlFrame(f)
+	if err == nil {
+		if f.IsControl() {
+			err = s.handleControlFrame(f)
+		} else {
+			err = s.handleDataFrame(f)
+		}
 	}
 
 	return err
@@ -244,6 +248,13 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	}
 
 	return
+}
+
+func (s *WebsocketStream) handleDataFrame(f *Frame) error {
+	if IsReserved(f.Opcode()) {
+		return ErrReservedOpcode
+	}
+	return nil
 }
 
 func (s *WebsocketStream) Write(b []byte, mt MessageType) error {

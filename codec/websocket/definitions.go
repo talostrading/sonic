@@ -20,6 +20,8 @@ var (
 
 	ErrMaskedFramesFromServer   = errors.New("masked frames from server")
 	ErrUnmaskedFramesFromClient = errors.New("unmasked frames from server")
+
+	ErrReservedOpcode = errors.New("reserved opcode")
 )
 
 const (
