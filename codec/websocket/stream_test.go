@@ -245,9 +245,12 @@ func TestClientReadCorruptControlFrame(t *testing.T) {
 		t.Fatal("should have one pending operation")
 	}
 
-	if ws.state != StateActive {
+	if ws.state != StateTerminated {
 		t.Fatal("invalid state")
 	}
+
+	closeFrame := ws.pending[0]
+	closeFrame.Unmask()
 
 	cc, _ := DecodeCloseFramePayload(ws.pending[0].payload)
 	if cc != CloseProtocolError {
@@ -288,9 +291,12 @@ func TestClientAsyncReadCorruptControlFrame(t *testing.T) {
 			t.Fatal("should have one pending operation")
 		}
 
-		if ws.state != StateActive {
+		if ws.state != StateClosedByUs {
 			t.Fatal("invalid state")
 		}
+
+		closeFrame := ws.pending[0]
+		closeFrame.Unmask()
 
 		cc, _ := DecodeCloseFramePayload(ws.pending[0].payload)
 		if cc != CloseProtocolError {

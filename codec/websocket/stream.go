@@ -113,7 +113,9 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 
 	if err == nil {
 		f, err = s.nextFrame()
-	} else {
+	}
+
+	if err != nil {
 		s.state = StateTerminated
 	}
 
