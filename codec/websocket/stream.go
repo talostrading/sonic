@@ -80,7 +80,8 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketSt
 	return s, nil
 }
 
-// init is run when we transition into StateActive
+// init is run when we transition into StateActive which happens
+// after a successful handshake.
 func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
@@ -107,16 +108,17 @@ func (s *WebsocketStream) canRead() bool {
 
 func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	err = s.Flush()
+
 	if err == nil && !s.canRead() {
 		err = io.EOF
 	}
 
 	if err == nil {
 		f, err = s.nextFrame()
-	}
 
-	if err != nil {
-		s.state = StateTerminated
+		if err == io.EOF {
+			s.state = StateTerminated
+		}
 	}
 
 	return
@@ -331,10 +333,9 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 		case StateHandshake:
 			panic("unreachable")
 		case StateActive:
-			// the peer closed the connection so we reply with the same
-			// close frame
 			s.state = StateClosedByPeer
 
+			// The peer closed the connection so we reply with the same close frame.
 			closeFrame := AcquireFrame()
 			closeFrame.SetFin()
 			closeFrame.SetClose()
@@ -454,8 +455,12 @@ func (s *WebsocketStream) prepareClose(cc CloseCode, reason string) {
 	s.pending = append(s.pending, closeFrame)
 }
 
-func (s *WebsocketStream) handle(fr *Frame) (n int, err error) {
-	return
+func (s *WebsocketStream) closeUnderlying() {
+	if s.state == StateClosedByPeer ||
+		s.state == StateCloseAcked ||
+		s.state == StateTerminated {
+		s.stream.Close()
+	}
 }
 
 func (s *WebsocketStream) Flush() (err error) {
@@ -466,9 +471,12 @@ func (s *WebsocketStream) Flush() (err error) {
 			break
 		}
 		ReleaseFrame(s.pending[i])
-		flushed = i
+		flushed++
 	}
 	s.pending = s.pending[flushed:]
+
+	//s.closeUnderlying() // TODO
+
 	return
 }
 
@@ -479,6 +487,7 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 func (s *WebsocketStream) asyncFlush(flushed int, cb func(err error)) {
 	if flushed >= len(s.pending) {
 		s.pending = s.pending[:0]
+		//s.closeUnderlying() // TODO
 		cb(nil)
 	} else {
 		s.cs.AsyncWriteNext(s.pending[flushed], func(err error, _ int) {

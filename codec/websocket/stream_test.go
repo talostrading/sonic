@@ -245,7 +245,7 @@ func TestClientReadCorruptControlFrame(t *testing.T) {
 		t.Fatal("should have one pending operation")
 	}
 
-	if ws.state != StateTerminated {
+	if ws.state != StateClosedByUs {
 		t.Fatal("invalid state")
 	}
 
@@ -578,12 +578,17 @@ func TestClientReadCloseFrame(t *testing.T) {
 
 	b := make([]byte, 128)
 	_, _, err = ws.NextMessage(b)
+
+	if len(ws.pending) > 0 {
+		t.Fatal("should have flushed")
+	}
+
 	if !errors.Is(err, io.EOF) {
 		t.Fatal("should have received EOF")
 	}
 
-	if ws.state != StateTerminated {
-		t.Fatal("connection should be terminated")
+	if ws.state != StateClosedByPeer {
+		t.Fatal("connection should be closed by peer")
 	}
 
 	if !invoked {

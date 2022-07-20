@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/websocket"
@@ -36,7 +35,6 @@ func main() {
 		for i := 1; i <= n; i++ {
 			runTest(i)
 			fmt.Printf("ran %d...\n", i)
-			time.Sleep(100 * time.Millisecond)
 		}
 		updateReports()
 	} else {

@@ -50,7 +50,11 @@ func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapter
 		}
 		a.pd.Fd = ifd
 
-		cb(nil, a)
+		// TODO make options here
+		//err := syscall.SetsockoptInt(ifd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+		// TODO also no delay and enable it for websocket
+
+		cb(err, a)
 	})
 }
 
