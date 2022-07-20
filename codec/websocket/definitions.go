@@ -1,27 +1,7 @@
 package websocket
 
 import (
-	"errors"
-
 	"github.com/talostrading/sonic"
-)
-
-var (
-	ErrPayloadOverMaxSize = errors.New("payload over maximum size")
-	ErrPayloadTooBig      = errors.New("frame payload too big")
-	ErrWrongHandshakeRole = errors.New("wrong role when initiating/accepting the handshake")
-	ErrCannotUpgrade      = errors.New("cannot upgrade connection to WebSocket")
-
-	ErrInvalidControlFrame = errors.New("invalid control frame")
-	ErrControlFrameTooBig  = errors.New("control frame too big")
-
-	ErrSendAfterClose      = errors.New("sending on a closed stream")
-	ErrNonZeroReservedBits = errors.New("non zero reserved bits")
-
-	ErrMaskedFramesFromServer   = errors.New("masked frames from server")
-	ErrUnmaskedFramesFromClient = errors.New("unmasked frames from server")
-
-	ErrReservedOpcode = errors.New("reserved opcode")
 )
 
 const (
@@ -140,8 +120,16 @@ type Stream interface {
 	// entire lifetime. All reads and writes will go through the next layer.
 	NextLayer() sonic.Stream
 
+	// SupportsDeflate returns true if Deflate compression is supported.
+	//
 	// https://datatracker.ietf.org/doc/html/rfc7692
-	DeflateSupported() bool
+	SupportsDeflate() bool
+
+	// SupportsUTF8 returns true if UTF8 validity checks are supported.
+	//
+	// Implementations should not do UTF8 checking by default. Callers
+	// should be able to turn it on when instantiating the Stream.
+	SupportsUTF8() bool
 
 	// NextMessage reads the payload of the next message into the supplied buffer.
 	// Message fragmentation is automatically handled by the implementation.

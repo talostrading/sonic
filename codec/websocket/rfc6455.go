@@ -66,10 +66,10 @@ const (
 	// (e.g., non-UTF-8 data within a text message).
 	CloseBadPayload CloseCode = 1007
 
-	// PolicyError means the endpoint is terminating the connection because
+	// ClosePolicyError means the endpoint is terminating the connection because
 	// it received a message that violates its policy. This is a generic status
 	// code, used when codes 1003 and 1009 are not suitable.
-	PolicyError CloseCode = 1008
+	ClosePolicyError CloseCode = 1008
 
 	// CloseTooBig means the endpoint is terminating the connection because a data
 	// frame was received that is too large.

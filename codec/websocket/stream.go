@@ -92,7 +92,11 @@ func (s *WebsocketStream) NextLayer() sonic.Stream {
 	return s.cs.NextLayer()
 }
 
-func (s *WebsocketStream) DeflateSupported() bool {
+func (s *WebsocketStream) SupportsUTF8() bool {
+	return false
+}
+
+func (s *WebsocketStream) SupportsDeflate() bool {
 	return false
 }
 
@@ -104,15 +108,12 @@ func (s *WebsocketStream) canRead() bool {
 func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	err = s.Flush()
 	if err == nil && !s.canRead() {
-		s.state = StateTerminated
 		err = io.EOF
 	}
 
 	if err == nil {
 		f, err = s.nextFrame()
-	}
-
-	if err == io.EOF {
+	} else {
 		s.state = StateTerminated
 	}
 
@@ -130,13 +131,13 @@ func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 	s.AsyncFlush(func(err error) {
 		if err == nil && !s.canRead() {
-			s.state = StateTerminated
 			err = io.EOF
 		}
 
 		if err == nil {
 			s.asyncNextFrame(cb)
 		} else {
+			s.state = StateTerminated
 			cb(err, nil)
 		}
 	})
@@ -183,7 +184,23 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 				err = ErrPayloadTooBig
 			}
 
+			// verify continuation
+			if !continuation {
+				// this is the first frame of the series
+				continuation = !f.IsFin()
+				if f.IsContinuation() {
+					err = ErrUnexpectedContinuation
+				}
+			} else {
+				// we are past the first frame of the series
+				continuation = !f.IsFin()
+				if !f.IsContinuation() {
+					err = ErrExpectedContinuation
+				}
+			}
+
 			continuation = !f.IsFin()
+
 			if err != nil || !continuation {
 				break
 			}
@@ -226,7 +243,21 @@ func (s *WebsocketStream) asyncNextMessage(
 					err = ErrPayloadTooBig
 				}
 
-				continuation = !f.IsFin()
+				// verify continuation
+				if !continuation {
+					// this is the first frame of the series
+					continuation = !f.IsFin()
+					if f.IsContinuation() {
+						err = ErrUnexpectedContinuation
+					}
+				} else {
+					// we are past the first frame of the series
+					continuation = !f.IsFin()
+					if !f.IsContinuation() {
+						err = ErrExpectedContinuation
+					}
+				}
+
 				if err != nil || !continuation {
 					cb(err, readBytes, mt)
 				} else {
@@ -249,11 +280,7 @@ func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 	}
 
 	if err != nil {
-		closeFrame := AcquireFrame()
-		closeFrame.SetFin()
-		closeFrame.SetClose()
-		closeFrame.SetPayload(EncodeCloseFramePayload(CloseProtocolError, ""))
-		s.pending = append(s.pending, closeFrame)
+		s.prepareClose(CloseProtocolError, "")
 	}
 
 	return err
