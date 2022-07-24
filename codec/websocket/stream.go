@@ -475,10 +475,10 @@ func (s *WebsocketStream) Flush() (err error) {
 	}
 	s.pending = s.pending[flushed:]
 
-	//s.closeUnderlying() // TODO
+	//s.closeUnderlying() // TODO (differs between client and server)
 
 	return
-}
+
 
 func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 	s.asyncFlush(0, cb)
@@ -487,7 +487,7 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 func (s *WebsocketStream) asyncFlush(flushed int, cb func(err error)) {
 	if flushed >= len(s.pending) {
 		s.pending = s.pending[:0]
-		//s.closeUnderlying() // TODO
+		//s.closeUnderlying() // TODO (differs between client and server)
 		cb(nil)
 	} else {
 		s.cs.AsyncWriteNext(s.pending[flushed], func(err error, _ int) {
