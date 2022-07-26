@@ -28,6 +28,8 @@ See `examples/`. A good starting point is `examples/timer`. All examples can be 
 
 For more information, see `docs/`.
 
+Using `sonic` in your own package might require `export GOPRIVATE=github.com/talostrading/sonic`.
+
 ## Peculiarities
 ### Async preemption
 If, for some reason, you have a single goroutine which ends up waiting for more than 10ms for something to happen, sonic will crash on Linux due to epoll_wait being interrupted by the signal SIGURG. This happens because, by default, the Go runtime non-cooperatively preempts goroutines which are idle for more than 10ms. To turn off this behaviour, set `GODEBUG=asyncpreemptoff=1` before running your binary.
