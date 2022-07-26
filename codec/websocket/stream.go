@@ -18,6 +18,7 @@ import (
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/util"
 )
 
 var _ Stream = &WebsocketStream{}
@@ -481,22 +482,18 @@ func (s *WebsocketStream) Flush() (err error) {
 }
 
 func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
-	s.asyncFlush(0, cb)
-}
-
-func (s *WebsocketStream) asyncFlush(flushed int, cb func(err error)) {
-	if flushed >= len(s.pending) {
-		s.pending = s.pending[:0]
-		//s.closeUnderlying() // TODO (differs between client and server)
+	if len(s.pending) == 0 {
 		cb(nil)
 	} else {
-		s.cs.AsyncWriteNext(s.pending[flushed], func(err error, _ int) {
+		sent := s.pending[0]
+		s.pending = s.pending[1:]
+		s.cs.AsyncWriteNext(sent, func(err error, _ int) {
 			if err != nil {
-				s.pending = s.pending[flushed:]
+				s.pending = util.Prepend(sent, s.pending)
 				cb(err)
 			} else {
-				ReleaseFrame(s.pending[flushed])
-				s.asyncFlush(flushed+1, cb)
+				ReleaseFrame(sent)
+				s.AsyncFlush(cb)
 			}
 		})
 	}

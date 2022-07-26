@@ -196,7 +196,8 @@ type Stream interface {
 	//  - the frame is successfully written to the underlying stream
 	AsyncWriteFrame(fr *Frame, cb func(err error))
 
-	// Write writes the supplied buffer to the underlying stream.
+	// Write writes the supplied buffer as a single message with the given type
+	// to the underlying stream.
 	//
 	// This call first flushes any pending control frames to the underlying stream.
 	//
@@ -205,12 +206,12 @@ type Stream interface {
 	//  - an error occurs during the write
 	//  - the message is successfully written to the underlying stream
 	//
-	// The message can only be written as a single frame. Fragmentation should be handled
-	// by the caller through multiple calls to WriteFrame.
+	// The message will be written as a single frame. Fragmentation should be handled
+	// by the caller through multiple calls to AsyncWriteFrame.
 	Write(b []byte, mt MessageType) error
 
-	// AsyncWrite writes the supplied buffer with the given type to the underlying stream
-	// asynchronously.
+	// AsyncWrite writes the supplied buffer as a single message with the given type
+	// to the underlying stream asynchronously.
 	//
 	// This call first flushes any pending control frames to the underlying stream asynchronously.
 	//
@@ -220,7 +221,7 @@ type Stream interface {
 	//  - an error occurs during the write
 	//  - the message is successfully written to the underlying stream
 	//
-	// The message can only be written as a single frame. Fragmentation should be handled
+	// The message will be written as a single frame. Fragmentation should be handled
 	// by the caller through multiple calls to AsyncWriteFrame.
 	AsyncWrite(b []byte, mt MessageType, cb func(err error))
 
