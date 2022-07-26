@@ -478,7 +478,7 @@ func (s *WebsocketStream) Flush() (err error) {
 	//s.closeUnderlying() // TODO (differs between client and server)
 
 	return
-
+}
 
 func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 	s.asyncFlush(0, cb)
