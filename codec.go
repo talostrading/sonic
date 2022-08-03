@@ -60,11 +60,11 @@ func NewBlockingCodecStream[Enc, Dec any](
 }
 
 func (s *BlockingCodecStream[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
-	frame, err := s.codec.Decode(s.src)
+	item, err := s.codec.Decode(s.src)
 	if errors.Is(err, sonicerrors.ErrNeedMore) {
 		s.scheduleAsyncRead(cb)
 	} else {
-		cb(err, frame)
+		cb(err, item)
 	}
 }
 
@@ -80,9 +80,9 @@ func (s *BlockingCodecStream[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
 
 func (s *BlockingCodecStream[Enc, Dec]) ReadNext() (Dec, error) {
 	for {
-		frame, err := s.codec.Decode(s.src)
+		item, err := s.codec.Decode(s.src)
 		if err == nil {
-			return frame, nil
+			return item, nil
 		}
 
 		if !errors.Is(err, sonicerrors.ErrNeedMore) {
