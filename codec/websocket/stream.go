@@ -15,13 +15,17 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"syscall"
+	"time"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/util"
 )
 
-var _ Stream = &WebsocketStream{}
+var (
+	_           Stream = &WebsocketStream{}
+	DialTimeout        = 5 * time.Second
+)
 
 type WebsocketStream struct {
 	// Async operations executor.
@@ -61,6 +65,8 @@ type WebsocketStream struct {
 
 	// Optional callback invoked when a control frame is received.
 	ccb ControlCallback
+
+	dialer *net.Dialer
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketStream, error) {
@@ -73,6 +79,9 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketSt
 		state:  StateHandshake,
 		hasher: sha1.New(),
 		hb:     make([]byte, 1024),
+		dialer: &net.Dialer{
+			Timeout: DialTimeout,
+		},
 	}
 
 	s.src.Reserve(4096)
@@ -594,7 +603,7 @@ func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
 			port = "80"
 		}
 		addr := url.Hostname() + ":" + port
-		conn, err = net.Dial("tcp", addr)
+		conn, err = net.DialTimeout("tcp", addr, DialTimeout)
 		if err == nil {
 			sc = conn.(syscall.Conn)
 		}
@@ -608,7 +617,7 @@ func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
 				port = "443"
 			}
 			addr := url.Hostname() + ":" + port
-			conn, err = tls.Dial("tcp", addr, s.tls)
+			conn, err = tls.DialWithDialer(s.dialer, "tcp", addr, s.tls)
 			if err == nil {
 				sc = conn.(*tls.Conn).NetConn().(syscall.Conn)
 			}
