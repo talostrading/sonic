@@ -12,6 +12,8 @@ import (
 
 var _ Stream = &HttpStream{}
 
+// TODO https://www.rfc-editor.org/rfc/rfc2616#section-14.10
+
 type HttpStream struct {
 	ioc   *sonic.IO
 	tls   *tls.Config
