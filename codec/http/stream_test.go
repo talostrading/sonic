@@ -130,6 +130,10 @@ func TestClientCanRetry(t *testing.T) {
 				t.Fatal("expected StateConnected")
 			}
 
+			if s.retries != 0 {
+				t.Fatal("retries should be 0")
+			}
+
 			done = true
 		})
 	})
@@ -189,6 +193,10 @@ func TestClientCannotRetry(t *testing.T) {
 
 			if s.State() != StateDisconnected {
 				t.Fatal("expected StateDisconnected")
+			}
+
+			if s.retries != 0 {
+				t.Fatal("retries should be 0")
 			}
 
 			done = true

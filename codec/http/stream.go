@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"syscall"
+	"time"
 
 	"github.com/talostrading/sonic"
 )
@@ -15,7 +16,8 @@ import (
 var (
 	_ Stream = &HttpStream{}
 
-	MaxRetries = 5
+	MaxRetries  = 5
+	DialTimeout = 5 * time.Second
 )
 
 // TODO https://www.rfc-editor.org/rfc/rfc2616#section-14.10
@@ -33,6 +35,8 @@ type HttpStream struct {
 	stream sonic.Stream
 
 	retries int
+
+	dialer *net.Dialer
 
 	ccs *sonic.BlockingCodecStream[*http.Request, *http.Response]
 	scs *sonic.BlockingCodecStream[*http.Response, *http.Request]
@@ -53,6 +57,9 @@ func NewHttpStream(ioc *sonic.IO, tls *tls.Config, role Role) (*HttpStream, erro
 		state: StateDisconnected,
 		src:   sonic.NewByteBuffer(),
 		dst:   sonic.NewByteBuffer(),
+		dialer: &net.Dialer{
+			Timeout: DialTimeout,
+		},
 	}
 	s.src.Reserve(16 * 1024)
 	s.dst.Reserve(16 * 1024)
@@ -109,7 +116,7 @@ func (s *HttpStream) dial(addr string, cb func(err error)) {
 
 	switch s.url.Scheme {
 	case "http":
-		s.conn, err = net.Dial("tcp", s.url.Host)
+		s.conn, err = net.DialTimeout("tcp", s.url.Host, DialTimeout)
 		if err == nil {
 			sc = s.conn.(syscall.Conn)
 		}
@@ -119,7 +126,7 @@ func (s *HttpStream) dial(addr string, cb func(err error)) {
 			return
 		}
 
-		s.conn, err = tls.Dial("tcp", s.url.Host, s.tls)
+		s.conn, err = tls.DialWithDialer(s.dialer, "tcp", s.url.Host, s.tls)
 		if err == nil {
 			sc = s.conn.(*tls.Conn).NetConn().(syscall.Conn)
 		}
