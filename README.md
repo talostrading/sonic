@@ -13,9 +13,9 @@ func main() {
 		
         buf := make([]byte, 128)
         conn.AsyncRead(buf, func(err error, n int) {
-          buf = buf[:n]
-          fmt.Println("got=", string(buf))
-          conn.Close()
+            buf = buf[:n]
+            fmt.Println("got=", string(buf))
+            conn.Close()
         })
     }
 
