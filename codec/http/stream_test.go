@@ -55,11 +55,11 @@ func TestClient(t *testing.T) {
 			}
 
 			if n > 0 {
-				s.AsyncDo(req, onAsyncDo)
+				s.AsyncDo("/", req, onAsyncDo)
 			}
 		}
 
-		s.AsyncDo(req, onAsyncDo)
+		s.AsyncDo("/", req, onAsyncDo)
 	})
 
 	for {
@@ -110,7 +110,7 @@ func TestClientCanRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		s.AsyncDo(req, func(err error, res *http.Response) {
+		s.AsyncDo("/", req, func(err error, res *http.Response) {
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -186,7 +186,7 @@ func TestClientCannotRetry(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		s.AsyncDo(req, func(err error, res *http.Response) {
+		s.AsyncDo("/", req, func(err error, res *http.Response) {
 			if err != io.EOF {
 				t.Fatal("expected EOF")
 			}

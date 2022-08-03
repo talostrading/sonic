@@ -114,9 +114,15 @@ func (s *HttpStream) dial(addr string, cb func(err error)) {
 		return
 	}
 
+	port := s.url.Port()
+
 	switch s.url.Scheme {
 	case "http":
-		s.conn, err = net.DialTimeout("tcp", s.url.Host, DialTimeout)
+		if port == "" {
+			port = "80"
+		}
+
+		s.conn, err = net.DialTimeout("tcp", s.url.Hostname()+":"+port, DialTimeout)
 		if err == nil {
 			sc = s.conn.(syscall.Conn)
 		}
@@ -126,7 +132,11 @@ func (s *HttpStream) dial(addr string, cb func(err error)) {
 			return
 		}
 
-		s.conn, err = tls.DialWithDialer(s.dialer, "tcp", s.url.Host, s.tls)
+		if port == "" {
+			port = "443"
+		}
+
+		s.conn, err = tls.DialWithDialer(s.dialer, "tcp", s.url.Hostname()+":"+port, s.tls)
 		if err == nil {
 			sc = s.conn.(*tls.Conn).NetConn().(syscall.Conn)
 		}
@@ -170,19 +180,21 @@ func (s *HttpStream) init(stream sonic.Stream) (err error) {
 	return
 }
 
-func (s *HttpStream) prepareRequest(req *http.Request) {
+func (s *HttpStream) prepareRequest(target string, req *http.Request) {
 	req.ProtoMinor = 1
 	req.ProtoMajor = 1
 	req.URL = s.url
+	req.URL.Path = target
 	req.Host = s.url.Host
+
 }
 
-func (s *HttpStream) Do(req *http.Request) (*http.Response, error) {
+func (s *HttpStream) Do(target string, req *http.Request) (*http.Response, error) {
 	if s.role != RoleClient {
 		return nil, fmt.Errorf("can only send request in the Client role")
 	}
 
-	s.prepareRequest(req)
+	s.prepareRequest(target, req)
 	return s.do(req)
 }
 
@@ -208,12 +220,12 @@ func (s *HttpStream) do(req *http.Request) (res *http.Response, err error) {
 	return
 }
 
-func (s *HttpStream) AsyncDo(req *http.Request, cb AsyncResponseHandler) {
+func (s *HttpStream) AsyncDo(target string, req *http.Request, cb AsyncResponseHandler) {
 	if s.role != RoleClient {
 		cb(fmt.Errorf("can only send request in the Client role"), nil)
 		return
 	}
-	s.prepareRequest(req)
+	s.prepareRequest(target, req)
 	s.asyncDo(req, cb)
 }
 

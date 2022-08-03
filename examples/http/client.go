@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httputil"
-	"net/url"
 
 	"github.com/talostrading/sonic"
 	sonichttp "github.com/talostrading/sonic/codec/http"
@@ -20,27 +19,16 @@ func main() {
 		panic(err)
 	}
 
-	host := "testnet.binancefuture.com"
-
 	done := false
-	s.AsyncConnect(host+":443", func(err error) {
-		if err != nil {
-			panic(err)
-		}
-
-		url, err := url.Parse("http://testnet.binancefuture.com/fapi/v1/time")
+	s.AsyncConnect("https://testnet.binancefuture.com/", func(err error) {
 		if err != nil {
 			panic(err)
 		}
 
 		req := &http.Request{
-			Method:     "GET",
-			URL:        url,
-			ProtoMajor: 1,
-			ProtoMinor: 1,
-			Host:       host,
+			Method: "GET",
 		}
-		s.AsyncDo(req, func(err error, res *http.Response) {
+		s.AsyncDo("/fapi/v1/time", req, func(err error, res *http.Response) {
 			if err != nil {
 				panic(err)
 			}

@@ -33,8 +33,8 @@ type Stream interface {
 	Connect(addr string) error
 	AsyncConnect(addr string, cb func(err error))
 
-	Do(*http.Request) (*http.Response, error)
-	AsyncDo(*http.Request, AsyncResponseHandler)
+	Do(target string, req *http.Request) (*http.Response, error)
+	AsyncDo(target string, req *http.Request, cb AsyncResponseHandler)
 
 	State() StreamState
 
