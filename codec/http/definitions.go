@@ -38,5 +38,7 @@ type Stream interface {
 
 	State() StreamState
 
+	Proto() string
+
 	Close()
 }

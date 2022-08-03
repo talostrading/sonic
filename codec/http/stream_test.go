@@ -2,30 +2,24 @@ package http
 
 import (
 	"fmt"
+	"io"
 	"net/http"
+	"net/http/httptest"
 	"net/http/httputil"
-	"net/url"
 	"testing"
 
 	"github.com/talostrading/sonic"
 )
 
 func TestClient(t *testing.T) {
-	go func() {
-		http.HandleFunc("/", func(w http.ResponseWriter, req *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(
+		func(w http.ResponseWriter, req *http.Request) {
 
-		})
-
-		http.ListenAndServe("localhost:8080", nil)
-	}()
+		}))
+	defer srv.Close()
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
-
-	url, err := url.Parse("http://localhost:8080/")
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	s, err := NewHttpStream(ioc, nil, RoleClient)
 	if err != nil {
@@ -33,31 +27,28 @@ func TestClient(t *testing.T) {
 	}
 
 	n := 5 // do 5 requests
-	s.AsyncConnect("localhost:8080", func(err error) {
+	s.AsyncConnect(srv.URL, func(err error) {
 		if err != nil {
-			panic(err)
+			t.Fatal(err)
 		}
 
 		req := &http.Request{
-			Method:     "GET",
-			Host:       "localhost:8080",
-			URL:        url,
-			ProtoMajor: 1,
-			ProtoMinor: 1,
+			Method: "GET",
 		}
 
-		var onAsyncDo func(err error, res *http.Response)
+		var onAsyncDo AsyncResponseHandler
 		onAsyncDo = func(err error, res *http.Response) {
 			if err != nil {
-				panic(err)
+				t.Fatal(err)
 			}
 
 			b, err := httputil.DumpResponse(res, true)
 			if err != nil {
-				panic(err)
+				t.Fatal(err)
 			}
-			n--
 			fmt.Println(string(b))
+
+			n--
 
 			if res.StatusCode != http.StatusOK {
 				t.Fatalf("invalid status %d", res.StatusCode)
@@ -73,6 +64,139 @@ func TestClient(t *testing.T) {
 
 	for {
 		if n <= 0 {
+			break
+		}
+		ioc.RunOne()
+	}
+}
+
+func TestClientCanRetry(t *testing.T) {
+	// Test whether we retry the request after the first one fails.
+	// The retry should succeed.
+	MaxRetries = 1
+
+	respond := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if !respond {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Fatal("cannot hijack")
+			}
+
+			conn, _, _ := hj.Hijack()
+			conn.Close()
+
+			respond = true
+		} else {
+		}
+	}))
+	defer srv.Close()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	s, err := NewHttpStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := &http.Request{
+		Method: "GET",
+	}
+
+	done := false
+	s.AsyncConnect(srv.URL, func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s.AsyncDo(req, func(err error, res *http.Response) {
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			b, err := httputil.DumpResponse(res, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			fmt.Println(string(b))
+
+			if res.StatusCode != http.StatusOK {
+				t.Fatal(res.StatusCode)
+			}
+
+			if s.State() != StateConnected {
+				t.Fatal("expected StateConnected")
+			}
+
+			done = true
+		})
+	})
+
+	for {
+		if done {
+			break
+		}
+		ioc.RunOne()
+	}
+}
+
+func TestClientCannotRetry(t *testing.T) {
+	// Test whether we retry the request after the first one fails.
+	// The retry should succeed.
+	MaxRetries = 0
+
+	respond := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if !respond {
+			hj, ok := w.(http.Hijacker)
+			if !ok {
+				t.Fatal("cannot hijack")
+			}
+
+			conn, _, _ := hj.Hijack()
+			conn.Close()
+
+			respond = true
+		} else {
+		}
+	}))
+	defer srv.Close()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	s, err := NewHttpStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := &http.Request{
+		Method: "GET",
+	}
+
+	done := false
+	s.AsyncConnect(srv.URL, func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s.AsyncDo(req, func(err error, res *http.Response) {
+			if err != io.EOF {
+				t.Fatal("expected EOF")
+			}
+
+			if s.State() != StateDisconnected {
+				t.Fatal("expected StateDisconnected")
+			}
+
+			done = true
+		})
+	})
+
+	for {
+		if done {
 			break
 		}
 		ioc.RunOne()

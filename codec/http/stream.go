@@ -3,14 +3,20 @@ package http
 import (
 	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"syscall"
 
 	"github.com/talostrading/sonic"
 )
 
-var _ Stream = &HttpStream{}
+var (
+	_ Stream = &HttpStream{}
+
+	MaxRetries = 5
+)
 
 // TODO https://www.rfc-editor.org/rfc/rfc2616#section-14.10
 
@@ -20,8 +26,13 @@ type HttpStream struct {
 	role  Role
 	state StreamState
 
+	addr string
+	url  *url.URL
+
 	conn   net.Conn
 	stream sonic.Stream
+
+	retries int
 
 	ccs *sonic.BlockingCodecStream[*http.Request, *http.Response]
 	scs *sonic.BlockingCodecStream[*http.Response, *http.Request]
@@ -47,6 +58,10 @@ func NewHttpStream(ioc *sonic.IO, tls *tls.Config, role Role) (*HttpStream, erro
 	s.dst.Reserve(16 * 1024)
 
 	return s, nil
+}
+
+func (s *HttpStream) Proto() string {
+	return "HTTP/1.1"
 }
 
 func (s *HttpStream) Connect(addr string) (err error) {
@@ -85,16 +100,32 @@ func (s *HttpStream) dial(addr string, cb func(err error)) {
 		sc  syscall.Conn
 	)
 
-	if s.tls == nil {
-		s.conn, err = net.Dial("tcp", addr)
+	s.addr = addr
+	s.url, err = url.Parse(addr)
+	if err != nil {
+		cb(err)
+		return
+	}
+
+	switch s.url.Scheme {
+	case "http":
+		s.conn, err = net.Dial("tcp", s.url.Host)
 		if err == nil {
 			sc = s.conn.(syscall.Conn)
 		}
-	} else {
-		s.conn, err = tls.Dial("tcp", addr, s.tls)
+	case "https":
+		if s.tls == nil {
+			cb(fmt.Errorf("TLS config required for https addresses"))
+			return
+		}
+
+		s.conn, err = tls.Dial("tcp", s.url.Host, s.tls)
 		if err == nil {
 			sc = s.conn.(*tls.Conn).NetConn().(syscall.Conn)
 		}
+	default:
+		cb(fmt.Errorf("invalid scheme %s", s.url.Scheme))
+		return
 	}
 
 	if err == nil {
@@ -132,17 +163,42 @@ func (s *HttpStream) init(stream sonic.Stream) (err error) {
 	return
 }
 
+func (s *HttpStream) prepareRequest(req *http.Request) {
+	req.ProtoMinor = 1
+	req.ProtoMajor = 1
+	req.URL = s.url
+	req.Host = s.url.Host
+}
+
 func (s *HttpStream) Do(req *http.Request) (*http.Response, error) {
 	if s.role != RoleClient {
 		return nil, fmt.Errorf("can only send request in the Client role")
 	}
 
-	_, err := s.ccs.WriteNext(req)
-	if err != nil {
-		return nil, err
+	s.prepareRequest(req)
+	return s.do(req)
+}
+
+func (s *HttpStream) do(req *http.Request) (res *http.Response, err error) {
+	for s.retries <= MaxRetries {
+		_, err = s.ccs.WriteNext(req)
+		if err == io.EOF {
+			s.retries++
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+
+		res, err = s.ccs.ReadNext()
+		if err == io.EOF {
+			s.retries++
+			continue
+		} else {
+			return res, err
+		}
 	}
 
-	return s.ccs.ReadNext()
+	return
 }
 
 func (s *HttpStream) AsyncDo(req *http.Request, cb AsyncResponseHandler) {
@@ -150,12 +206,53 @@ func (s *HttpStream) AsyncDo(req *http.Request, cb AsyncResponseHandler) {
 		cb(fmt.Errorf("can only send request in the Client role"), nil)
 		return
 	}
+	s.prepareRequest(req)
+	s.asyncDo(req, cb)
+}
 
+func (s *HttpStream) asyncDo(req *http.Request, cb AsyncResponseHandler) {
 	s.ccs.AsyncWriteNext(req, func(err error, _ int) {
+		if err == io.EOF {
+			s.state = StateDisconnected
+
+			if s.retries < MaxRetries {
+				s.asyncRetry(req, cb)
+			} else {
+				cb(err, nil)
+			}
+		} else if err != nil {
+			cb(err, nil)
+		} else {
+			s.asyncReadResponse(req, cb)
+		}
+	})
+}
+
+func (s *HttpStream) asyncReadResponse(req *http.Request, cb AsyncResponseHandler) {
+	s.ccs.AsyncReadNext(func(err error, res *http.Response) {
+		if err == io.EOF {
+			s.state = StateDisconnected
+
+			if s.retries < MaxRetries {
+				s.asyncRetry(req, cb)
+			} else {
+				cb(err, nil)
+			}
+		} else {
+			s.retries = 0
+			cb(err, res)
+		}
+	})
+}
+
+func (s *HttpStream) asyncRetry(req *http.Request, cb AsyncResponseHandler) {
+	s.retries++
+
+	s.AsyncConnect(s.addr, func(err error) {
 		if err != nil {
 			cb(err, nil)
 		} else {
-			s.ccs.AsyncReadNext(cb)
+			s.asyncDo(req, cb)
 		}
 	})
 }
