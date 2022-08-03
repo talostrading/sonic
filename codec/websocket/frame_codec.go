@@ -6,7 +6,7 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-var _ sonic.Codec[*Frame] = &FrameCodec{}
+var _ sonic.Codec[*Frame, *Frame] = &FrameCodec{}
 
 var (
 	ErrPartialPayload = errors.New("partial payload")

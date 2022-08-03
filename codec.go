@@ -6,12 +6,12 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-// Codec defines a generic interface through which one can encode/decode
-// a raw stream of bytes.
-//
-// Implementations are optionally able to track their state which enables
-// writing both stateful and stateless parsers.
-type Codec[Item any] interface {
+type Encoder[Item any] interface {
+	// Encode encodes the given item into the `dst` byte stream.
+	Encode(item Item, dst *ByteBuffer) error
+}
+
+type Decoder[Item any] interface {
 	// Decode decodes the given stream into an `Item`.
 	//
 	// An implementation of Codec takes a byte stream that has already
@@ -21,24 +21,36 @@ type Codec[Item any] interface {
 	// Implementations should return an empty Item and ErrNeedMore if
 	// there are not enough bytes to decode into an Item.
 	Decode(src *ByteBuffer) (Item, error)
+}
 
-	// Encode encodes the given item into the `dst` byte stream.
-	Encode(item Item, dst *ByteBuffer) error
+// Codec defines a generic interface through which one can encode/decode
+// a raw stream of bytes.
+//
+// Implementations are optionally able to track their state which enables
+// writing both stateful and stateless parsers.
+type Codec[Enc, Dec any] interface {
+	Encoder[Enc]
+	Decoder[Dec]
 }
 
 // BlockingCodecStream handles the decoding/encoding of bytes funneled through a
 // provided blocking file descriptor.
-type BlockingCodecStream[T any] struct {
+type BlockingCodecStream[Enc, Dec any] struct {
 	stream Stream
-	codec  Codec[T]
+	codec  Codec[Enc, Dec]
 	src    *ByteBuffer
 	dst    *ByteBuffer
 
-	empty T
+	emptyEnc Enc
+	emptyDec Dec
 }
 
-func NewBlockingCodecStream[T any](stream Stream, codec Codec[T], src, dst *ByteBuffer) (*BlockingCodecStream[T], error) {
-	s := &BlockingCodecStream[T]{
+func NewBlockingCodecStream[Enc, Dec any](
+	stream Stream,
+	codec Codec[Enc, Dec],
+	src, dst *ByteBuffer,
+) (*BlockingCodecStream[Enc, Dec], error) {
+	s := &BlockingCodecStream[Enc, Dec]{
 		stream: stream,
 		codec:  codec,
 		src:    src,
@@ -47,7 +59,7 @@ func NewBlockingCodecStream[T any](stream Stream, codec Codec[T], src, dst *Byte
 	return s, nil
 }
 
-func (s *BlockingCodecStream[T]) AsyncReadNext(cb func(error, T)) {
+func (s *BlockingCodecStream[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
 	frame, err := s.codec.Decode(s.src)
 	if errors.Is(err, sonicerrors.ErrNeedMore) {
 		s.scheduleAsyncRead(cb)
@@ -56,17 +68,17 @@ func (s *BlockingCodecStream[T]) AsyncReadNext(cb func(error, T)) {
 	}
 }
 
-func (s *BlockingCodecStream[T]) scheduleAsyncRead(cb func(error, T)) {
+func (s *BlockingCodecStream[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
 	s.src.AsyncReadFrom(s.stream, func(err error, _ int) {
 		if err != nil {
-			cb(err, s.empty)
+			cb(err, s.emptyDec)
 		} else {
 			s.AsyncReadNext(cb)
 		}
 	})
 }
 
-func (s *BlockingCodecStream[T]) ReadNext() (T, error) {
+func (s *BlockingCodecStream[Enc, Dec]) ReadNext() (Dec, error) {
 	for {
 		frame, err := s.codec.Decode(s.src)
 		if err == nil {
@@ -74,18 +86,18 @@ func (s *BlockingCodecStream[T]) ReadNext() (T, error) {
 		}
 
 		if !errors.Is(err, sonicerrors.ErrNeedMore) {
-			return s.empty, err
+			return s.emptyDec, err
 		}
 
 		_, err = s.src.ReadFrom(s.stream)
 		if err != nil {
-			return s.empty, err
+			return s.emptyDec, err
 		}
 	}
 }
 
-func (s *BlockingCodecStream[T]) WriteNext(frame T) (n int, err error) {
-	err = s.codec.Encode(frame, s.dst)
+func (s *BlockingCodecStream[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
+	err = s.codec.Encode(item, s.dst)
 	if err == nil {
 		var nn int64
 		nn, err = s.dst.WriteTo(s.stream)
@@ -94,8 +106,8 @@ func (s *BlockingCodecStream[T]) WriteNext(frame T) (n int, err error) {
 	return
 }
 
-func (s *BlockingCodecStream[T]) AsyncWriteNext(frame T, cb AsyncCallback) {
-	err := s.codec.Encode(frame, s.dst)
+func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback) {
+	err := s.codec.Encode(item, s.dst)
 	if err == nil {
 		s.dst.AsyncWriteTo(s.stream, cb)
 	} else {
@@ -103,6 +115,6 @@ func (s *BlockingCodecStream[T]) AsyncWriteNext(frame T, cb AsyncCallback) {
 	}
 }
 
-func (s *BlockingCodecStream[T]) NextLayer() Stream {
+func (s *BlockingCodecStream[Enc, Dec]) NextLayer() Stream {
 	return s.stream
 }
