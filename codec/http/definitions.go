@@ -1,6 +1,10 @@
 package http
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/talostrading/sonic"
+)
 
 type Role uint8
 
@@ -41,4 +45,6 @@ type Stream interface {
 	Proto() string
 
 	Close()
+
+	NextLayer() sonic.Stream
 }

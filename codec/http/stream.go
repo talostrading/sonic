@@ -283,6 +283,10 @@ func (s *HttpStream) Close() {
 	}
 }
 
+func (s *HttpStream) NextLayer() sonic.Stream {
+	return s.stream
+}
+
 func (s *HttpStream) State() StreamState {
 	return s.state
 }
