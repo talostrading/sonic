@@ -370,7 +370,7 @@ func (s *HttpStream) State() StreamState {
 func (s *HttpStream) Close() {
 	if s.state != StateDisconnected {
 		s.url = nil
-		s.stream.Close()
 		s.state = StateDisconnected
+		s.stream.Close()
 	}
 }
