@@ -20,7 +20,7 @@ func main() {
 	}
 
 	done := false
-	s.AsyncConnect("https://testnet.binancefuture.com/", func(err error) {
+	s.AsyncConnect("https://fapi.binance.com/", func(err error) {
 		if err != nil {
 			panic(err)
 		}
@@ -28,7 +28,8 @@ func main() {
 		req := &http.Request{
 			Method: "GET",
 		}
-		s.AsyncDo("/fapi/v1/time", req, func(err error, res *http.Response) {
+
+		s.AsyncDo("/fapi/v1/depth?symbol=BTCUSDT&limit=50", req, func(err error, res *http.Response) {
 			if err != nil {
 				panic(err)
 			}

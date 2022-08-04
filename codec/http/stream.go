@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,8 +27,7 @@ type HttpStream struct {
 	role  Role
 	state StreamState
 
-	addr string
-	url  *url.URL
+	url *url.URL
 
 	conn   net.Conn
 	stream sonic.Stream
@@ -192,9 +192,16 @@ func (s *HttpStream) prepareRequest(target string, req *http.Request) {
 	req.ProtoMinor = 1
 	req.ProtoMajor = 1
 	req.URL = s.url
-	req.URL.Path = target
 	req.Host = s.url.Host
 
+	if i := strings.Index(target, "?"); i >= 0 {
+		req.URL.RawQuery = target[i+1:]
+		req.URL.Path = target[:i]
+	} else {
+		req.URL.Path = target
+	}
+
+	fmt.Println(req.URL)
 }
 
 func (s *HttpStream) Do(target string, req *http.Request) (*http.Response, error) {
