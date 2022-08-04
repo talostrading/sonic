@@ -211,7 +211,7 @@ func (s *HttpStream) do(req *http.Request) (res *http.Response, err error) {
 	if req.Close {
 		s.state = StateDisconnecting
 		defer func() {
-			s.state = StateDisconnected
+			s.Close()
 		}()
 	}
 
@@ -281,7 +281,7 @@ func (s *HttpStream) asyncDo(req *http.Request, cb AsyncResponseHandler) {
 		if err == nil {
 			s.asyncTryReadResponse(req, func(err error, res *http.Response) {
 				if req.Close {
-					s.state = StateDisconnected
+					s.Close()
 				}
 
 				if res != nil && res.Close {
@@ -368,8 +368,9 @@ func (s *HttpStream) State() StreamState {
 }
 
 func (s *HttpStream) Close() {
-	if s.state == StateConnected || s.state == StateDisconnecting {
+	if s.state != StateDisconnected {
 		s.url = nil
 		s.stream.Close()
+		s.state = StateDisconnected
 	}
 }
