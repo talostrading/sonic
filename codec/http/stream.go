@@ -20,8 +20,6 @@ var (
 	DialTimeout = 5 * time.Second
 )
 
-// TODO https://www.rfc-editor.org/rfc/rfc2616#section-14.10
-
 type HttpStream struct {
 	ioc   *sonic.IO
 	tls   *tls.Config
@@ -76,13 +74,21 @@ func (s *HttpStream) Connect(addr string) (err error) {
 		return fmt.Errorf("can only connect in a client role")
 	}
 
+	s.url, err = url.Parse(addr)
+	if err != nil {
+		return err
+	}
+
+	return s.connect()
+}
+
+func (s *HttpStream) connect() (err error) {
 	done := make(chan struct{}, 1)
-	s.dial(addr, func(uerr error) {
+	s.dial(func(uerr error) {
 		done <- struct{}{}
 		err = uerr
 	})
 	<-done
-
 	return
 }
 
@@ -92,8 +98,19 @@ func (s *HttpStream) AsyncConnect(addr string, cb func(err error)) {
 		return
 	}
 
+	var err error
+	s.url, err = url.Parse(addr)
+	if err != nil {
+		cb(err)
+		return
+	}
+
+	s.asyncConnect(cb)
+}
+
+func (s *HttpStream) asyncConnect(cb func(err error)) {
 	go func() {
-		s.dial(addr, func(err error) {
+		s.dial(func(err error) {
 			s.ioc.Post(func() {
 				cb(err)
 			})
@@ -101,18 +118,11 @@ func (s *HttpStream) AsyncConnect(addr string, cb func(err error)) {
 	}()
 }
 
-func (s *HttpStream) dial(addr string, cb func(err error)) {
+func (s *HttpStream) dial(cb func(err error)) {
 	var (
 		err error
 		sc  syscall.Conn
 	)
-
-	s.addr = addr
-	s.url, err = url.Parse(addr)
-	if err != nil {
-		cb(err)
-		return
-	}
 
 	port := s.url.Port()
 
@@ -152,8 +162,6 @@ func (s *HttpStream) dial(addr string, cb func(err error)) {
 			}
 			cb(err)
 		})
-
-		s.state = StateConnected
 	} else {
 		cb(err)
 	}
@@ -199,25 +207,59 @@ func (s *HttpStream) Do(target string, req *http.Request) (*http.Response, error
 }
 
 func (s *HttpStream) do(req *http.Request) (res *http.Response, err error) {
-	for s.retries <= MaxRetries {
+	// https://www.rfc-editor.org/rfc/rfc2616#section-14.10
+	if req.Close {
+		s.state = StateDisconnecting
+		defer func() {
+			s.state = StateDisconnected
+		}()
+	}
+
+	for err == nil {
 		_, err = s.ccs.WriteNext(req)
 		if err == io.EOF {
-			s.retries++
-			continue
-		} else if err != nil {
-			return nil, err
+			if s.retries < MaxRetries {
+				s.retries++
+				err = s.reconnect()
+			} else {
+				s.state = StateDisconnected
+			}
 		}
 
-		res, err = s.ccs.ReadNext()
-		if err == io.EOF {
-			s.retries++
-			continue
-		} else {
-			return res, err
+		if err == nil {
+			res, err = s.ccs.ReadNext()
+			if err == io.EOF {
+				if s.retries < MaxRetries {
+					s.retries++
+					err = s.reconnect()
+				}
+			} else {
+				s.state = StateDisconnected
+			}
 		}
 	}
 
+	s.retries = 0
+
+	if res != nil && res.Close {
+		s.state = StateDisconnected
+	}
+
 	return
+}
+
+func (s *HttpStream) reconnect() error {
+	prev := s.state // can be StateConnected or StateDisconnecting
+
+	s.state = StateReconnecting
+	err := s.connect()
+	if err != nil {
+		s.state = StateDisconnected
+	} else {
+		s.state = prev
+	}
+
+	return err
 }
 
 func (s *HttpStream) AsyncDo(target string, req *http.Request, cb AsyncResponseHandler) {
@@ -230,49 +272,90 @@ func (s *HttpStream) AsyncDo(target string, req *http.Request, cb AsyncResponseH
 }
 
 func (s *HttpStream) asyncDo(req *http.Request, cb AsyncResponseHandler) {
-	s.ccs.AsyncWriteNext(req, func(err error, _ int) {
-		if err == io.EOF {
-			s.state = StateDisconnected
+	// https://www.rfc-editor.org/rfc/rfc2616#section-14.10
+	if req.Close {
+		s.state = StateDisconnecting
+	}
 
-			if s.retries < MaxRetries {
-				s.asyncRetry(req, cb)
-			} else {
-				cb(err, nil)
-			}
-		} else if err != nil {
-			cb(err, nil)
+	s.asyncTryWriteRequest(req, func(err error) {
+		if err == nil {
+			s.asyncTryReadResponse(req, func(err error, res *http.Response) {
+				if req.Close {
+					s.state = StateDisconnected
+				}
+
+				if res != nil && res.Close {
+					s.state = StateDisconnected
+				}
+
+				s.retries = 0
+
+				cb(err, res)
+			})
 		} else {
-			s.asyncReadResponse(req, cb)
+			s.retries = 0
+
+			cb(err, nil)
 		}
 	})
 }
 
-func (s *HttpStream) asyncReadResponse(req *http.Request, cb AsyncResponseHandler) {
-	s.ccs.AsyncReadNext(func(err error, res *http.Response) {
+func (s *HttpStream) asyncTryWriteRequest(req *http.Request, cb func(err error)) {
+	s.ccs.AsyncWriteNext(req, func(err error, _ int) {
 		if err == io.EOF {
-			s.state = StateDisconnected
-
 			if s.retries < MaxRetries {
-				s.asyncRetry(req, cb)
+				s.retries++
+				s.asyncReconnect(func(err error) {
+					if err != nil {
+						cb(err)
+					} else {
+						s.asyncTryWriteRequest(req, cb)
+					}
+				})
 			} else {
-				cb(err, nil)
+				s.state = StateDisconnected
+				cb(err)
 			}
 		} else {
-			s.retries = 0
+			cb(err)
+		}
+	})
+}
+
+func (s *HttpStream) asyncTryReadResponse(req *http.Request, cb func(err error, res *http.Response)) {
+	s.ccs.AsyncReadNext(func(err error, res *http.Response) {
+		if err == io.EOF {
+			if s.retries < MaxRetries {
+				s.retries++
+				s.asyncReconnect(func(err error) {
+					if err != nil {
+						cb(err, res)
+					} else {
+						s.asyncDo(req, cb)
+					}
+				})
+			} else {
+				s.state = StateDisconnected
+				cb(err, res)
+			}
+		} else {
 			cb(err, res)
 		}
 	})
 }
 
-func (s *HttpStream) asyncRetry(req *http.Request, cb AsyncResponseHandler) {
-	s.retries++
+func (s *HttpStream) asyncReconnect(cb func(err error)) {
+	prev := s.state // can be StateConnected or StateDisconnecting
 
-	s.AsyncConnect(s.addr, func(err error) {
+	s.state = StateReconnecting
+	s.asyncConnect(func(err error) {
 		if err != nil {
-			cb(err, nil)
+			s.state = StateDisconnected
 		} else {
-			s.asyncDo(req, cb)
+			s.state = prev
 		}
+
+		cb(err)
 	})
 }
 
@@ -282,4 +365,11 @@ func (s *HttpStream) NextLayer() sonic.Stream {
 
 func (s *HttpStream) State() StreamState {
 	return s.state
+}
+
+func (s *HttpStream) Close() {
+	if s.state == StateConnected || s.state == StateDisconnecting {
+		s.url = nil
+		s.stream.Close()
+	}
 }

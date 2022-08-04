@@ -76,16 +76,10 @@ func TestClientCanRetry(t *testing.T) {
 	MaxRetries = 1
 
 	respond := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if !respond {
-			hj, ok := w.(http.Hijacker)
-			if !ok {
-				t.Fatal("cannot hijack")
-			}
-
-			conn, _, _ := hj.Hijack()
-			conn.Close()
-
+			srv.CloseClientConnections()
 			respond = true
 		} else {
 		}
@@ -152,16 +146,10 @@ func TestClientCannotRetry(t *testing.T) {
 	MaxRetries = 0
 
 	respond := false
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	var srv *httptest.Server
+	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		if !respond {
-			hj, ok := w.(http.Hijacker)
-			if !ok {
-				t.Fatal("cannot hijack")
-			}
-
-			conn, _, _ := hj.Hijack()
-			conn.Close()
-
+			srv.CloseClientConnections()
 			respond = true
 		} else {
 		}
@@ -190,6 +178,113 @@ func TestClientCannotRetry(t *testing.T) {
 			if err != io.EOF {
 				t.Fatal("expected EOF")
 			}
+
+			if s.State() != StateDisconnected {
+				t.Fatal("expected StateDisconnected")
+			}
+
+			if s.retries != 0 {
+				t.Fatal("retries should be 0")
+			}
+
+			done = true
+		})
+	})
+
+	for {
+		if done {
+			break
+		}
+		ioc.RunOne()
+	}
+}
+
+func TestClientHandlesCloseResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		w.Header().Set("Connection", "close")
+	}))
+	defer srv.Close()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	s, err := NewHttpStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := &http.Request{
+		Method: "GET",
+	}
+
+	done := false
+	s.AsyncConnect(srv.URL, func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s.AsyncDo("/", req, func(err error, res *http.Response) {
+			b, err := httputil.DumpResponse(res, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			fmt.Println(string(b))
+
+			if s.State() != StateDisconnected {
+				t.Fatal("expected StateDisconnected")
+			}
+
+			if s.retries != 0 {
+				t.Fatal("retries should be 0")
+			}
+
+			done = true
+		})
+	})
+
+	for {
+		if done {
+			break
+		}
+		ioc.RunOne()
+	}
+}
+
+func TestClientClosesAfterSendingCloseRequest(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Header.Get("Connection") != "close" {
+			t.Fatal("expected Connection: close header")
+		}
+	}))
+	defer srv.Close()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	s, err := NewHttpStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req := &http.Request{
+		Method: "GET",
+		Close:  true,
+	}
+
+	done := false
+	s.AsyncConnect(srv.URL, func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		s.AsyncDo("/", req, func(err error, res *http.Response) {
+			b, err := httputil.DumpResponse(res, true)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			fmt.Println(string(b))
 
 			if s.State() != StateDisconnected {
 				t.Fatal("expected StateDisconnected")

@@ -28,8 +28,25 @@ type StreamState uint8
 
 const (
 	StateDisconnected StreamState = iota
+	StateDisconnecting
+	StateReconnecting
 	StateConnected
 )
+
+func (s StreamState) String() string {
+	switch s {
+	case StateDisconnected:
+		return "state_disconnected"
+	case StateDisconnecting:
+		return "state_disconnecting"
+	case StateReconnecting:
+		return "state_reconnecting"
+	case StateConnected:
+		return "state_connected"
+	default:
+		return "state_unknown"
+	}
+}
 
 type AsyncResponseHandler func(error, *http.Response)
 
@@ -45,4 +62,6 @@ type Stream interface {
 	Proto() string
 
 	NextLayer() sonic.Stream
+
+	Close()
 }
