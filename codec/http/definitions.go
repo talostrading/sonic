@@ -44,7 +44,5 @@ type Stream interface {
 
 	Proto() string
 
-	Close()
-
 	NextLayer() sonic.Stream
 }

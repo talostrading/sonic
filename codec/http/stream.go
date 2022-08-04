@@ -276,13 +276,6 @@ func (s *HttpStream) asyncRetry(req *http.Request, cb AsyncResponseHandler) {
 	})
 }
 
-func (s *HttpStream) Close() {
-	if s.state == StateConnected {
-		s.state = StateDisconnected
-		s.stream.Close()
-	}
-}
-
 func (s *HttpStream) NextLayer() sonic.Stream {
 	return s.stream
 }
