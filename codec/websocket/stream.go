@@ -686,6 +686,7 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 		return err
 	}
 
+	s.hb = s.hb[:cap(s.hb)]
 	n, err := s.stream.Read(s.hb)
 	if err != nil {
 		return err
