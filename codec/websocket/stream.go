@@ -7,6 +7,7 @@ import (
 	"crypto/sha1"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"hash"
 	"io"
@@ -123,6 +124,11 @@ func (s *WebsocketStream) canRead() bool {
 func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	err = s.Flush()
 
+	if errors.Is(err, ErrMessageTooBig) {
+		s.Close(CloseGoingAway, "payload too big")
+		return nil, err
+	}
+
 	if err == nil && !s.canRead() {
 		err = io.EOF
 	}
@@ -148,6 +154,12 @@ func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
 
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 	s.AsyncFlush(func(err error) {
+		if errors.Is(err, ErrMessageTooBig) {
+			s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
+			cb(ErrMessageTooBig, nil)
+			return
+		}
+
 		if err == nil && !s.canRead() {
 			err = io.EOF
 		}
@@ -200,6 +212,8 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 
 			if readBytes > MaxMessageSize || n != f.PayloadLen() {
 				err = ErrMessageTooBig
+				s.Close(CloseGoingAway, "payload too big")
+				break
 			}
 
 			// verify continuation
@@ -259,6 +273,9 @@ func (s *WebsocketStream) asyncNextMessage(
 
 				if readBytes > MaxMessageSize || n != f.PayloadLen() {
 					err = ErrMessageTooBig
+					s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
+					cb(err, readBytes, mt)
+					return
 				}
 
 				// verify continuation
