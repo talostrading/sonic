@@ -66,7 +66,11 @@ type WebsocketStream struct {
 	// Optional callback invoked when a control frame is received.
 	ccb ControlCallback
 
+	// Used to establish a TCP connection to the peer with a timeout.
 	dialer *net.Dialer
+
+	// The size of the currently read message.
+	messageSize int
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketStream, error) {
@@ -194,8 +198,8 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 			n := copy(b[readBytes:], f.Payload())
 			readBytes += n
 
-			if n != f.PayloadLen() {
-				err = ErrPayloadTooBig
+			if readBytes > MaxMessageSize || n != f.PayloadLen() {
+				err = ErrMessageTooBig
 			}
 
 			// verify continuation
@@ -253,8 +257,8 @@ func (s *WebsocketStream) asyncNextMessage(
 				n := copy(b[readBytes:], f.Payload())
 				readBytes += n
 
-				if n != f.PayloadLen() {
-					err = ErrPayloadTooBig
+				if readBytes > MaxMessageSize || n != f.PayloadLen() {
+					err = ErrMessageTooBig
 				}
 
 				// verify continuation
@@ -377,6 +381,10 @@ func (s *WebsocketStream) handleDataFrame(f *Frame) error {
 }
 
 func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
+	if len(b) > MaxMessageSize {
+		return ErrMessageTooBig
+	}
+
 	f := AcquireFrame()
 	f.SetFin()
 	f.SetOpcode(Opcode(mt))
@@ -395,6 +403,11 @@ func (s *WebsocketStream) WriteFrame(f *Frame) error {
 }
 
 func (s *WebsocketStream) AsyncWrite(b []byte, mt MessageType, cb func(err error)) {
+	if len(b) > MaxMessageSize {
+		cb(ErrMessageTooBig)
+		return
+	}
+
 	f := AcquireFrame()
 	f.SetFin()
 	f.SetOpcode(Opcode(mt))
@@ -627,12 +640,13 @@ func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
 	}
 
 	if err == nil {
-		sonic.NewAsyncAdapter(s.ioc, sc, conn, func(err error, stream *sonic.AsyncAdapter) {
-			if err == nil {
-				err = s.init(stream)
-			}
-			cb(err)
-		})
+		sonic.NewAsyncAdapter(
+			s.ioc, sc, conn, func(err error, stream *sonic.AsyncAdapter) {
+				if err == nil {
+					err = s.init(stream)
+				}
+				cb(err)
+			})
 	} else {
 		cb(err)
 	}
@@ -726,4 +740,8 @@ func (s *WebsocketStream) SetControlCallback(ccb ControlCallback) {
 
 func (s *WebsocketStream) ControlCallback() ControlCallback {
 	return s.ccb
+}
+
+func (s *WebsocketStream) SetMaxMessageSize(bytes int) {
+	MaxMessageSize = bytes
 }

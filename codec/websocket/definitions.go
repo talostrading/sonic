@@ -4,8 +4,8 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-const (
-	MaxPayloadSize = 1024 * 512
+var (
+	MaxMessageSize = 1024 * 512 // the maximum size of a message
 )
 
 type Role uint8
@@ -312,4 +312,13 @@ type Stream interface {
 
 	// ControlCallback returns the control callback set with SetControlCallback.
 	ControlCallback() ControlCallback
+
+	// SetMaxMessageSize sets the maximum size of a message that can be read from
+	// or written to a peer.
+	//
+	//  - If a message exceeds the limit while reading, the connection is
+	//    closed abnormally.
+	//  - If a message exceeds the limit while writing, the operation is
+	//    cancelled.
+	SetMaxMessageSize(bytes int)
 }

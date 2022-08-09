@@ -84,7 +84,7 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 
 	// check payload length
 	npayload := c.decodeFrame.PayloadLen()
-	if npayload > MaxPayloadSize {
+	if npayload > MaxMessageSize {
 		return nil, ErrPayloadOverMaxSize
 	}
 
