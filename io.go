@@ -26,6 +26,8 @@ type IO struct {
 }
 
 func NewIO() (*IO, error) {
+	runtime.LockOSThread()
+
 	poller, err := internal.NewPoller()
 	if err != nil {
 		return nil, err
@@ -145,6 +147,8 @@ func (ioc *IO) Pending() int64 {
 }
 
 func (ioc *IO) Close() error {
+	defer runtime.UnlockOSThread()
+
 	if !atomic.CompareAndSwapUint32(&ioc.closed, 0, 1) {
 		return io.EOF
 	}
