@@ -129,6 +129,8 @@ func (p *Poller) Post(handler func()) error {
 	p.pending++
 	p.lck.Unlock()
 
+	// Concurrent writes are thread safe for pipes if less
+	// than 512 bytes are written.
 	_, err := p.waker.Write(oneByte[:])
 	return err
 }

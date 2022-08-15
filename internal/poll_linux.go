@@ -122,6 +122,7 @@ func (p *Poller) Post(handler func()) error {
 	p.pending++
 	p.lck.Unlock()
 
+	// Concurrent writes are thread safe for eventfds.
 	_, err := p.waker.Write(1)
 	return err
 }
