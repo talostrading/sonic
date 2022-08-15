@@ -20,7 +20,7 @@ func main() {
 
 		go func() {
 			for {
-				time.Sleep(time.Duration(100+rand.Intn(500)) * time.Millisecond)
+				time.Sleep(time.Duration(1+rand.Intn(5)) * time.Second)
 				conn.Write([]byte("hello"))
 			}
 		}()
