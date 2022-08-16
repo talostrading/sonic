@@ -4,11 +4,13 @@ import (
 	"time"
 
 	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 type Timer struct {
-	ioc *IO
-	it  *internal.Timer
+	ioc   *IO
+	it    *internal.Timer
+	armed bool
 }
 
 func NewTimer(ioc *IO) (*Timer, error) {
@@ -24,13 +26,19 @@ func NewTimer(ioc *IO) (*Timer, error) {
 }
 
 func (t *Timer) Arm(dur time.Duration, onFire func()) error {
+	if t.armed {
+		return sonicerrors.ErrCancelled
+	}
+
 	err := t.it.Arm(dur, func() {
 		delete(t.ioc.pendingTimers, t)
+		t.armed = false
 		onFire()
 	})
 
 	if err == nil {
 		t.ioc.pendingTimers[t] = struct{}{}
+		t.armed = true
 	}
 
 	return err
