@@ -246,7 +246,7 @@ func TestClientReadCorruptControlFrame(t *testing.T) {
 	}
 
 	if ws.state != StateClosedByUs {
-		t.Fatal("invalid state")
+		t.Fatalf("invalid state")
 	}
 
 	closeFrame := ws.pending[0]

@@ -72,10 +72,18 @@ type WebsocketStream struct {
 
 	// The size of the currently read message.
 	messageSize int
+
+	// If this timer expires, we forcefully disconnect the underlying stream.
+	// Only used in the closing handshake.
+	closeTimer *sonic.Timer
 }
 
-func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketStream, error) {
-	s := &WebsocketStream{
+func NewWebsocketStream(
+	ioc *sonic.IO,
+	tls *tls.Config,
+	role Role,
+) (s *WebsocketStream, err error) {
+	s = &WebsocketStream{
 		ioc:    ioc,
 		tls:    tls,
 		role:   role,
@@ -91,6 +99,8 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (*WebsocketSt
 
 	s.src.Reserve(4096)
 	s.dst.Reserve(4096)
+
+	s.closeTimer, err = sonic.NewTimer(ioc)
 
 	return s, nil
 }
@@ -315,7 +325,8 @@ func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 	}
 
 	if err != nil {
-		s.prepareClose(CloseProtocolError, "")
+		s.state = StateClosedByUs
+		s.prepareClose(EncodeCloseFramePayload(CloseProtocolError, ""))
 	}
 
 	return err
@@ -365,16 +376,7 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 			panic("unreachable")
 		case StateActive:
 			s.state = StateClosedByPeer
-
-			// The peer closed the connection so we reply with the same close frame.
-			closeFrame := AcquireFrame()
-			closeFrame.SetFin()
-			closeFrame.SetClose()
-			closeFrame.SetPayload(f.payload)
-			if s.role == RoleClient {
-				closeFrame.Mask()
-			}
-			s.pending = append(s.pending, closeFrame)
+			s.prepareClose(f.payload)
 		case StateClosedByPeer, StateCloseAcked:
 			// ignore
 		case StateClosedByUs:
@@ -460,7 +462,8 @@ func (s *WebsocketStream) prepareWrite(f *Frame) {
 func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
 	switch s.state {
 	case StateActive:
-		s.prepareClose(cc, reason)
+		s.state = StateClosedByUs
+		s.prepareClose(EncodeCloseFramePayload(cc, reason))
 		s.AsyncFlush(cb)
 	case StateClosedByUs, StateHandshake:
 		cb(sonicerrors.ErrCancelled)
@@ -472,7 +475,8 @@ func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err er
 func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 	switch s.state {
 	case StateActive:
-		s.prepareClose(cc, reason)
+		s.state = StateClosedByUs
+		s.prepareClose(EncodeCloseFramePayload(cc, reason))
 		return s.Flush()
 	case StateClosedByUs, StateHandshake:
 		return sonicerrors.ErrCancelled
@@ -481,18 +485,20 @@ func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 	}
 }
 
-func (s *WebsocketStream) prepareClose(cc CloseCode, reason string) {
-	s.state = StateClosedByUs
-
+func (s *WebsocketStream) prepareClose(payload []byte) {
 	closeFrame := AcquireFrame()
 	closeFrame.SetFin()
 	closeFrame.SetClose()
-	closeFrame.SetPayload(EncodeCloseFramePayload(cc, reason))
+	closeFrame.SetPayload(payload)
 	if s.role == RoleClient {
 		closeFrame.Mask()
 	}
 
 	s.pending = append(s.pending, closeFrame)
+
+	s.closeTimer.Arm(CloseTimeout, func() {
+		s.closeUnderlying()
+	})
 }
 
 func (s *WebsocketStream) closeUnderlying() {

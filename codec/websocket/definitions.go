@@ -1,11 +1,14 @@
 package websocket
 
 import (
+	"time"
+
 	"github.com/talostrading/sonic"
 )
 
 var (
 	MaxMessageSize = 1024 * 512 // the maximum size of a message
+	CloseTimeout   = 5 * time.Second
 )
 
 type Role uint8
