@@ -100,6 +100,8 @@ func (t *Timer) Scheduled() bool {
 	return t.state == stateScheduled
 }
 
+// Close closes the timer, render it useless for scheduling any more operations
+// on it.
 func (t *Timer) Close() error {
 	t.state = stateClosed
 
