@@ -10,6 +10,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+var _ ITimer = &Timer{}
+
 type Timer struct {
 	fd     int
 	poller *Poller
@@ -30,9 +32,9 @@ func NewTimer(poller *Poller) (*Timer, error) {
 	return t, nil
 }
 
-func (t *Timer) Arm(dur time.Duration, onFire func()) error {
+func (t *Timer) Set(dur time.Duration, cb func()) error {
 	// first, make sure there's not another timer setup on the same fd
-	if err := t.Disarm(); err != nil {
+	if err := t.Unset(); err != nil {
 		return err
 	}
 
@@ -42,14 +44,14 @@ func (t *Timer) Arm(dur time.Duration, onFire func()) error {
 		Value:    timespec,
 	}, nil)
 	if err == nil {
-		t.pd.Set(ReadEvent, func(_ error) { onFire() })
+		t.pd.Set(ReadEvent, func(_ error) { cb() })
 		err = t.poller.SetRead(t.fd, &t.pd)
 	}
 
 	return err
 }
 
-func (t *Timer) Disarm() error {
+func (t *Timer) Unset() error {
 	if t.pd.Flags&ReadFlags != ReadFlags {
 		return nil
 	}
@@ -61,6 +63,6 @@ func (t *Timer) Disarm() error {
 }
 
 func (t *Timer) Close() error {
-	t.Disarm()
+	t.Unset()
 	return syscall.Close(t.fd)
 }

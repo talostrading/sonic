@@ -1,5 +1,7 @@
 package internal
 
+import "time"
+
 type EventType int8
 
 const (
@@ -19,4 +21,10 @@ type PollData struct {
 
 func (pd *PollData) Set(et EventType, h Handler) {
 	pd.Cbs[et] = h
+}
+
+type ITimer interface {
+	Set(time.Duration, func()) error
+	Unset() error
+	Close() error
 }

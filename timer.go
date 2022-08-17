@@ -7,10 +7,31 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
+type timerState uint8
+
+const (
+	stateReady timerState = iota
+	stateScheduled
+	stateClosed
+)
+
+func (s timerState) String() string {
+	switch s {
+	case stateReady:
+		return "state_ready"
+	case stateScheduled:
+		return "state_scheduled"
+	case stateClosed:
+		return "state_closed"
+	default:
+		return "unknown_state"
+	}
+}
+
 type Timer struct {
 	ioc   *IO
 	it    *internal.Timer
-	armed bool
+	state timerState
 }
 
 func NewTimer(ioc *IO) (*Timer, error) {
@@ -20,39 +41,68 @@ func NewTimer(ioc *IO) (*Timer, error) {
 	}
 
 	return &Timer{
-		ioc: ioc,
-		it:  it,
+		ioc:   ioc,
+		it:    it,
+		state: stateReady,
 	}, nil
 }
 
-func (t *Timer) Arm(dur time.Duration, onFire func()) error {
-	if t.armed {
-		return sonicerrors.ErrCancelled
+// ScheduleOnce schedules a callback for execution after a delay.
+//
+// The callback is guaranteed to never be called before the delay.
+// However, it is possible that it will be called a little after the delay.
+//
+// If the delay is negative or 0, the callback is executed as soon as possible.
+func (t *Timer) ScheduleOnce(delay time.Duration, cb func()) (err error) {
+	if t.state == stateReady {
+		if delay <= 0 {
+			cb()
+		} else {
+			err = t.it.Set(delay, func() {
+				delete(t.ioc.pendingTimers, t)
+				t.state = stateReady
+				cb()
+			})
+
+			if err == nil {
+				t.ioc.pendingTimers[t] = struct{}{}
+				t.state = stateScheduled
+			}
+		}
+	} else {
+		err = sonicerrors.ErrCancelled
 	}
-
-	err := t.it.Arm(dur, func() {
-		delete(t.ioc.pendingTimers, t)
-		t.armed = false
-		onFire()
-	})
-
-	if err == nil {
-		t.ioc.pendingTimers[t] = struct{}{}
-		t.armed = true
-	}
-
-	return err
+	return
 }
 
-func (t *Timer) Disarm() error {
-	err := t.it.Disarm()
-	if err == nil {
-		delete(t.ioc.pendingTimers, t)
+// ScheduleRepeating schedules a callback for execution once per interval.
+//
+// The callback is guaranteed to never be called before the repeat delay.
+// However, it is possible that it will be called a little after the
+// repeat delay.
+//
+// If the delay is negative or 0, the operation is cancelled.
+func (t *Timer) ScheduleRepeating(repeat time.Duration, cb func()) error {
+	if repeat <= 0 {
+		return sonicerrors.ErrCancelled
+	} else {
+		var ccb func()
+		ccb = func() {
+			cb()
+			t.ScheduleOnce(repeat, ccb)
+		}
+
+		return t.ScheduleOnce(repeat, ccb)
 	}
-	return err
+}
+
+func (t *Timer) Scheduled() bool {
+	return t.state == stateScheduled
 }
 
 func (t *Timer) Close() error {
+	t.state = stateClosed
+
 	err := t.it.Close()
 	if err == nil {
 		delete(t.ioc.pendingTimers, t)

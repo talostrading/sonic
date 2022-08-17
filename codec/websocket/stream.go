@@ -496,7 +496,7 @@ func (s *WebsocketStream) prepareClose(payload []byte) {
 
 	s.pending = append(s.pending, closeFrame)
 
-	s.closeTimer.Arm(CloseTimeout, func() {
+	s.closeTimer.ScheduleOnce(CloseTimeout, func() {
 		s.closeUnderlying()
 	})
 }

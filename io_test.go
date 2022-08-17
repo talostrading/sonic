@@ -77,9 +77,7 @@ func TestRightNumberOfPolledEvents(t *testing.T) {
 	}
 
 	dur := 500 * time.Millisecond
-	err = timer.Arm(dur, func() {
-
-	})
+	err = timer.ScheduleOnce(dur, func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
