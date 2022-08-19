@@ -60,9 +60,7 @@ func (l *listener) Accept() (Conn, error) {
 }
 
 func (l *listener) AsyncAccept(cb AcceptCallback) {
-	// we try to accept synchronously first
-	// if that fails, we schedule an async accept
-	if l.acceptDispatch >= MaxAcceptDispatch {
+	if l.acceptDispatch >= MaxCallbackDispatch {
 		l.asyncAccept(cb)
 	} else {
 		conn, err := l.accept()

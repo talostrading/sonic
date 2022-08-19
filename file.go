@@ -70,7 +70,7 @@ func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
-	if f.readDispatch < MaxReadDispatch {
+	if f.readDispatch < MaxCallbackDispatch {
 		f.asyncReadNow(b, 0, readAll, func(err error, n int) {
 			f.readDispatch++
 			cb(err, n)
@@ -138,7 +138,7 @@ func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
-	if f.writeDispatch < MaxWriteDispatch {
+	if f.writeDispatch < MaxCallbackDispatch {
 		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
 			f.writeDispatch++
 			cb(err, n)

@@ -147,7 +147,7 @@ type Listener interface {
 }
 
 const (
-	MaxReadDispatch   int = 512
-	MaxWriteDispatch  int = 512
-	MaxAcceptDispatch int = 512
+	// MaxCallbackDispatch is the maximum number of callbacks which can be
+	// placed onto the stack for immediate invocation.
+	MaxCallbackDispatch int = 256
 )
