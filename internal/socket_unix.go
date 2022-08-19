@@ -81,7 +81,7 @@ func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
 			if err := syscall.SetsockoptInt(
 				s.Fd,
 				syscall.SOL_SOCKET,
-				syscall.SO_REUSEPORT,
+				unix.SO_REUSEPORT,
 				iv,
 			); err != nil {
 				return os.NewSyscallError(fmt.Sprintf("reuse_port(%v)", v), err)
@@ -97,7 +97,7 @@ func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
 			if err := syscall.SetsockoptInt(
 				s.Fd,
 				syscall.SOL_SOCKET,
-				syscall.SO_REUSEADDR,
+				unix.SO_REUSEADDR,
 				iv,
 			); err != nil {
 				return os.NewSyscallError(fmt.Sprintf("reuse_address(%v)", v), err)
