@@ -5,19 +5,44 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"sync"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicopts"
 )
 
 var (
-	hot = flag.Bool("hot", false, "if set, sonic busy waits for events")
+	hot     = flag.Bool("hot", false, "if set, sonic busy waits for events")
+	nthread = flag.Int("threads", 1, "number of threads to use for echoing messages")
 )
 
 func main() {
 	flag.Parse()
 
 	debug.SetGCPercent(-1)
+	runtime.GOMAXPROCS(*nthread + 1) // +1 for the main thread
+
+	var wg sync.WaitGroup
+
+	for i := 0; i < *nthread; i++ {
+		// We are creating `nthread` threads, each with their own listener. Each
+		// listener binds to the same (host,port). In Linux, incoming connections
+		// are distributed evenly accross listening threads. In BSD, there is
+		// no connection distribution - a single listener thread accepts all
+		// connections.
+
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			listen(id)
+		}(i + 1)
+	}
+
+	wg.Wait()
+}
+
+func listen(id int) {
+	fmt.Println("created listener", id)
 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -29,6 +54,8 @@ func main() {
 		ioc,
 		"tcp",
 		"127.0.0.1:8080",
+		sonicopts.ReuseAddr(true),
+		sonicopts.ReusePort(true),
 		sonicopts.Nonblocking(true),
 	)
 	if err != nil {
@@ -42,7 +69,7 @@ func main() {
 		if err != nil {
 			fmt.Println("cannot accept", err)
 		} else {
-			fmt.Printf("listener accepted connection %d\n", connId)
+			fmt.Printf("listener %d accepted connection %d\n", id, connId)
 			handle(conn)
 			connId++
 			ln.AsyncAccept(onAsyncAccept)
