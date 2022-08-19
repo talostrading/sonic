@@ -64,9 +64,13 @@ func handle(conn sonic.Conn) {
 
 	var onAsyncRead sonic.AsyncCallback
 	onAsyncRead = func(err error, n int) {
-		if err == nil {
+		if err != nil {
+			panic(err)
+		} else {
 			conn.AsyncWrite(b[:n], func(err error, n int) {
-				if err == nil {
+				if err != nil {
+					panic(err)
+				} else {
 					conn.AsyncRead(b[:cap(b)], onAsyncRead)
 				}
 			})
