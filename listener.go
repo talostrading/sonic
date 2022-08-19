@@ -1,7 +1,6 @@
 package sonic
 
 import (
-	"fmt"
 	"os"
 	"syscall"
 
@@ -35,26 +34,13 @@ func Listen(
 	address string,
 	opts ...sonicopts.Option,
 ) (Listener, error) {
-	sock, err := internal.NewSocket()
+	sock, err := internal.NewSocket(opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := sock.Listen(network, address); err != nil {
 		return nil, err
-	}
-
-	for _, opt := range opts {
-		switch t := opt.Type(); t {
-		case sonicopts.TypeNonblocking:
-			sock.SetNonblock(opt.Value().(bool))
-		case sonicopts.TypeReusePort:
-			sock.SetReusePort(opt.Value().(bool))
-		case sonicopts.TypeReuseAddr:
-			sock.SetReuseAddress(opt.Value().(bool))
-		default:
-			return nil, fmt.Errorf("invalid option type %s", t)
-		}
 	}
 
 	l := &listener{
@@ -126,12 +112,11 @@ func (l *listener) accept() (Conn, error) {
 		RemoteAddr: internal.FromSockaddr(remoteAddr),
 	}
 
-	if err := ns.SetNonblock(true); err != nil {
-		syscall.Close(nfd)
-		return nil, err
-	}
-	if err := ns.SetNoDelay(true); err != nil {
-		syscall.Close(nfd)
+	// TODO remove non blocking here once you split file
+	if err := ns.ApplyOpts(
+		sonicopts.Nonblocking(true),
+		sonicopts.NoDelay(true),
+	); err != nil {
 		return nil, err
 	}
 

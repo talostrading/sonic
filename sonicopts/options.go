@@ -6,6 +6,8 @@ const (
 	TypeNonblocking OptionType = iota
 	TypeReusePort
 	TypeReuseAddr
+	TypeNoDelay
+	MaxOption
 )
 
 func (t OptionType) String() string {
@@ -76,6 +78,24 @@ func (o *optionReuseAddr) Value() interface{} {
 
 func ReuseAddr(v bool) Option {
 	return &optionReuseAddr{
+		v: v,
+	}
+}
+
+type optionNoDelay struct {
+	v bool
+}
+
+func (o *optionNoDelay) Type() OptionType {
+	return TypeNoDelay
+}
+
+func (o *optionNoDelay) Value() interface{} {
+	return o.v
+}
+
+func NoDelay(v bool) Option {
+	return &optionNoDelay{
 		v: v,
 	}
 }

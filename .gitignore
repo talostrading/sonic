@@ -1,4 +1,4 @@
 todo.md
 bin/
 *.pem
-autobahn/reports/
+tests/autobahn/reports/

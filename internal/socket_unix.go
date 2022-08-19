@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
 	"golang.org/x/sys/unix"
 )
 
@@ -20,14 +21,20 @@ type Socket struct {
 	LocalAddr  net.Addr
 	RemoteAddr net.Addr
 
-	// TODO opts... (nodelay, timeout, keepalive, timeout) in constructor
+	opts []sonicopts.Option
 }
 
-func NewSocket() (*Socket, error) {
-	return &Socket{}, nil
+func NewSocket(opts ...sonicopts.Option) (*Socket, error) {
+	s := &Socket{opts: opts}
+
+	return s, nil
 }
 
-func (s *Socket) ConnectTimeout(network, addr string, timeout time.Duration) error {
+func (s *Socket) ConnectTimeout(
+	network,
+	addr string,
+	timeout time.Duration,
+) error {
 	if timeout == 0 {
 		timeout = time.Minute
 	}
@@ -55,6 +62,71 @@ func (s *Socket) Listen(network, addr string) error {
 	}
 }
 
+func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
+	for _, opt := range opts {
+		switch t := opt.Type(); t {
+		case sonicopts.TypeNonblocking:
+			v := opt.Value().(bool)
+			if err := syscall.SetNonblock(s.Fd, v); err != nil {
+				return os.NewSyscallError(fmt.Sprintf("set_nonblock(%v)", v), err)
+			}
+		case sonicopts.TypeReusePort:
+			v := opt.Value().(bool)
+
+			iv := 0
+			if v {
+				iv = 1
+			}
+
+			if err := syscall.SetsockoptInt(
+				s.Fd,
+				syscall.SOL_SOCKET,
+				syscall.SO_REUSEPORT,
+				iv,
+			); err != nil {
+				return os.NewSyscallError(fmt.Sprintf("reuse_port(%v)", v), err)
+			}
+		case sonicopts.TypeReuseAddr:
+			v := opt.Value().(bool)
+
+			iv := 0
+			if v {
+				iv = 1
+			}
+
+			if err := syscall.SetsockoptInt(
+				s.Fd,
+				syscall.SOL_SOCKET,
+				syscall.SO_REUSEADDR,
+				iv,
+			); err != nil {
+				return os.NewSyscallError(fmt.Sprintf("reuse_address(%v)", v), err)
+			}
+		case sonicopts.TypeNoDelay:
+			v := opt.Value().(bool)
+			iv := 0
+			if v {
+				iv = 1
+			}
+
+			if err := syscall.SetsockoptInt(
+				s.Fd,
+				syscall.IPPROTO_TCP,
+				syscall.TCP_NODELAY,
+				iv,
+			); err != nil {
+				return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
+			}
+		default:
+			return fmt.Errorf("unsupported socket option %s", t)
+		}
+
+		s.opts = append(s.opts, opt)
+	}
+
+	return nil
+}
+
 func (s *Socket) listenTCP(network, addr string) error {
 	localAddr, err := net.ResolveTCPAddr(network, addr)
 	if err != nil {
@@ -66,9 +138,11 @@ func (s *Socket) listenTCP(network, addr string) error {
 		return err
 	}
 
-	if err := syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
-		syscall.Close(fd)
-		return os.NewSyscallError("setsockopt", err)
+	s.Fd = fd
+	s.LocalAddr = localAddr
+
+	if err := s.ApplyOpts(s.opts...); err != nil {
+		return err
 	}
 
 	sockAddr := ToSockaddr(localAddr)
@@ -81,9 +155,6 @@ func (s *Socket) listenTCP(network, addr string) error {
 		syscall.Close(fd)
 		return os.NewSyscallError("listen", err)
 	}
-
-	s.Fd = fd
-	s.LocalAddr = localAddr
 
 	return nil
 }
@@ -102,8 +173,15 @@ func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
 	if err != nil {
 		return err
 	}
+	s.Fd = fd
 
+	// TODO get rid of this once you also support blocking sockets
+	// this means having two implementations of file: blocking and nonblocking
 	if err := setDefaultOpts(fd); err != nil {
+		return err
+	}
+
+	if err := s.ApplyOpts(s.opts...); err != nil {
 		return err
 	}
 
@@ -142,7 +220,6 @@ func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
 
 	s.LocalAddr = FromSockaddr(sockAddr)
 	s.RemoteAddr = remoteAddr
-	s.Fd = fd
 
 	return nil
 }
@@ -154,66 +231,6 @@ func (s *Socket) connectUDP(network, addr string, timeout time.Duration) error {
 
 func (s *Socket) connectUnix(network, addr string, timeout time.Duration) error {
 	// TODO
-	return nil
-}
-
-func (s *Socket) SetNonblock(v bool) error {
-	if err := syscall.SetNonblock(s.Fd, v); err != nil {
-		return os.NewSyscallError(fmt.Sprintf("set_nonblock(%v)", v), err)
-	}
-	return nil
-}
-
-func (s *Socket) SetNoDelay(v bool) error {
-	iv := 0
-	if v {
-		iv = 1
-	}
-
-	if err := syscall.SetsockoptInt(
-		s.Fd,
-		syscall.IPPROTO_TCP,
-		syscall.TCP_NODELAY,
-		iv,
-	); err != nil {
-		return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
-	}
-	return nil
-}
-
-func (s *Socket) SetReusePort(v bool) error {
-	iv := 0
-	if v {
-		iv = 1
-	}
-
-	if err := syscall.SetsockoptInt(
-		s.Fd,
-		syscall.SOL_SOCKET,
-		syscall.SO_REUSEPORT,
-		iv,
-	); err != nil {
-		return os.NewSyscallError(fmt.Sprintf("reuse_port(%v)", v), err)
-	}
-
-	return nil
-}
-
-func (s *Socket) SetReuseAddress(v bool) error {
-	iv := 0
-	if v {
-		iv = 1
-	}
-
-	if err := syscall.SetsockoptInt(
-		s.Fd,
-		syscall.SOL_SOCKET,
-		syscall.SO_REUSEADDR,
-		iv,
-	); err != nil {
-		return os.NewSyscallError(fmt.Sprintf("reuse_address(%v)", v), err)
-	}
-
 	return nil
 }
 
