@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"fmt"
 	"os"
 	"syscall"
 
@@ -28,7 +29,12 @@ type listener struct {
 // If the option Nonblocking with value set to true is passed in, you should use AsyncAccept()
 // to accept incoming connections. In this case, AsyncAccept() will not block if no connections
 // are present in the queue.
-func Listen(ioc *IO, network, address string, opts ...sonicopts.Option) (Listener, error) {
+func Listen(
+	ioc *IO,
+	network,
+	address string,
+	opts ...sonicopts.Option,
+) (Listener, error) {
 	sock, err := internal.NewSocket()
 	if err != nil {
 		return nil, err
@@ -39,8 +45,15 @@ func Listen(ioc *IO, network, address string, opts ...sonicopts.Option) (Listene
 	}
 
 	for _, opt := range opts {
-		if opt.Type() == sonicopts.TypeNonblocking {
+		switch t := opt.Type(); t {
+		case sonicopts.TypeNonblocking:
 			sock.SetNonblock(opt.Value().(bool))
+		case sonicopts.TypeReusePort:
+			sock.SetReusePort(opt.Value().(bool))
+		case sonicopts.TypeReuseAddr:
+			sock.SetReuseAddress(opt.Value().(bool))
+		default:
+			return nil, fmt.Errorf("invalid option type %s", t)
 		}
 	}
 

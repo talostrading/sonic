@@ -170,9 +170,50 @@ func (s *Socket) SetNoDelay(v bool) error {
 		iv = 1
 	}
 
-	if err := syscall.SetsockoptInt(s.Fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, iv); err != nil {
+	if err := syscall.SetsockoptInt(
+		s.Fd,
+		syscall.IPPROTO_TCP,
+		syscall.TCP_NODELAY,
+		iv,
+	); err != nil {
 		return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
 	}
+	return nil
+}
+
+func (s *Socket) SetReusePort(v bool) error {
+	iv := 0
+	if v {
+		iv = 1
+	}
+
+	if err := syscall.SetsockoptInt(
+		s.Fd,
+		syscall.SOL_SOCKET,
+		syscall.SO_REUSEPORT,
+		iv,
+	); err != nil {
+		return os.NewSyscallError(fmt.Sprintf("reuse_port(%v)", v), err)
+	}
+
+	return nil
+}
+
+func (s *Socket) SetReuseAddress(v bool) error {
+	iv := 0
+	if v {
+		iv = 1
+	}
+
+	if err := syscall.SetsockoptInt(
+		s.Fd,
+		syscall.SOL_SOCKET,
+		syscall.SO_REUSEADDR,
+		iv,
+	); err != nil {
+		return os.NewSyscallError(fmt.Sprintf("reuse_address(%v)", v), err)
+	}
+
 	return nil
 }
 
