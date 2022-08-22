@@ -1,14 +1,18 @@
 package sonic
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"net"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/talostrading/sonic/sonicopts"
 )
 
-func TestAsyncTCPClient(t *testing.T) {
+func TestAsyncTCPEchoClient(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
@@ -58,37 +62,45 @@ func TestAsyncTCPClient(t *testing.T) {
 	var onAsyncRead AsyncCallback
 	onAsyncRead = func(err error, n int) {
 		if err != nil {
-			panic(err)
-		}
-		b = b[:n]
-		if string(b) != "hello" {
-			t.Fatalf("did not read %v", string(b))
-		}
-
-		conn.AsyncWriteAll(b, func(err error, n int) {
-			if err != nil {
-				panic(err)
+			if err != io.EOF {
+				t.Fatal(err)
+			}
+		} else {
+			b = b[:n]
+			if string(b) != "hello" {
+				t.Fatalf("did not read %v", string(b))
 			}
 
-			b = b[:5]
-			conn.AsyncReadAll(b, onAsyncRead)
-		})
+			conn.AsyncWriteAll(b, func(err error, n int) {
+				if err != nil {
+					if !errors.Is(err, io.EOF) || !errors.Is(err, syscall.EPIPE) {
+						t.Fatal(err)
+					}
+				} else {
+					b = b[:5]
+					conn.AsyncReadAll(b, onAsyncRead)
+				}
+			})
+		}
 	}
 
 	conn.AsyncReadAll(b, onAsyncRead)
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10; i++ {
 		ioc.RunOne()
 	}
 
 	closer <- struct{}{}
 }
 
-func TestAsyncTCPListener(t *testing.T) {
+func TestAsyncTCPEchoServer(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
 	go func() {
+		// Wait until there's a listener.
+		time.Sleep(200 * time.Millisecond)
+
 		conn, err := net.Dial("tcp", "localhost:8081")
 		if err != nil {
 			panic(err)
@@ -121,38 +133,149 @@ func TestAsyncTCPListener(t *testing.T) {
 		var onAsyncRead AsyncCallback
 		onAsyncRead = func(err error, n int) {
 			if err != nil {
-				t.Fatal(err)
-			}
-
-			b = b[:n]
-
-			if string(b) != "hello" {
-				t.Fatalf("did not read %v", string(b))
-			}
-
-			conn.AsyncWriteAll(b, func(err error, n int) {
-				if err != nil {
+				if err != io.EOF {
 					t.Fatal(err)
 				}
+			} else {
+				b = b[:n]
 
-				b = b[:cap(b)]
-				conn.AsyncReadAll(b, onAsyncRead)
-			})
+				if string(b) != "hello" {
+					t.Fatalf("did not read %v", string(b))
+				}
+
+				conn.AsyncWriteAll(b, func(err error, n int) {
+					if err != nil {
+						if !errors.Is(err, io.EOF) || !errors.Is(err, syscall.EPIPE) {
+							t.Fatal(err)
+						}
+					} else {
+						b = b[:cap(b)]
+						conn.AsyncReadAll(b, onAsyncRead)
+					}
+				})
+			}
 		}
 		conn.AsyncReadAll(b, onAsyncRead)
 	}
 
 	ln.AsyncAccept(func(err error, conn Conn) {
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("error on async accept err=%v", err)
+		} else {
+			handle(conn)
 		}
-
-		handle(conn)
 	})
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10; i++ {
 		ioc.RunOne()
 	}
 
 	ln.Close()
+}
+
+func TestReadHandlesError(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	go func() {
+		ln, err := net.Listen("tcp", "localhost:8082")
+		if err != nil {
+			panic(err)
+		}
+
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+
+		_, err = conn.Write([]byte("hello"))
+		if err != nil {
+			panic(err)
+		}
+
+		conn.Close()
+	}()
+
+	conn, err := Dial(ioc, "tcp", "localhost:8082")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	b := make([]byte, 128)
+	var onAsyncRead AsyncCallback
+	onAsyncRead = func(err error, n int) {
+		if err != nil {
+			if err != io.EOF {
+				t.Fatal(err)
+			} else {
+				done = true
+			}
+		} else {
+			b = b[:cap(b)]
+			conn.AsyncReadAll(b, onAsyncRead)
+		}
+	}
+	conn.AsyncReadAll(b, onAsyncRead)
+
+	ioc.RunPending()
+
+	if !done {
+		t.Fatal("test did not run to completion")
+	}
+}
+
+func TestWriteHandlesError(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	go func() {
+		ln, err := net.Listen("tcp", "localhost:8083")
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+
+		b := make([]byte, 128)
+		_, err = conn.Read(b)
+		if err != nil {
+			panic(err)
+		}
+
+		err = conn.Close()
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	conn, err := Dial(ioc, "tcp", "localhost:8083")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	var onAsyncWrite AsyncCallback
+	onAsyncWrite = func(err error, n int) {
+		if err != nil {
+			if errors.Is(err, syscall.EPIPE) || errors.Is(err, syscall.ECONNRESET) {
+				done = true
+			} else {
+				t.Fatal(err)
+			}
+		} else {
+			conn.AsyncWriteAll([]byte("hello"), onAsyncWrite)
+		}
+	}
+	conn.AsyncWriteAll([]byte("hello"), onAsyncWrite)
+
+	ioc.RunPending()
+
+	if !done {
+		t.Fatal("test did not run to completion")
+	}
 }

@@ -37,27 +37,45 @@ func Open(ioc *IO, path string, flags int, mode os.FileMode) (File, error) {
 
 func (f *file) Read(b []byte) (int, error) {
 	n, err := syscall.Read(f.fd, b)
-	if n == 0 || err != nil {
-		if n == 0 || (err != nil && err != syscall.EWOULDBLOCK && err != syscall.EAGAIN) {
-			if n == 0 {
-				return 0, io.EOF
-			}
+
+	if err != nil {
+		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+			return 0, sonicerrors.ErrWouldBlock
 		}
-		return 0, sonicerrors.ErrWouldBlock
+
+		return 0, err
 	}
+
+	if n == 0 {
+		return 0, io.EOF
+	}
+
+	if n < 0 {
+		n = 0
+	}
+
 	return n, err
 }
 
 func (f *file) Write(b []byte) (int, error) {
 	n, err := syscall.Write(f.fd, b)
-	if n == 0 || err != nil {
-		if n == 0 || (err != nil && err != syscall.EWOULDBLOCK && err != syscall.EAGAIN) {
-			if n == 0 {
-				return 0, io.EOF
-			}
+
+	if err != nil {
+		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+			return 0, sonicerrors.ErrWouldBlock
 		}
-		return 0, sonicerrors.ErrWouldBlock
+
+		return 0, err
 	}
+
+	if n == 0 {
+		return 0, io.EOF
+	}
+
+	if n < 0 {
+		n = 0
+	}
+
 	return n, err
 }
 
@@ -160,6 +178,7 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 
 	if err != nil && err != sonicerrors.ErrWouldBlock {
 		cb(err, 0)
+		return
 	}
 
 	f.scheduleWrite(b, writtenBytes, writeAll, cb)
