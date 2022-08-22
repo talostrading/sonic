@@ -9,7 +9,7 @@ fmt:
 	goimports -w .
 
 test: 
-	go test -v $$(go list ./... | grep -v /examples | grep -v tests/websocket-perf)
+	go test -v -p 1 $$(go list ./... | grep -v /examples | grep -v tests/websocket-perf)
 
 bench: 
 	go test -bench=. $$(go list ./... | grep -v /examples | grep -v tests/websocket-perf)
