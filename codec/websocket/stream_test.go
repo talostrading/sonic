@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/talostrading/sonic"
 )
@@ -22,6 +23,8 @@ func TestClientHandshake(t *testing.T) {
 			panic(err)
 		}
 	}()
+
+	time.Sleep(100 * time.Millisecond) // until we listen
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
