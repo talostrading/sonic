@@ -17,6 +17,19 @@ type conn struct {
 	sock *internal.Socket
 }
 
+func createConn(ioc *IO, sock *internal.Socket) *conn {
+	c := &conn{
+		file: &file{
+			ioc: ioc,
+			fd:  sock.Fd,
+		},
+		sock: sock,
+	}
+	c.pd.Fd = c.fd
+
+	return c
+}
+
 func Dial(ioc *IO, network, addr string) (Conn, error) {
 	return DialTimeout(ioc, network, addr, 0)
 }
@@ -32,16 +45,7 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 		return nil, err
 	}
 
-	c := &conn{
-		file: &file{
-			ioc: ioc,
-			fd:  sock.Fd,
-		},
-		sock: sock,
-	}
-	c.pd.Fd = c.fd
-
-	return c, nil
+	return createConn(ioc, sock), nil
 }
 
 func (c *conn) LocalAddr() net.Addr {

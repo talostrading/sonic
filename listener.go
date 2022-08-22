@@ -106,29 +106,21 @@ func (l *listener) accept() (Conn, error) {
 		return nil, os.NewSyscallError("accept", err)
 	}
 
-	ns := &internal.Socket{
+	sock := &internal.Socket{
 		Fd:         nfd,
 		LocalAddr:  l.sock.LocalAddr,
 		RemoteAddr: internal.FromSockaddr(remoteAddr),
 	}
 
 	// TODO remove non blocking here once you split file
-	if err := ns.ApplyOpts(
+	if err := sock.ApplyOpts(
 		sonicopts.Nonblocking(true),
 		sonicopts.NoDelay(true),
 	); err != nil {
 		return nil, err
 	}
 
-	c := &conn{
-		file: &file{
-			ioc: l.ioc,
-			fd:  ns.Fd,
-		},
-		sock: ns,
-	}
-
-	return c, nil
+	return createConn(l.ioc, sock), nil
 }
 
 func (l *listener) Close() error {
