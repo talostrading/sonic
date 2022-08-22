@@ -132,10 +132,12 @@ func (l *listener) accept() (Conn, error) {
 }
 
 func (l *listener) Close() error {
-	return nil
+	l.ioc.poller.Del(l.fd, &l.pd)
+	return syscall.Close(l.fd)
 }
 
 func (l *listener) Addr() error {
+	// TODO
 	return nil
 }
 
