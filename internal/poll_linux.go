@@ -237,7 +237,7 @@ func (p *Poller) modify(fd int, event Event) error {
 	)
 
 	if errno != 0 {
-		return os.NewSyscallError("epoll_ctl_add", errno)
+		return os.NewSyscallError("epoll_ctl_mod", errno)
 	}
 	return nil
 }
