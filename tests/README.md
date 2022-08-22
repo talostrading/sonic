@@ -1,2 +1,2 @@
 - `autobahn/`: correctness tests for Sonic's WebSocket implementation using [Autobahn-Testsuite](https://github.com/crossbario/autobahn-testsuite)
-- `perf/`: performance tests comparing `Sonic` to `Go net`.
+- `echo-server/`: performance tests comparing an echo server written with `Sonic` to one written with `Go net`.
