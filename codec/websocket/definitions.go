@@ -324,4 +324,7 @@ type Stream interface {
 	//  - If a message exceeds the limit while writing, the operation is
 	//    cancelled.
 	SetMaxMessageSize(bytes int)
+
+	// Reset resets the stream state.
+	Reset()
 }

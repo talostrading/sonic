@@ -149,5 +149,5 @@ type Listener interface {
 const (
 	// MaxCallbackDispatch is the maximum number of callbacks which can be
 	// placed onto the stack for immediate invocation.
-	MaxCallbackDispatch int = 256
+	MaxCallbackDispatch int = 1024
 )
