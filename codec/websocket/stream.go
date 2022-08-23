@@ -20,6 +20,7 @@ import (
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
 	"github.com/talostrading/sonic/util"
 )
 
@@ -680,7 +681,7 @@ func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
 					err = s.init(stream)
 				}
 				cb(err)
-			})
+			}, sonicopts.NoDelay(true))
 	} else {
 		cb(err)
 	}

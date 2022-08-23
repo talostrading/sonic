@@ -62,12 +62,12 @@ func (s *Socket) Listen(network, addr string) error {
 	}
 }
 
-func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
+func ApplyOpts(fd int, opts ...sonicopts.Option) error {
 	for _, opt := range opts {
 		switch t := opt.Type(); t {
 		case sonicopts.TypeNonblocking:
 			v := opt.Value().(bool)
-			if err := syscall.SetNonblock(s.Fd, v); err != nil {
+			if err := syscall.SetNonblock(fd, v); err != nil {
 				return os.NewSyscallError(fmt.Sprintf("set_nonblock(%v)", v), err)
 			}
 		case sonicopts.TypeReusePort:
@@ -79,7 +79,7 @@ func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
 			}
 
 			if err := syscall.SetsockoptInt(
-				s.Fd,
+				fd,
 				syscall.SOL_SOCKET,
 				unix.SO_REUSEPORT,
 				iv,
@@ -95,7 +95,7 @@ func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
 			}
 
 			if err := syscall.SetsockoptInt(
-				s.Fd,
+				fd,
 				syscall.SOL_SOCKET,
 				unix.SO_REUSEADDR,
 				iv,
@@ -110,7 +110,7 @@ func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
 			}
 
 			if err := syscall.SetsockoptInt(
-				s.Fd,
+				fd,
 				syscall.IPPROTO_TCP,
 				syscall.TCP_NODELAY,
 				iv,
@@ -120,8 +120,6 @@ func (s *Socket) ApplyOpts(opts ...sonicopts.Option) error {
 		default:
 			return fmt.Errorf("unsupported socket option %s", t)
 		}
-
-		s.opts = append(s.opts, opt)
 	}
 
 	return nil
@@ -141,7 +139,7 @@ func (s *Socket) listenTCP(network, addr string) error {
 	s.Fd = fd
 	s.LocalAddr = localAddr
 
-	if err := s.ApplyOpts(s.opts...); err != nil {
+	if err := ApplyOpts(s.Fd, s.opts...); err != nil {
 		return err
 	}
 
@@ -181,7 +179,7 @@ func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
 		return err
 	}
 
-	if err := s.ApplyOpts(s.opts...); err != nil {
+	if err := ApplyOpts(s.Fd, s.opts...); err != nil {
 		return err
 	}
 

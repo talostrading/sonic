@@ -7,6 +7,7 @@ import (
 
 	"github.com/talostrading/sonic/internal"
 	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
 )
 
 var (
@@ -33,7 +34,13 @@ type AsyncAdapter struct {
 //   - provides an error if any occured when async-adapting the provided object
 //
 // See async_adapter_test.go for examples on how to setup an AsyncAdapter.
-func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapterHandler) {
+func NewAsyncAdapter(
+	ioc *IO,
+	sc syscall.Conn,
+	rw io.ReadWriter,
+	cb AsyncAdapterHandler,
+	opts ...sonicopts.Option,
+) {
 	rc, err := sc.SyscallConn()
 	if err != nil {
 		cb(err, nil)
@@ -50,9 +57,7 @@ func NewAsyncAdapter(ioc *IO, sc syscall.Conn, rw io.ReadWriter, cb AsyncAdapter
 		}
 		a.pd.Fd = ifd
 
-		// TODO make options here
-		//err := syscall.SetsockoptInt(ifd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
-		// TODO also no delay and enable it for websocket
+		err := internal.ApplyOpts(ifd, opts...)
 
 		cb(err, a)
 	})
