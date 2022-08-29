@@ -25,16 +25,22 @@ commands:
 jobs:
   build:
     docker:
-      - image: cimg/go:1.18
+      - image: cimg/go:1.19
     steps:
       - checkout
       - run:
           name: Build examples
           command: make && make test && make bench
-      - post_slack
+      - slack/notify:
+          event: fail
+          template: basic_fail_1
+          mentions: "@sergiu128"
+      - slack/notify:
+          event: pass
+          template: success_tagged_deploy_1
   test:
     docker:
-      - image: cimg/go:1.18
+      - image: cimg/go:1.19
     steps:
       - checkout
       - run:
@@ -42,7 +48,7 @@ jobs:
           command: make test
   bench:
     docker:
-      - image: cimg/go:1.18
+      - image: cimg/go:1.19
     steps:
       - checkout
       - run:
