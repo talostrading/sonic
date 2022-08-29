@@ -90,7 +90,7 @@ func NewWebsocketStream(
 		role:   role,
 		src:    sonic.NewByteBuffer(),
 		dst:    sonic.NewByteBuffer(),
-		state:  StateHandshake,
+		state:  StateInactive,
 		hasher: sha1.New(),
 		hb:     make([]byte, 1024),
 		dialer: &net.Dialer{
@@ -117,7 +117,7 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 
 func (s *WebsocketStream) Reset() {
 	s.hb = s.hb[:cap(s.hb)]
-	s.state = StateHandshake
+	s.state = StateInactive
 	s.src.Reset()
 	s.dst.Reset()
 }
@@ -542,7 +542,7 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 		s.pending = s.pending[1:]
 		s.cs.AsyncWriteNext(sent, func(err error, _ int) {
 			if err != nil {
-				s.pending = util.Prepend(sent, s.pending)
+				s.pending = util.PrependSlice(sent, s.pending)
 				cb(err)
 			} else {
 				ReleaseFrame(sent)
@@ -565,7 +565,13 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 		return ErrWrongHandshakeRole
 	}
 
+	if s.state != StateInactive {
+		return sonicerrors.ErrCancelled
+	}
+
 	s.Reset()
+
+	s.state = StateHandshake
 
 	done := make(chan struct{}, 1)
 	s.handshake(addr, func(herr error) {
@@ -582,13 +588,25 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 		return
 	}
 
+	if s.state != StateInactive {
+		cb(sonicerrors.ErrCancelled)
+		return
+	}
+
 	s.Reset()
+
+	s.state = StateHandshake
 
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine here
 	go func() {
 		s.handshake(addr, func(err error) {
 			s.ioc.Post(func() {
+				if err != nil {
+					s.state = StateTerminated
+				} else {
+					s.state = StateActive
+				}
 				cb(err)
 			})
 		})
@@ -596,26 +614,16 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 }
 
 func (s *WebsocketStream) handshake(addr string, cb func(err error)) {
-	s.state = StateHandshake
-
 	url, err := s.resolve(addr)
 	if err == nil {
 		s.dial(url, func(err error) {
 			if err == nil {
 				err = s.upgrade(url)
-				if err == nil {
-					s.state = StateActive
-				}
-			}
-
-			if err != nil {
-				s.state = StateTerminated
 			}
 
 			cb(err)
 		})
 	} else {
-		s.state = StateTerminated
 		cb(err)
 	}
 }

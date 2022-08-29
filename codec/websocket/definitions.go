@@ -61,31 +61,36 @@ func (t MessageType) String() string {
 type StreamState uint8
 
 const (
-	// start state - handshake is ongoing.
-	StateHandshake StreamState = iota
+	// Start state. Can only go to StateHandshake from here.
+	StateInactive StreamState = iota
 
-	// intermediate state - connection is active
+	// Intermediate state. Handshake is ongoing.
+	StateHandshake
+
+	// Intermediate state. Connection is active, can read/write/close.
 	StateActive
 
-	// intermediate state - we initiated the close handshake and
+	// Intermediate state. We initiated the closing handshake and
 	// are waiting for a reply from the peer.
 	StateClosedByUs
 
-	// terminal state - the peer initiated the close handshake,
+	// Terminal state. The peer initiated the closing handshake,
 	// we received a close frame and immediately replied.
 	StateClosedByPeer
 
-	// terminal state - the peer replied to our close handshake.
+	// Terminal state. The peer replied to our closing handshake.
 	// Can only end up here from StateClosedByUs.
 	StateCloseAcked
 
-	// terminal state - the connection is closed or some error
+	// Terminal state. The connection is closed or some error
 	// occurred which rendered the stream unusable.
 	StateTerminated
 )
 
 func (s StreamState) String() string {
 	switch s {
+	case StateInactive:
+		return "state_inactive"
 	case StateHandshake:
 		return "state_handshake"
 	case StateActive:

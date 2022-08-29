@@ -105,7 +105,7 @@ func (f *Frame) ReadFrom(r io.Reader) (nt int64, err error) {
 				if pn > MaxMessageSize {
 					err = ErrPayloadTooBig
 				} else {
-					f.payload = util.ExtendBytes(f.payload, pn)
+					f.payload = util.ExtendSlice(f.payload, pn)
 					n, err = io.ReadFull(r, f.payload[:pn])
 					nt += int64(n)
 				}

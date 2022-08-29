@@ -34,7 +34,7 @@ func TestClientHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if expect := StateHandshake; ws.State() != expect {
+	if expect := StateInactive; ws.State() != expect {
 		t.Fatalf("wrong state expected=%s given=%s", expect, ws.State())
 	}
 
