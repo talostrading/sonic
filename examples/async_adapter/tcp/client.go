@@ -17,7 +17,7 @@ var n = flag.Int("n", 10, "number of connections")
 func main() {
 	flag.Parse()
 
-	stats := util.NewStats("test", false, 100_000)
+	stats := util.NewStats(100_000, nil)
 
 	ioc := sonic.MustIO()
 
