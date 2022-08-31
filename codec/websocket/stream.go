@@ -565,11 +565,11 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 		return ErrWrongHandshakeRole
 	}
 
+	s.Reset()
+
 	if s.state != StateInactive {
 		return sonicerrors.ErrCancelled
 	}
-
-	s.Reset()
 
 	s.state = StateHandshake
 
@@ -588,12 +588,12 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 		return
 	}
 
+	s.Reset()
+
 	if s.state != StateInactive {
 		cb(sonicerrors.ErrCancelled)
 		return
 	}
-
-	s.Reset()
 
 	s.state = StateHandshake
 
