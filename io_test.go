@@ -12,7 +12,7 @@ func TestPost(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	xs := []bool{false, false, false}
+	var xs [1000]bool
 
 	for i := 0; i < len(xs); i++ {
 		// We need to copy i otherwise xs[i] will panic because i == len(xs)
@@ -23,8 +23,8 @@ func TestPost(t *testing.T) {
 		})
 	}
 
-	if p := ioc.Pending(); p != 3 {
-		t.Fatalf("not accounting for pending operations correctly expected=%d given=%d", 3, p)
+	if p := ioc.Pending(); p != 1000 {
+		t.Fatalf("not accounting for pending operations correctly expected=%d given=%d", 1000, p)
 	}
 
 	ioc.RunPending()
