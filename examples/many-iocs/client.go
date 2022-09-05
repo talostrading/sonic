@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"runtime"
-	"sync"
 	"time"
 
 	"github.com/talostrading/sonic"
@@ -12,6 +11,7 @@ import (
 
 var (
 	addr = flag.String("addr", "localhost:8080", "server address")
+	n    = flag.Int("n", 2, "number of native Go timer goroutines")
 )
 
 // This example builds up two go-routines which print a message every second
@@ -27,16 +27,15 @@ var (
 // with its own io_context safely, without starving other go-routines.
 
 func main() {
-	n := 2
-	runtime.GOMAXPROCS(n) // run at most 2 go-routines in parallel
+	flag.Parse()
 
-	var wg sync.WaitGroup
+	runtime.GOMAXPROCS(*n) // run at most 2 go-routines in parallel
 
-	for i := 0; i < n; i++ {
+	done := make(chan struct{}, 1)
+
+	for i := 0; i < *n; i++ {
 		id := i
 		go func() {
-			wg.Add(1)
-			defer wg.Done()
 
 			t := time.NewTicker(time.Millisecond)
 
@@ -51,9 +50,6 @@ func main() {
 	}
 
 	go func() {
-		wg.Add(1)
-		defer wg.Done()
-
 		ioc := sonic.MustIO()
 		defer ioc.Close()
 
@@ -80,5 +76,5 @@ func main() {
 		ioc.Run()
 	}()
 
-	wg.Wait()
+	<-done
 }
