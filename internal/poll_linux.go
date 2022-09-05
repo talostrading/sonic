@@ -184,6 +184,7 @@ func (p *Poller) dispatch() {
 		handler()
 		p.pending--
 	}
+	p.handlers = p.handlers[:0]
 	p.lck.Unlock()
 }
 
