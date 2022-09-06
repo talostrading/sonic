@@ -14,11 +14,11 @@ var _ ITimer = &Timer{}
 
 type Timer struct {
 	fd     int
-	poller *Poller
+	poller Poller
 	pd     PollData
 }
 
-func NewTimer(poller *Poller) (*Timer, error) {
+func NewTimer(p Poller) (*Timer, error) {
 	fd, err := unix.TimerfdCreate(unix.CLOCK_REALTIME, unix.TFD_NONBLOCK)
 	if err != nil {
 		return nil, os.NewSyscallError("timerfd_create", err)
@@ -26,7 +26,7 @@ func NewTimer(poller *Poller) (*Timer, error) {
 
 	t := &Timer{
 		fd:     fd,
-		poller: poller,
+		poller: p.(*poller),
 	}
 	t.pd.Fd = t.fd
 	return t, nil

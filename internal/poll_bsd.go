@@ -22,7 +22,9 @@ const (
 	WriteFlags = -PollFlags(syscall.EVFILT_WRITE)
 )
 
-type Poller struct {
+var _ Poller = &poller{}
+
+type poller struct {
 	// fd is the file descriptor returned by calling kqueue().
 	fd int
 
@@ -38,10 +40,10 @@ type Poller struct {
 	// The read end of the pipe is registered for reads with kqueue.
 	waker *Pipe
 
-	// handlers maintains the handlers set by the client to be
-	// executed in the Poller's goroutine. Adding a handler
+	// posts maintains the posts set by the client to be
+	// executed in the poller's goroutine. Adding a handler
 	// entails writing a single byte to the write end of the wakeupPipe.
-	handlers []func()
+	posts []func()
 
 	// lck synchronizes access to the handlers slice.
 	// This is needed because multiple goroutines can call ioc.Post(...)
@@ -55,7 +57,7 @@ type Poller struct {
 	closed uint32
 }
 
-func NewPoller() (*Poller, error) {
+func NewPoller() (Poller, error) {
 	pipe, err := NewPipe()
 	if err != nil {
 		return nil, err
@@ -84,7 +86,7 @@ func NewPoller() (*Poller, error) {
 		return nil, err
 	}
 
-	p := &Poller{
+	p := &poller{
 		waker:   pipe,
 		fd:      kqueueFd,
 		changes: make([]syscall.Kevent_t, 0, 128),
@@ -102,11 +104,11 @@ func NewPoller() (*Poller, error) {
 	return p, nil
 }
 
-func (p *Poller) Pending() int64 {
+func (p *poller) Pending() int64 {
 	return p.pending
 }
 
-func (p *Poller) Close() error {
+func (p *poller) Close() error {
 	if !atomic.CompareAndSwapUint32(&p.closed, 0, 1) {
 		return io.EOF
 	}
@@ -119,13 +121,13 @@ func (p *Poller) Close() error {
 	return syscall.Close(p.fd)
 }
 
-func (p *Poller) Closed() bool {
+func (p *poller) Closed() bool {
 	return atomic.LoadUint32(&p.closed) == 1
 }
 
-func (p *Poller) Post(handler func()) error {
+func (p *poller) Post(handler func()) error {
 	p.lck.Lock()
-	p.handlers = append(p.handlers, handler)
+	p.posts = append(p.posts, handler)
 	p.pending++
 	p.lck.Unlock()
 
@@ -135,7 +137,14 @@ func (p *Poller) Post(handler func()) error {
 	return err
 }
 
-func (p *Poller) Poll(timeoutMs int) (n int, err error) {
+func (p *poller) Posted() int {
+	p.lck.Lock()
+	defer p.lck.Unlock()
+
+	return len(p.posts)
+}
+
+func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	var timeout *syscall.Timespec
 	if timeoutMs >= 0 {
 		ts := syscall.NsecToTimespec(int64(timeoutMs) * 1e6)
@@ -161,7 +170,7 @@ func (p *Poller) Poll(timeoutMs int) (n int, err error) {
 		pd := (*PollData)(unsafe.Pointer(event.Udata))
 
 		if pd.Fd == p.waker.ReadFd() {
-			p.dispatch()
+			p.executePost()
 			continue
 		}
 
@@ -181,7 +190,7 @@ func (p *Poller) Poll(timeoutMs int) (n int, err error) {
 	return
 }
 
-func (p *Poller) dispatch() {
+func (p *poller) executePost() {
 	for {
 		_, err := p.waker.Read(oneByte[:])
 		if err != nil {
@@ -190,19 +199,19 @@ func (p *Poller) dispatch() {
 	}
 
 	p.lck.Lock()
-	for _, handler := range p.handlers {
+	for _, handler := range p.posts {
 		handler()
 		p.pending--
 	}
-	p.handlers = p.handlers[:0]
+	p.posts = p.posts[:0]
 	p.lck.Unlock()
 }
 
-func (p *Poller) SetRead(fd int, pd *PollData) error {
+func (p *poller) SetRead(fd int, pd *PollData) error {
 	return p.setRead(fd, syscall.EV_ADD|syscall.EV_ONESHOT, pd)
 }
 
-func (p *Poller) setRead(fd int, flags uint16, pd *PollData) error {
+func (p *poller) setRead(fd int, flags uint16, pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&ReadFlags != ReadFlags {
 		p.pending++
@@ -212,7 +221,7 @@ func (p *Poller) setRead(fd int, flags uint16, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) SetWrite(fd int, pd *PollData) error {
+func (p *poller) SetWrite(fd int, pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&WriteFlags != WriteFlags {
 		p.pending++
@@ -222,7 +231,7 @@ func (p *Poller) SetWrite(fd int, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) DelRead(fd int, pd *PollData) error {
+func (p *poller) DelRead(fd int, pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&ReadFlags == ReadFlags {
 		p.pending--
@@ -232,7 +241,7 @@ func (p *Poller) DelRead(fd int, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) DelWrite(fd int, pd *PollData) error {
+func (p *poller) DelWrite(fd int, pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&WriteFlags == WriteFlags {
 		p.pending--
@@ -242,7 +251,7 @@ func (p *Poller) DelWrite(fd int, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) Del(fd int, pd *PollData) error {
+func (p *poller) Del(fd int, pd *PollData) error {
 	err := p.DelRead(fd, pd)
 	if err == nil {
 		return p.DelWrite(fd, pd)
@@ -250,7 +259,7 @@ func (p *Poller) Del(fd int, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) set(fd int, ev syscall.Kevent_t) error {
+func (p *poller) set(fd int, ev syscall.Kevent_t) error {
 	ev.Ident = uint64(fd)
 	p.changes = append(p.changes, ev)
 	return nil

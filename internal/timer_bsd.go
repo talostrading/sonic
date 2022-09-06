@@ -12,14 +12,14 @@ var _ ITimer = &Timer{}
 
 type Timer struct {
 	fd     int
-	poller *Poller
+	poller *poller
 	pd     PollData
 }
 
-func NewTimer(poller *Poller) (*Timer, error) {
+func NewTimer(p Poller) (*Timer, error) {
 	t := &Timer{
 		fd:     rand.Int(), // TODO figure out something better
-		poller: poller,
+		poller: p.(*poller),
 	}
 	t.pd.Fd = t.fd
 	return t, nil

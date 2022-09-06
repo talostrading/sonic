@@ -34,7 +34,9 @@ func createEvent(flags PollFlags, pd *PollData) Event {
 	return ev
 }
 
-type Poller struct {
+var _ Poller = &poller{}
+
+type poller struct {
 	// fd is the file descriptor returned by calling epoll_create1(0).
 	fd int
 
@@ -47,17 +49,17 @@ type Poller struct {
 	// The read end of the pipe is registered for reads with kqueue.
 	waker *EventFd
 
-	// handlers maintains the handlers set by the client to be
-	// executed in the Poller's goroutine. Adding a handler
+	// posts maintains the posts set by the client to be
+	// executed in the poller's goroutine. Adding a handler
 	// entails writing a single byte to the write end of the wakeupPipe.
-	handlers []func()
+	posts []func()
 
-	// lck synchronizes access to the handlers slice.
+	// lck synchronizes access to the posts slice.
 	// This is needed because multiple goroutines can call ioc.Post(...)
 	// on the same IO object.
 	lck sync.Mutex
 
-	// pending is the number of pending handlers the poller needs to execute
+	// pending is the number of pending posts the poller needs to execute
 	pending int64
 
 	// closed is true if the close() has been called on fd
@@ -67,7 +69,7 @@ type Poller struct {
 	wakerBytes [8]byte
 }
 
-func NewPoller() (*Poller, error) {
+func NewPoller() (Poller, error) {
 	epollFd, err := syscall.EpollCreate1(0)
 	if err != nil {
 		return nil, err
@@ -78,7 +80,7 @@ func NewPoller() (*Poller, error) {
 		return nil, err
 	}
 
-	p := &Poller{
+	p := &poller{
 		fd:     epollFd,
 		waker:  eventFd,
 		events: make([]Event, 128),
@@ -96,11 +98,11 @@ func NewPoller() (*Poller, error) {
 	return p, err
 }
 
-func (p *Poller) Pending() int64 {
+func (p *poller) Pending() int64 {
 	return p.pending
 }
 
-func (p *Poller) Close() error {
+func (p *poller) Close() error {
 	if !atomic.CompareAndSwapUint32(&p.closed, 0, 1) {
 		return io.EOF
 	}
@@ -112,13 +114,13 @@ func (p *Poller) Close() error {
 	return syscall.Close(p.fd)
 }
 
-func (p *Poller) Closed() bool {
+func (p *poller) Closed() bool {
 	return atomic.LoadUint32(&p.closed) == 1
 }
 
-func (p *Poller) Post(handler func()) error {
+func (p *poller) Post(handler func()) error {
 	p.lck.Lock()
-	p.handlers = append(p.handlers, handler)
+	p.posts = append(p.posts, handler)
 	p.pending++
 	p.lck.Unlock()
 
@@ -127,7 +129,14 @@ func (p *Poller) Post(handler func()) error {
 	return err
 }
 
-func (p *Poller) Poll(timeoutMs int) (n int, err error) {
+func (p *poller) Posted() int {
+	p.lck.Lock()
+	defer p.lck.Unlock()
+
+	return len(p.posts)
+}
+
+func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	nn, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_WAIT,
 		uintptr(p.fd),
@@ -171,7 +180,7 @@ func (p *Poller) Poll(timeoutMs int) (n int, err error) {
 	return
 }
 
-func (p *Poller) dispatch() {
+func (p *poller) dispatch() {
 	for {
 		_, err := p.waker.Read(p.wakerBytes[:])
 		if err != nil {
@@ -180,23 +189,23 @@ func (p *Poller) dispatch() {
 	}
 
 	p.lck.Lock()
-	for _, handler := range p.handlers {
+	for _, handler := range p.posts {
 		handler()
 		p.pending--
 	}
-	p.handlers = p.handlers[:0]
+	p.posts = p.posts[:0]
 	p.lck.Unlock()
 }
 
-func (p *Poller) SetRead(fd int, pd *PollData) error {
+func (p *poller) SetRead(fd int, pd *PollData) error {
 	return p.setRW(fd, pd, ReadFlags)
 }
 
-func (p *Poller) SetWrite(fd int, pd *PollData) error {
+func (p *poller) SetWrite(fd int, pd *PollData) error {
 	return p.setRW(fd, pd, WriteFlags)
 }
 
-func (p *Poller) setRW(fd int, pd *PollData, flag PollFlags) error {
+func (p *poller) setRW(fd int, pd *PollData, flag PollFlags) error {
 	pdflags := &pd.Flags
 	if *pdflags&flag != flag {
 		p.pending++
@@ -212,7 +221,7 @@ func (p *Poller) setRW(fd int, pd *PollData, flag PollFlags) error {
 	return nil
 }
 
-func (p *Poller) add(fd int, event Event) error {
+func (p *poller) add(fd int, event Event) error {
 	_, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
@@ -227,7 +236,7 @@ func (p *Poller) add(fd int, event Event) error {
 	return nil
 }
 
-func (p *Poller) modify(fd int, event Event) error {
+func (p *poller) modify(fd int, event Event) error {
 	_, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
@@ -243,7 +252,7 @@ func (p *Poller) modify(fd int, event Event) error {
 	return nil
 }
 
-func (p *Poller) Del(fd int, pd *PollData) error {
+func (p *poller) Del(fd int, pd *PollData) error {
 	err := p.DelRead(fd, pd)
 	if err == nil {
 		return p.DelWrite(fd, pd)
@@ -251,7 +260,7 @@ func (p *Poller) Del(fd int, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) DelRead(fd int, pd *PollData) error {
+func (p *poller) DelRead(fd int, pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&ReadFlags == ReadFlags {
 		p.pending--
@@ -264,7 +273,7 @@ func (p *Poller) DelRead(fd int, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) DelWrite(fd int, pd *PollData) error {
+func (p *poller) DelWrite(fd int, pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&WriteFlags == WriteFlags {
 		p.pending--
@@ -277,7 +286,7 @@ func (p *Poller) DelWrite(fd int, pd *PollData) error {
 	return nil
 }
 
-func (p *Poller) del(fd int) error {
+func (p *poller) del(fd int) error {
 	_, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
