@@ -140,6 +140,13 @@ func (ioc *IO) Post(handler func()) error {
 	return ioc.poller.Post(handler)
 }
 
+// Posted returns the number of handlers registered with Post.
+//
+// It is safe to call Posted concurrently.
+func (ioc *IO) Posted() int {
+	return ioc.poller.Posted()
+}
+
 func (ioc *IO) Pending() int64 {
 	return ioc.poller.Pending()
 }

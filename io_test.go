@@ -23,6 +23,10 @@ func TestPost(t *testing.T) {
 		})
 	}
 
+	if ioc.Posted() != 1000 {
+		t.Fatal("expected 1000 posted events")
+	}
+
 	if p := ioc.Pending(); p != 1000 {
 		t.Fatalf("not accounting for pending operations correctly expected=%d given=%d", 1000, p)
 	}
@@ -37,6 +41,10 @@ func TestPost(t *testing.T) {
 
 	if p := ioc.Pending(); p != 0 {
 		t.Fatalf("not accounting for pending operations correctly expected=%d given=%d", 0, p)
+	}
+
+	if g := ioc.Posted(); g != 0 {
+		t.Fatalf("expected 0 posted events but got %d", g)
 	}
 }
 
