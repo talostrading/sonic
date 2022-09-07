@@ -412,12 +412,17 @@ func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
 		return ErrMessageTooBig
 	}
 
-	f := AcquireFrame()
-	f.SetFin()
-	f.SetOpcode(Opcode(mt))
-	f.SetPayload(b)
+	if s.state == StateActive {
+		f := AcquireFrame()
+		f.SetFin()
+		f.SetOpcode(Opcode(mt))
+		f.SetPayload(b)
 
-	return s.WriteFrame(f)
+		s.prepareWrite(f)
+		return s.Flush()
+	}
+
+	return sonicerrors.ErrCancelled
 }
 
 func (s *WebsocketStream) WriteFrame(f *Frame) error {
@@ -425,7 +430,8 @@ func (s *WebsocketStream) WriteFrame(f *Frame) error {
 		s.prepareWrite(f)
 		return s.Flush()
 	} else {
-		return ErrSendAfterClose
+		ReleaseFrame(f)
+		return sonicerrors.ErrCancelled
 	}
 }
 
@@ -435,12 +441,17 @@ func (s *WebsocketStream) AsyncWrite(b []byte, mt MessageType, cb func(err error
 		return
 	}
 
-	f := AcquireFrame()
-	f.SetFin()
-	f.SetOpcode(Opcode(mt))
-	f.SetPayload(b)
+	if s.state == StateActive {
+		f := AcquireFrame()
+		f.SetFin()
+		f.SetOpcode(Opcode(mt))
+		f.SetPayload(b)
 
-	s.AsyncWriteFrame(f, cb)
+		s.prepareWrite(f)
+		s.AsyncFlush(cb)
+	} else {
+		cb(sonicerrors.ErrCancelled)
+	}
 }
 
 func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {
@@ -448,7 +459,8 @@ func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {
 		s.prepareWrite(f)
 		s.AsyncFlush(cb)
 	} else {
-		cb(ErrSendAfterClose)
+		ReleaseFrame(f)
+		cb(sonicerrors.ErrCancelled)
 	}
 }
 
