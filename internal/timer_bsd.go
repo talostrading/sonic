@@ -30,6 +30,7 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 	if err := t.Unset(); err != nil {
 		return err
 	}
+
 	t.pd.Set(ReadEvent, func(_ error) { cb() })
 
 	err := t.poller.set(t.fd, createEvent(
@@ -37,11 +38,13 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 		syscall.EVFILT_TIMER,
 		&t.pd,
 		dur))
+
 	if err == nil {
 		t.poller.pending++
 		t.pd.Flags |= ReadFlags
 	}
-	return nil
+
+	return err
 }
 
 func (t *Timer) Unset() error {
