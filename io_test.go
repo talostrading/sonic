@@ -63,7 +63,7 @@ func TestRunOneFor(t *testing.T) {
 
 	start := time.Now()
 
-	expected := 5 * time.Millisecond
+	expected := time.Millisecond
 	if err := ioc.RunOneFor(expected); err != sonicerrors.ErrTimeout {
 		t.Fatalf("expected timeout as no operations are scheduled received=%v", err)
 	}

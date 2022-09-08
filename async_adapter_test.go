@@ -6,6 +6,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 var msg = []byte("hello, sonic!")
@@ -14,13 +15,13 @@ func TestRead(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	ln, err := net.Listen("tcp", "localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
 	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+
 		client, err := ln.Accept()
 		if err != nil {
 			panic(err)
@@ -29,6 +30,8 @@ func TestRead(t *testing.T) {
 
 		client.Write(msg)
 	}()
+
+	time.Sleep(10 * time.Millisecond)
 
 	client, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
@@ -60,13 +63,13 @@ func TestAsyncRead(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	ln, err := net.Listen("tcp", "localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
 	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+
 		client, err := ln.Accept()
 		if err != nil {
 			panic(err)
@@ -75,6 +78,8 @@ func TestAsyncRead(t *testing.T) {
 
 		client.Write(msg)
 	}()
+
+	time.Sleep(10 * time.Millisecond)
 
 	client, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
@@ -118,13 +123,13 @@ func TestAsyncReadAll(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	ln, err := net.Listen("tcp", "localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
 	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		defer ln.Close()
 		client, err := ln.Accept()
 		if err != nil {
 			panic(err)
@@ -133,6 +138,8 @@ func TestAsyncReadAll(t *testing.T) {
 
 		client.Write(msg)
 	}()
+
+	time.Sleep(10 * time.Millisecond)
 
 	client, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
@@ -174,13 +181,13 @@ func TestWrite(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	ln, err := net.Listen("tcp", "localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
 	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+
 		client, err := ln.Accept()
 		if err != nil {
 			panic(err)
@@ -200,6 +207,8 @@ func TestWrite(t *testing.T) {
 			panic(fmt.Errorf("short read expected=%s given=%s", smsg, sbuf))
 		}
 	}()
+
+	time.Sleep(10 * time.Millisecond)
 
 	client, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
@@ -226,13 +235,13 @@ func TestAsyncWrite(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	ln, err := net.Listen("tcp", "localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
 	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+
 		client, err := ln.Accept()
 		if err != nil {
 			panic(err)
@@ -252,6 +261,8 @@ func TestAsyncWrite(t *testing.T) {
 			panic(fmt.Errorf("short read expected=%s given=%s", smsg, sbuf))
 		}
 	}()
+
+	time.Sleep(10 * time.Millisecond)
 
 	client, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
@@ -290,13 +301,13 @@ func TestAsyncWriteAll(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	ln, err := net.Listen("tcp", "localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer ln.Close()
-
 	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+
 		client, err := ln.Accept()
 		if err != nil {
 			panic(err)
@@ -316,6 +327,8 @@ func TestAsyncWriteAll(t *testing.T) {
 			panic(fmt.Errorf("short read expected=%s given=%s", smsg, sbuf))
 		}
 	}()
+
+	time.Sleep(10 * time.Millisecond)
 
 	client, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
