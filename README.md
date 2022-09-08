@@ -45,3 +45,4 @@ This issue has been addressed in [this](https://github.com/talostrading/sonic/co
 <p align="center">
   <img src="https://c.tenor.com/OTDlqAguqpEAAAAi/sonic-running.gif" />
 </p>
+
