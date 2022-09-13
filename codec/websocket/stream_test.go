@@ -2,14 +2,100 @@ package websocket
 
 import (
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/talostrading/sonic"
 )
 
-func TestClientUnsuccessfulHandshakeInvalidAddress(t *testing.T) {
+func assertState(t *testing.T, ws Stream, expected StreamState) {
+	if ws.State() != expected {
+		t.Fatalf("wrong state: given=%s expected=%s ", ws.State(), expected)
+	}
+}
+
+func TestClientReconnectOnFailedRead(t *testing.T) {
+	go func() {
+		for i := 0; i < 10; i++ {
+			srv := &MockServer{}
+
+			err := srv.Accept("localhost:8080")
+			if err != nil {
+				panic(err)
+			}
+
+			srv.Write([]byte("hello"))
+			srv.Close()
+		}
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, &tls.Config{}, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		onHandshake   func(err error)
+		onNextMessage func(err error, n int, mt MessageType)
+		connect       func()
+	)
+
+	nread := 0
+
+	b := make([]byte, 1024)
+	onNextMessage = func(err error, n int, _ MessageType) {
+		if err != nil {
+			assertState(t, ws, StateTerminated)
+			connect() // reconnect again
+		} else {
+			b = b[:n]
+			if string(b) != "hello" {
+				t.Fatal("expected hello")
+			}
+
+			nread++
+
+			ws.AsyncNextMessage(b[:cap(b)], onNextMessage)
+		}
+	}
+
+	done := false
+	onHandshake = func(err error) {
+		if err != nil {
+			// could not reconnect
+			done = true
+			assertState(t, ws, StateTerminated)
+		} else {
+			ws.AsyncNextMessage(b, onNextMessage)
+		}
+	}
+
+	connect = func() {
+		ws.AsyncHandshake("ws://localhost:8080", onHandshake)
+	}
+
+	connect()
+
+	for {
+		if done {
+			break
+		}
+		ioc.RunOne()
+	}
+
+	if nread != 10 {
+		t.Fatal("should have read 10 times")
+	}
+}
+
+func TestClientFailedHandshakeInvalidAddress(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -24,6 +110,8 @@ func TestClientUnsuccessfulHandshakeInvalidAddress(t *testing.T) {
 		if !errors.Is(err, ErrInvalidAddress) {
 			t.Fatal("expected invalid address error")
 		}
+
+		assertState(t, ws, StateTerminated)
 	})
 
 	for {
@@ -33,12 +121,10 @@ func TestClientUnsuccessfulHandshakeInvalidAddress(t *testing.T) {
 		ioc.RunOne()
 	}
 
-	if ws.State() != StateTerminated {
-		t.Fatal("expected StateTerminated")
-	}
+	assertState(t, ws, StateTerminated)
 }
 
-func TestClientUnsuccessfulHandshakeNoServer(t *testing.T) {
+func TestClientFailedHandshakeNoServer(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -53,6 +139,8 @@ func TestClientUnsuccessfulHandshakeNoServer(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
+
+		assertState(t, ws, StateTerminated)
 	})
 
 	for {
@@ -62,24 +150,21 @@ func TestClientUnsuccessfulHandshakeNoServer(t *testing.T) {
 		ioc.RunOne()
 	}
 
-	if ws.State() != StateTerminated {
-		t.Fatal("expected StateTerminated")
-	}
+	assertState(t, ws, StateTerminated)
 }
 
 func TestClientSuccessfulHandshake(t *testing.T) {
 	srv := &MockServer{}
 
 	go func() {
-		defer func() {
-			srv.Close()
-		}()
+		defer srv.Close()
 
 		err := srv.Accept("localhost:8080")
 		if err != nil {
 			panic(err)
 		}
 	}()
+	time.Sleep(10 * time.Millisecond)
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -89,29 +174,21 @@ func TestClientSuccessfulHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if expect := StateHandshake; ws.State() != expect {
-		t.Fatalf("wrong state expected=%s given=%s", expect, ws.State())
-	}
+	assertState(t, ws, StateHandshake)
 
 	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
 		if err != nil {
-			if expect := StateTerminated; ws.State() != expect {
-				t.Fatalf("failed handshake with wrong state expected=%s given=%s", expect, ws.State())
-			} else {
-				t.Fatal(err)
-			}
+			assertState(t, ws, StateTerminated)
 		} else {
-			if expect := StateActive; ws.State() != expect {
-				t.Fatalf("wrong state expected=%s given=%s", expect, ws.State())
-			}
+			assertState(t, ws, StateActive)
 		}
 	})
 
 	for {
-		ioc.RunOne()
 		if srv.IsClosed() {
 			break
 		}
+		ioc.RunOne()
 	}
 }
 
@@ -146,9 +223,7 @@ func TestClientReadUnfragmentedMessage(t *testing.T) {
 		t.Fatal("wrong payload")
 	}
 
-	if ws.state != StateActive {
-		t.Fatal("invalid state")
-	}
+	assertState(t, ws, StateActive)
 }
 
 func TestClientAsyncReadUnfragmentedMessage(t *testing.T) {
@@ -187,9 +262,7 @@ func TestClientAsyncReadUnfragmentedMessage(t *testing.T) {
 		t.Fatal("async read did not run")
 	}
 
-	if ws.state != StateActive {
-		t.Fatal("invalid state")
-	}
+	assertState(t, ws, StateActive)
 }
 
 func TestClientReadFragmentedMessage(t *testing.T) {
@@ -223,9 +296,7 @@ func TestClientReadFragmentedMessage(t *testing.T) {
 		t.Fatal("wrong payload")
 	}
 
-	if ws.state != StateActive {
-		t.Fatal("invalid state")
-	}
+	assertState(t, ws, StateActive)
 }
 
 func TestClientAsyncReadFragmentedMessage(t *testing.T) {
@@ -267,9 +338,7 @@ func TestClientAsyncReadFragmentedMessage(t *testing.T) {
 		t.Fatal("async read did not run")
 	}
 
-	if ws.state != StateActive {
-		t.Fatal("invalid state")
-	}
+	assertState(t, ws, StateActive)
 }
 
 func TestClientReadCorruptControlFrame(t *testing.T) {
@@ -303,9 +372,7 @@ func TestClientReadCorruptControlFrame(t *testing.T) {
 		t.Fatal("should have one pending operation")
 	}
 
-	if ws.state != StateClosedByUs {
-		t.Fatalf("invalid state")
-	}
+	assertState(t, ws, StateClosedByUs)
 
 	closeFrame := ws.pending[0]
 	closeFrame.Unmask()
@@ -349,9 +416,7 @@ func TestClientAsyncReadCorruptControlFrame(t *testing.T) {
 			t.Fatal("should have one pending operation")
 		}
 
-		if ws.state != StateClosedByUs {
-			t.Fatal("invalid state")
-		}
+		assertState(t, ws, StateClosedByUs)
 
 		closeFrame := ws.pending[0]
 		closeFrame.Unmask()
@@ -417,9 +482,7 @@ func TestClientReadPingFrame(t *testing.T) {
 		t.Fatal("control callback not invoked")
 	}
 
-	if ws.state != StateTerminated {
-		t.Fatal("connection should be terminated")
-	}
+	assertState(t, ws, StateTerminated)
 }
 
 func TestClientAsyncReadPingFrame(t *testing.T) {
@@ -470,9 +533,7 @@ func TestClientAsyncReadPingFrame(t *testing.T) {
 			t.Fatal("should have received EOF")
 		}
 
-		if ws.state != StateTerminated {
-			t.Fatal("connection should be terminated")
-		}
+		assertState(t, ws, StateTerminated)
 	})
 
 	if !ran {
@@ -526,9 +587,7 @@ func TestClientReadPongFrame(t *testing.T) {
 		t.Fatal("should have received EOF")
 	}
 
-	if ws.state != StateTerminated {
-		t.Fatal("connection should be terminated")
-	}
+	assertState(t, ws, StateTerminated)
 
 	if !invoked {
 		t.Fatal("control callback not invoked")
@@ -573,9 +632,7 @@ func TestClientAsyncReadPongFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if ws.state != StateTerminated {
-			t.Fatal("connection should be terminated")
-		}
+		assertState(t, ws, StateTerminated)
 	})
 
 	if !ran {
@@ -629,9 +686,7 @@ func TestClientReadCloseFrame(t *testing.T) {
 			t.Fatal("invalid close frame reply")
 		}
 
-		if ws.state != StateClosedByPeer {
-			t.Fatal("invalid stream state")
-		}
+		assertState(t, ws, StateClosedByPeer)
 	})
 
 	b := make([]byte, 128)
@@ -645,9 +700,7 @@ func TestClientReadCloseFrame(t *testing.T) {
 		t.Fatal("should have received EOF")
 	}
 
-	if ws.state != StateClosedByPeer {
-		t.Fatal("connection should be closed by peer")
-	}
+	assertState(t, ws, StateClosedByPeer)
 
 	if !invoked {
 		t.Fatal("control callback not invoked")
@@ -696,9 +749,7 @@ func TestClientAsyncReadCloseFrame(t *testing.T) {
 			t.Fatal("invalid close frame reply")
 		}
 
-		if ws.state != StateClosedByPeer {
-			t.Fatal("invalid stream state")
-		}
+		assertState(t, ws, StateClosedByPeer)
 	})
 
 	b := make([]byte, 128)
@@ -709,9 +760,7 @@ func TestClientAsyncReadCloseFrame(t *testing.T) {
 			t.Fatal("should have received EOF")
 		}
 
-		if ws.state != StateTerminated {
-			t.Fatal("connection should be terminated")
-		}
+		assertState(t, ws, StateTerminated)
 	})
 
 	if !ran {
@@ -766,9 +815,7 @@ func TestClientWriteFrame(t *testing.T) {
 			t.Fatal("frame payload is corrupt, something went wrong with the encoder")
 		}
 
-		if ws.state != StateActive {
-			t.Fatal("wrong state")
-		}
+		assertState(t, ws, StateActive)
 	}
 }
 
@@ -819,9 +866,7 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 				t.Fatal("frame payload is corrupt, something went wrong with the encoder")
 			}
 
-			if ws.state != StateActive {
-				t.Fatal("wrong state")
-			}
+			assertState(t, ws, StateActive)
 		}
 	})
 
@@ -867,9 +912,7 @@ func TestClientWrite(t *testing.T) {
 			t.Fatal("frame payload is corrupt, something went wrong with the encoder")
 		}
 
-		if ws.state != StateActive {
-			t.Fatal("wrong state")
-		}
+		assertState(t, ws, StateActive)
 	}
 }
 
@@ -910,9 +953,7 @@ func TestClientAsyncWrite(t *testing.T) {
 				t.Fatal("frame payload is corrupt, something went wrong with the encoder")
 			}
 
-			if ws.state != StateActive {
-				t.Fatal("wrong state")
-			}
+			assertState(t, ws, StateActive)
 		}
 	})
 }
@@ -1035,9 +1076,7 @@ func TestClientCloseHandshakeWeStart(t *testing.T) {
 		serverReply := AcquireFrame()
 		defer ReleaseFrame(serverReply)
 
-		if ws.state != StateClosedByUs {
-			t.Fatal("wrong state")
-		}
+		assertState(t, ws, StateClosedByUs)
 
 		serverReply.SetFin()
 		serverReply.SetClose()
@@ -1061,9 +1100,7 @@ func TestClientCloseHandshakeWeStart(t *testing.T) {
 			t.Fatal("wrong close frame payload reply")
 		}
 
-		if ws.state != StateCloseAcked {
-			t.Fatal("wrong state")
-		}
+		assertState(t, ws, StateCloseAcked)
 	}
 }
 
@@ -1114,9 +1151,7 @@ func TestClientAsyncCloseHandshakeWeStart(t *testing.T) {
 				t.Fatal("wrong close frame payload reply")
 			}
 
-			if ws.state != StateCloseAcked {
-				t.Fatal("wrong state")
-			}
+			assertState(t, ws, StateCloseAcked)
 		}
 	})
 
@@ -1160,9 +1195,7 @@ func TestClientCloseHandshakePeerStarts(t *testing.T) {
 		t.Fatal("should have received close")
 	}
 
-	if ws.state != StateClosedByPeer {
-		t.Fatal("wrong state")
-	}
+	assertState(t, ws, StateClosedByPeer)
 
 	cc, reason := DecodeCloseFramePayload(recv.payload)
 	if !(cc == CloseNormal && reason == "bye") {
@@ -1209,9 +1242,7 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 			t.Fatal("should have received close")
 		}
 
-		if ws.state != StateClosedByPeer {
-			t.Fatal("wrong state")
-		}
+		assertState(t, ws, StateClosedByPeer)
 
 		cc, reason := DecodeCloseFramePayload(recv.payload)
 		if !(cc == CloseNormal && reason == "bye") {

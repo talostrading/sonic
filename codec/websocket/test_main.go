@@ -63,6 +63,29 @@ func (s *MockServer) Accept(addr string) (err error) {
 	return nil
 }
 
+func (s *MockServer) Write(b []byte) error {
+	fr := AcquireFrame()
+	defer ReleaseFrame(fr)
+
+	fr.SetText()
+	fr.SetPayload(b)
+	fr.SetFin()
+
+	_, err := fr.WriteTo(s.conn)
+	return err
+}
+
+func (s *MockServer) Read(b []byte) error {
+	fr := AcquireFrame()
+	defer ReleaseFrame(fr)
+
+	_, err := fr.ReadFrom(s.conn)
+	if err == nil {
+		copy(b, fr.Payload())
+	}
+	return err
+}
+
 func (s *MockServer) Close() {
 	if atomic.CompareAndSwapInt32(&s.closed, 0, 1) {
 		s.conn.Close()
