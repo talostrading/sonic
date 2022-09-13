@@ -109,6 +109,10 @@ func NewWebsocketStream(
 // init is run when we transition into StateActive which happens
 // after a successful handshake.
 func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
+	if s.state != StateActive {
+		return fmt.Errorf("stream must be in StateActive")
+	}
+
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
 	s.cs, err = sonic.NewBlockingCodecStream[*Frame, *Frame](stream, codec, s.src, s.dst)
@@ -118,6 +122,7 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 func (s *WebsocketStream) reset() {
 	s.hb = s.hb[:cap(s.hb)]
 	s.state = StateHandshake
+	s.stream = nil
 	s.src.Reset()
 	s.dst.Reset()
 }
@@ -579,12 +584,23 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 
 	s.reset()
 
+	var stream sonic.Stream
+
 	done := make(chan struct{}, 1)
-	s.handshake(addr, func(herr error) {
+	s.handshake(addr, func(rerr error, rstream sonic.Stream) {
+		err = rerr
+		stream = rstream
 		done <- struct{}{}
-		err = herr
 	})
 	<-done
+
+	if err != nil {
+		s.state = StateTerminated
+	} else {
+		s.state = StateActive
+		err = s.init(stream)
+	}
+
 	return
 }
 
@@ -599,12 +615,13 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine here
 	go func() {
-		s.handshake(addr, func(err error) {
+		s.handshake(addr, func(err error, stream sonic.Stream) {
 			s.ioc.Post(func() {
 				if err != nil {
 					s.state = StateTerminated
 				} else {
 					s.state = StateActive
+					err = s.init(stream)
 				}
 				cb(err)
 			})
@@ -612,18 +629,20 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	}()
 }
 
-func (s *WebsocketStream) handshake(addr string, cb func(err error)) {
+func (s *WebsocketStream) handshake(
+	addr string,
+	cb func(err error, stream sonic.Stream),
+) {
 	url, err := s.resolve(addr)
-	if err == nil {
-		s.dial(url, func(err error) {
-			if err == nil {
-				err = s.upgrade(url)
-			}
-
-			cb(err)
-		})
+	if err != nil {
+		cb(err, nil)
 	} else {
-		cb(err)
+		s.dial(url, func(err error, stream sonic.Stream) {
+			if err == nil {
+				err = s.upgrade(url, stream)
+			}
+			cb(err, stream)
+		})
 	}
 }
 
@@ -643,7 +662,10 @@ func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
 	return
 }
 
-func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
+func (s *WebsocketStream) dial(
+	url *url.URL,
+	cb func(err error, stream sonic.Stream),
+) {
 	var (
 		err  error
 		conn net.Conn
@@ -682,19 +704,18 @@ func (s *WebsocketStream) dial(url *url.URL, cb func(err error)) {
 	}
 
 	if err == nil {
+		// s.ioc is not used by this constructor, so there is NO a race
+		// condition on the io context.
 		sonic.NewAsyncAdapter(
 			s.ioc, sc, conn, func(err error, stream *sonic.AsyncAdapter) {
-				if err == nil {
-					err = s.init(stream)
-				}
-				cb(err)
+				cb(err, stream)
 			}, sonicopts.NoDelay(true))
 	} else {
-		cb(err)
+		cb(err, nil)
 	}
 }
 
-func (s *WebsocketStream) upgrade(uri *url.URL) error {
+func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.Stream) error {
 	req, err := http.NewRequest("GET", uri.String(), nil)
 	if err != nil {
 		return err
@@ -706,13 +727,13 @@ func (s *WebsocketStream) upgrade(uri *url.URL) error {
 	req.Header.Set("Sec-WebSocket-Key", string(sentKey))
 	req.Header.Set("Sec-Websocket-Version", "13")
 
-	err = req.Write(s.stream)
+	err = req.Write(stream)
 	if err != nil {
 		return err
 	}
 
 	s.hb = s.hb[:cap(s.hb)]
-	n, err := s.stream.Read(s.hb)
+	n, err := stream.Read(s.hb)
 	if err != nil {
 		return err
 	}
