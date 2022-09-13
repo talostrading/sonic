@@ -61,11 +61,8 @@ func (t MessageType) String() string {
 type StreamState uint8
 
 const (
-	// Start state. Can only go to StateHandshake from here.
-	StateInactive StreamState = iota
-
-	// Intermediate state. Handshake is ongoing.
-	StateHandshake
+	// Start state. Handshake is ongoing.
+	StateHandshake StreamState = iota
 
 	// Intermediate state. Connection is active, can read/write/close.
 	StateActive
@@ -89,8 +86,6 @@ const (
 
 func (s StreamState) String() string {
 	switch s {
-	case StateInactive:
-		return "state_inactive"
 	case StateHandshake:
 		return "state_handshake"
 	case StateActive:
@@ -329,7 +324,4 @@ type Stream interface {
 	//  - If a message exceeds the limit while writing, the operation is
 	//    cancelled.
 	SetMaxMessageSize(bytes int)
-
-	// Reset resets the stream state.
-	Reset()
 }

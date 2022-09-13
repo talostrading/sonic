@@ -90,7 +90,7 @@ func NewWebsocketStream(
 		role:   role,
 		src:    sonic.NewByteBuffer(),
 		dst:    sonic.NewByteBuffer(),
-		state:  StateInactive,
+		state:  StateHandshake,
 		hasher: sha1.New(),
 		hb:     make([]byte, 1024),
 		dialer: &net.Dialer{
@@ -115,9 +115,9 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 	return
 }
 
-func (s *WebsocketStream) Reset() {
+func (s *WebsocketStream) reset() {
 	s.hb = s.hb[:cap(s.hb)]
-	s.state = StateInactive
+	s.state = StateHandshake
 	s.src.Reset()
 	s.dst.Reset()
 }
@@ -577,13 +577,7 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 		return ErrWrongHandshakeRole
 	}
 
-	s.Reset()
-
-	if s.state != StateInactive {
-		return sonicerrors.ErrCancelled
-	}
-
-	s.state = StateHandshake
+	s.reset()
 
 	done := make(chan struct{}, 1)
 	s.handshake(addr, func(herr error) {
@@ -600,14 +594,7 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 		return
 	}
 
-	s.Reset()
-
-	if s.state != StateInactive {
-		cb(sonicerrors.ErrCancelled)
-		return
-	}
-
-	s.state = StateHandshake
+	s.reset()
 
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine here
