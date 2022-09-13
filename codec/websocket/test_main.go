@@ -7,28 +7,25 @@ import (
 	"net"
 	"net/http"
 	"net/http/httputil"
-	"sync"
+	"sync/atomic"
 
 	"github.com/talostrading/sonic"
 )
 
 // MockServer is a server which can be used to test the WebSocket client.
 type MockServer struct {
+	ln     net.Listener
 	conn   net.Conn
-	lck    sync.Mutex // so it can be used concurrently
-	closed bool
+	closed int32
 }
 
-func (s *MockServer) Accept(addr string) error {
-	s.lck.Lock()
-	defer s.lck.Unlock()
-
-	ln, err := net.Listen("tcp", addr)
+func (s *MockServer) Accept(addr string) (err error) {
+	s.ln, err = net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
 
-	conn, err := ln.Accept()
+	conn, err := s.ln.Accept()
 	if err != nil {
 		return err
 	}
@@ -65,44 +62,26 @@ func (s *MockServer) Accept(addr string) error {
 
 	return nil
 }
-func (s *MockServer) Write(fr *Frame) (n int, err error) {
-	s.lck.Lock()
-	defer s.lck.Unlock()
-
-	var nn int64
-	nn, err = fr.WriteTo(s.conn)
-	n = int(nn)
-	return
-}
-
-func (s *MockServer) Read(fr *Frame) (n int, err error) {
-	s.lck.Lock()
-	defer s.lck.Unlock()
-
-	nn, err := fr.ReadFrom(s.conn)
-	return int(nn), err
-}
 
 func (s *MockServer) Close() {
-	s.lck.Lock()
-	defer s.lck.Unlock()
-
-	if s.closed {
-		return
+	if atomic.CompareAndSwapInt32(&s.closed, 0, 1) {
+		s.conn.Close()
+		s.ln.Close()
 	}
-	s.closed = true
-
-	s.conn.Close()
 }
 
 func (s *MockServer) IsClosed() bool {
-	return s.closed
+	return atomic.LoadInt32(&s.closed) == 1
 }
 
 var _ sonic.Stream = &MockStream{}
 
-// MockStream is a stream that's not attached to any operating system IO object.
-// It is used to test WebSocket servers and clients.
+// MockStream is a mock TCP stream that's not attached to any operating system
+// IO executor. It is used to test reads and writes for WebSocket servers and
+// clients.
+//
+// A WebsocketStream can be set to use a MockStream only if it is in
+// StateActive, which occurs after a successful handshake or a call to init().
 type MockStream struct {
 	b *sonic.ByteBuffer
 }
