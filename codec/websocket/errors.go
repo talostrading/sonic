@@ -22,4 +22,6 @@ var (
 
 	ErrUnexpectedContinuation = errors.New("continue frame but nothing to continue")
 	ErrExpectedContinuation   = errors.New("expected continue frame")
+
+	ErrInvalidAddress = errors.New("invalid address")
 )

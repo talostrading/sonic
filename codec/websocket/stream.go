@@ -176,6 +176,14 @@ func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
 }
 
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
+	// TODO for later: here we flush first since we might need to reply
+	// to ping/pong/close immediately, and only after that we try to
+	// async read.
+	//
+	// I think we can just flush asynchronously while reading asynchronously at
+	// the same time. I'm pretty sure this will work with a BlockingCodecStream.
+	//
+	// Not entirely sure about a NonblockingCodecStream.
 	s.AsyncFlush(func(err error) {
 		if errors.Is(err, ErrMessageTooBig) {
 			s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
@@ -655,7 +663,7 @@ func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
 		case "wss":
 			url.Scheme = "https"
 		default:
-			err = fmt.Errorf("invalid address=%s", addr)
+			err = ErrInvalidAddress
 		}
 	}
 

@@ -5,12 +5,69 @@ import (
 	"errors"
 	"io"
 	"testing"
-	"time"
 
 	"github.com/talostrading/sonic"
 )
 
-func TestClientHandshake(t *testing.T) {
+func TestClientUnsuccessfulHandshakeInvalidAddress(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		panic(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("localhost:8081", func(err error) {
+		done = true
+		if !errors.Is(err, ErrInvalidAddress) {
+			t.Fatal("expected invalid address error")
+		}
+	})
+
+	for {
+		if done {
+			break
+		}
+		ioc.RunOne()
+	}
+
+	if ws.State() != StateTerminated {
+		t.Fatal("expected StateTerminated")
+	}
+}
+
+func TestClientUnsuccessfulHandshakeNoServer(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		panic(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("ws://localhost:8081", func(err error) {
+		done = true
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	for {
+		if done {
+			break
+		}
+		ioc.RunOne()
+	}
+
+	if ws.State() != StateTerminated {
+		t.Fatal("expected StateTerminated")
+	}
+}
+
+func TestClientSuccessfulHandshake(t *testing.T) {
 	srv := &MockServer{}
 
 	go func() {
@@ -23,8 +80,6 @@ func TestClientHandshake(t *testing.T) {
 			panic(err)
 		}
 	}()
-
-	time.Sleep(100 * time.Millisecond) // until we listen
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
