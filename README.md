@@ -1,24 +1,42 @@
 *this is currently work-in-progress - expect breaking changes until v1.0.0*
 
 # Sonic
-Sonic is a Go library for network and I/O programming that provides developers with a consistent asynchronous model. Sonic currently supports only Unix based systems.
+Sonic is a Go library for network and I/O programming that provides developers with a consistent asynchronous model, with a focus on achieving the lowest possible latency and jitter.
+
+It is an alternative to the `net` package that removes the need of using goroutines to handle
+multiple connections and reads/writes in the same process. By doing that, a single goroutine
+and thread is used which brings several benefits:
+- No need to use synchronization primitives (channels, mutexes etc.) as multiple connections can be handled in the same goroutine.
+- It removes the need for the Go scheduler to do any work which could slow down the program.
+- It allows latency sensitive programs to run in a hot-loop pinned to a thread on an isolated core in order to achieve low latency and jitter.
+
+Sonic currently supports only Unix based systems.
 
 ```go
 func main() {
+    // Create an IO object which can execute asynchronous operations on the
+    // current goroutine. 
     ioc := sonic.MustIO()
     defer ioc.Close()
 
-    for i := 0; i < n; i++ {
+    // Create 10 connections. Each connection reads a message into it's
+    // buffer and then closes.
+    for i := 0; i < 10; i++ {
         conn, _ := sonic.Dial(ioc, "tcp", "localhost:8080")
 		
-        buf := make([]byte, 128)
-        conn.AsyncRead(buf, func(err error, n int) {
-            buf = buf[:n]
-            fmt.Println("got=", string(buf))
-            conn.Close()
+        b := make([]byte, 128)
+        conn.AsyncRead(b, func(err error, n int) {
+            if err != nil {
+                fmt.Printf("could not read from %d err=%v\n", i, err)
+            } else {
+                b = b[:n]
+                fmt.Println("got=", string(b))
+                conn.Close()
+            }
         })
     }
 
+    // Execute all pending reads scheduled in the for-loop, then exit.
     ioc.RunPending()
 }
 ```

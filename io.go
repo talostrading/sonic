@@ -13,6 +13,10 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
+// IO executes scheduled asynchronous operations on a goroutine.
+//
+// A goroutine must not have more than one IO. Multiple goroutines, each with
+// at most one IO can coexist in the same process.
 type IO struct {
 	poller internal.Poller
 
