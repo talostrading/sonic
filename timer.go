@@ -105,11 +105,14 @@ func (t *Timer) Scheduled() bool {
 // that have been scheduled but not yet completed are cancelled, and will
 // therefore never complete.
 func (t *Timer) Close() error {
-	t.state = stateClosed
+	if t.state != stateClosed {
+		t.state = stateClosed
 
-	err := t.it.Close()
-	if err == nil {
-		delete(t.ioc.pendingTimers, t)
+		err := t.it.Close()
+		if err == nil {
+			delete(t.ioc.pendingTimers, t)
+		}
+		return err
 	}
-	return err
+	return nil
 }

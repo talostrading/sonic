@@ -325,3 +325,20 @@ func TestTimerScheduleRepeatingWhileAlreadyScheduled(t *testing.T) {
 		t.Fatal("operation should have been cancelled")
 	}
 }
+
+func TestTimerCloseAfterClose(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 10; i++ {
+		err = timer.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
