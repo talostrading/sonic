@@ -16,7 +16,7 @@ func TestRead(t *testing.T) {
 	defer ioc.Close()
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8080")
+		ln, err := net.Listen("tcp", "localhost:9080")
 		if err != nil {
 			panic(err)
 		}
@@ -33,7 +33,7 @@ func TestRead(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	client, err := net.Dial("tcp", "localhost:8080")
+	client, err := net.Dial("tcp", "localhost:9080")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestAsyncRead(t *testing.T) {
 	defer ioc.Close()
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8080")
+		ln, err := net.Listen("tcp", "localhost:9081")
 		if err != nil {
 			panic(err)
 		}
@@ -81,7 +81,7 @@ func TestAsyncRead(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	client, err := net.Dial("tcp", "localhost:8080")
+	client, err := net.Dial("tcp", "localhost:9081")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +124,7 @@ func TestAsyncReadAll(t *testing.T) {
 	defer ioc.Close()
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8080")
+		ln, err := net.Listen("tcp", "localhost:9082")
 		if err != nil {
 			panic(err)
 		}
@@ -141,7 +141,7 @@ func TestAsyncReadAll(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	client, err := net.Dial("tcp", "localhost:8080")
+	client, err := net.Dial("tcp", "localhost:9082")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestWrite(t *testing.T) {
 	defer ioc.Close()
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8080")
+		ln, err := net.Listen("tcp", "localhost:9083")
 		if err != nil {
 			panic(err)
 		}
@@ -210,7 +210,7 @@ func TestWrite(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	client, err := net.Dial("tcp", "localhost:8080")
+	client, err := net.Dial("tcp", "localhost:9083")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -236,7 +236,7 @@ func TestAsyncWrite(t *testing.T) {
 	defer ioc.Close()
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8080")
+		ln, err := net.Listen("tcp", "localhost:9084")
 		if err != nil {
 			panic(err)
 		}
@@ -264,7 +264,7 @@ func TestAsyncWrite(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	client, err := net.Dial("tcp", "localhost:8080")
+	client, err := net.Dial("tcp", "localhost:9084")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,7 +302,7 @@ func TestAsyncWriteAll(t *testing.T) {
 	defer ioc.Close()
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8080")
+		ln, err := net.Listen("tcp", "localhost:9085")
 		if err != nil {
 			panic(err)
 		}
@@ -330,7 +330,7 @@ func TestAsyncWriteAll(t *testing.T) {
 
 	time.Sleep(10 * time.Millisecond)
 
-	client, err := net.Dial("tcp", "localhost:8080")
+	client, err := net.Dial("tcp", "localhost:9085")
 	if err != nil {
 		t.Fatal(err)
 	}
