@@ -251,16 +251,16 @@ func (f *Frame) Payload() []byte {
 
 func (f *Frame) Mask() {
 	f.header[1] |= maskBit
-	genMask(f.mask[:])
+	GenMask(f.mask[:])
 	if len(f.payload) > 0 {
-		mask(f.mask[:], f.payload)
+		Mask(f.mask[:], f.payload)
 	}
 }
 
 func (f *Frame) Unmask() {
 	if len(f.payload) > 0 {
 		key := f.MaskKey()
-		mask(key, f.payload)
+		Mask(key, f.payload)
 	}
 	f.header[1] ^= maskBit
 }

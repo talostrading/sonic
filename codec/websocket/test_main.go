@@ -55,7 +55,7 @@ func (s *MockServer) Accept(addr string) (err error) {
 	res.Write([]byte("HTTP/1.1 101 Switching Protocols\r\n"))
 	res.Write([]byte("Upgrade: websocket\r\n"))
 	res.Write([]byte("Connection: Upgrade\r\n"))
-	res.Write([]byte(fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n", makeResponseKey([]byte(req.Header.Get("Sec-WebSocket-Key"))))))
+	res.Write([]byte(fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n", MakeResponseKey([]byte(req.Header.Get("Sec-WebSocket-Key"))))))
 	res.Write([]byte("\r\n"))
 
 	_, err = res.WriteTo(s.conn)
