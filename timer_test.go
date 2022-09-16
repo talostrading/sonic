@@ -1,11 +1,14 @@
 package sonic
 
 import (
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/talostrading/sonic/sonicerrors"
 )
+
+const TimerTestDuration = time.Millisecond
 
 func TestTimerScheduleOnce(t *testing.T) {
 	ioc := MustIO()
@@ -20,17 +23,19 @@ func TestTimerScheduleOnce(t *testing.T) {
 		t.Fatal("timer should not be scheduled")
 	}
 
-	dur := time.Millisecond
-
 	done := false
-	err = timer.ScheduleOnce(dur, func() {
+	err = timer.ScheduleOnce(TimerTestDuration, func() {
 		done = true
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	f := time.NewTimer(5 * dur)
+	if timer.state != stateScheduled {
+		t.Fatal("timer should be in stateScheduled")
+	}
+
+	f := time.NewTimer(2 * TimerTestDuration)
 
 outer:
 	for {
@@ -48,7 +53,7 @@ outer:
 	}
 
 	if timer.state != stateReady {
-		t.Fatal("timer should be ready")
+		t.Fatal("timer should be in stateReady")
 	}
 }
 
@@ -65,10 +70,8 @@ func TestTimerScheduleOnceAndClose(t *testing.T) {
 		t.Fatal("timer should not be scheduled")
 	}
 
-	dur := time.Millisecond
-
 	done := false
-	err = timer.ScheduleOnce(dur, func() {
+	err = timer.ScheduleOnce(TimerTestDuration, func() {
 		done = true
 		timer.Close()
 	})
@@ -76,7 +79,11 @@ func TestTimerScheduleOnceAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f := time.NewTimer(5 * dur)
+	if timer.state != stateScheduled {
+		t.Fatal("timer should be in stateScheduled")
+	}
+
+	f := time.NewTimer(2 * TimerTestDuration)
 
 outer:
 	for {
@@ -94,12 +101,7 @@ outer:
 	}
 
 	if timer.state != stateClosed {
-		t.Fatal("timer should be closed")
-	}
-
-	err = timer.ScheduleOnce(time.Second, func() {})
-	if err != sonicerrors.ErrCancelled {
-		t.Fatal("operation should be cancelled")
+		t.Fatal("timer should be stateClosed")
 	}
 }
 
@@ -116,10 +118,8 @@ func TestTimerScheduleRepeating(t *testing.T) {
 		t.Fatal("timer should not be scheduled")
 	}
 
-	dur := time.Millisecond
-
 	fired := 0
-	err = timer.ScheduleRepeating(dur, func() {
+	err = timer.ScheduleRepeating(TimerTestDuration, func() {
 		if timer.Scheduled() {
 			t.Fatal("timer should not be scheduled")
 		}
@@ -129,7 +129,11 @@ func TestTimerScheduleRepeating(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f := time.NewTimer(10 * dur)
+	if timer.state != stateScheduled {
+		t.Fatal("timer should be in stateScheduled")
+	}
+
+	f := time.NewTimer(5 * TimerTestDuration)
 
 outer:
 	for {
@@ -142,12 +146,8 @@ outer:
 		ioc.PollOne()
 	}
 
-	if fired <= 5 {
+	if fired <= 1 {
 		t.Fatal("timer did not fire repeteadly")
-	}
-
-	if timer.state != stateScheduled {
-		t.Fatalf("timer should be ready is=%v", timer.state)
 	}
 }
 
@@ -164,15 +164,13 @@ func TestTimerScheduleRepeatingAndClose(t *testing.T) {
 		t.Fatal("timer should not be scheduled")
 	}
 
-	dur := time.Millisecond
-
 	fired := 0
-	err = timer.ScheduleRepeating(dur, func() {
+	err = timer.ScheduleRepeating(TimerTestDuration, func() {
 		if timer.Scheduled() {
 			t.Fatal("timer should not be scheduled")
 		}
 		fired++
-		if fired == 5 {
+		if fired >= 2 {
 			timer.Close()
 		}
 	})
@@ -180,7 +178,11 @@ func TestTimerScheduleRepeatingAndClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	f := time.NewTimer(10 * dur)
+	if timer.state != stateScheduled {
+		t.Fatal("timer should be in stateScheduled")
+	}
+
+	f := time.NewTimer(5 * TimerTestDuration)
 
 outer:
 	for {
@@ -194,11 +196,132 @@ outer:
 	}
 
 	if timer.state != stateClosed {
-		t.Fatal("timer should be closed")
+		t.Fatal("timer should be in stateClosed")
+	}
+}
+
+func TestTimerCloseAfterScheduleOnce(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	err = timer.ScheduleOnce(time.Second, func() {})
-	if err != sonicerrors.ErrCancelled {
-		t.Fatal("operation should be cancelled")
+	shouldNotBeTrue := false
+
+	err = timer.ScheduleOnce(TimerTestDuration, func() {
+		shouldNotBeTrue = true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = timer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if timer.state != stateClosed {
+		t.Fatal("timer should be in stateClosed")
+	}
+
+	f := time.NewTimer(2 * TimerTestDuration)
+outer:
+	for {
+		select {
+		case <-f.C:
+			break outer
+		default:
+		}
+		ioc.PollOne()
+	}
+
+	if shouldNotBeTrue {
+		t.Fatal("callback triggered after closing the timer")
+	}
+}
+
+func TestTimerCloseAfterScheduleRepeating(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	shouldNotBeTrue := false
+
+	err = timer.ScheduleRepeating(TimerTestDuration, func() {
+		shouldNotBeTrue = true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = timer.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if timer.state != stateClosed {
+		t.Fatal("timer should be in stateClosed")
+	}
+
+	f := time.NewTimer(2 * TimerTestDuration)
+outer:
+	for {
+		select {
+		case <-f.C:
+			break outer
+		default:
+		}
+		ioc.PollOne()
+	}
+
+	if shouldNotBeTrue {
+		t.Fatal("callback triggered after closing the timer")
+	}
+}
+
+func TestTimerScheduleOnceWhileAlreadyScheduled(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = timer.ScheduleOnce(TimerTestDuration, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = timer.ScheduleOnce(TimerTestDuration, func() {})
+	if !errors.Is(err, sonicerrors.ErrCancelled) {
+		t.Fatal("operation should have been cancelled")
+	}
+}
+
+func TestTimerScheduleRepeatingWhileAlreadyScheduled(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = timer.ScheduleRepeating(TimerTestDuration, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = timer.ScheduleOnce(TimerTestDuration, func() {})
+	if !errors.Is(err, sonicerrors.ErrCancelled) {
+		t.Fatal("operation should have been cancelled")
 	}
 }

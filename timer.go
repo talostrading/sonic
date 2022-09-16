@@ -101,7 +101,9 @@ func (t *Timer) Scheduled() bool {
 }
 
 // Close closes the timer, render it useless for scheduling any more operations
-// on it.
+// on it. A timer cannot be used after Close(). Any pending operations
+// that have been scheduled but not yet completed are cancelled, and will
+// therefore never complete.
 func (t *Timer) Close() error {
 	t.state = stateClosed
 
