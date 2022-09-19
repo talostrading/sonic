@@ -104,15 +104,13 @@ func (t *Timer) Scheduled() bool {
 // on it. A timer cannot be used after Close(). Any pending operations
 // that have been scheduled but not yet completed are cancelled, and will
 // therefore never complete.
-func (t *Timer) Close() error {
+func (t *Timer) Close() (err error) {
 	if t.state != stateClosed {
-		t.state = stateClosed
-
-		err := t.it.Close()
+		err = t.it.Close()
 		if err == nil {
+			t.state = stateClosed
 			delete(t.ioc.pendingTimers, t)
 		}
-		return err
 	}
-	return nil
+	return
 }
