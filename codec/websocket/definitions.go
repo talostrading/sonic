@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"net"
 	"time"
 
 	"github.com/talostrading/sonic"
@@ -324,4 +325,8 @@ type Stream interface {
 	//  - If a message exceeds the limit while writing, the operation is
 	//    cancelled.
 	SetMaxMessageSize(bytes int)
+
+	RemoteAddr() net.Addr
+
+	LocalAddr() net.Addr
 }

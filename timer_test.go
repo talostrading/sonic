@@ -342,3 +342,24 @@ func TestTimerCloseAfterClose(t *testing.T) {
 		}
 	}
 }
+
+func TestTimerZeroTimeout(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		panic(err)
+	}
+
+	done := false
+	err = timer.ScheduleOnce(0, func() {
+		done = true
+	})
+
+	ioc.PollOne()
+
+	if !done {
+		t.Fatal("timer did not fire")
+	}
+}

@@ -36,8 +36,9 @@ type WebsocketStream struct {
 	// User provided TLS config; nil if we don't use TLS
 	tls *tls.Config
 
-	// Underlying transport stream.
+	// Underlying transport stream that we async adapt from the net.Conn.
 	stream sonic.Stream
+	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
 	cs *sonic.BlockingCodecStream[*Frame, *Frame]
@@ -675,9 +676,8 @@ func (s *WebsocketStream) dial(
 	cb func(err error, stream sonic.Stream),
 ) {
 	var (
-		err  error
-		conn net.Conn
-		sc   syscall.Conn
+		err error
+		sc  syscall.Conn
 
 		port = url.Port()
 	)
@@ -688,9 +688,9 @@ func (s *WebsocketStream) dial(
 			port = "80"
 		}
 		addr := url.Hostname() + ":" + port
-		conn, err = net.DialTimeout("tcp", addr, DialTimeout)
+		s.conn, err = net.DialTimeout("tcp", addr, DialTimeout)
 		if err == nil {
-			sc = conn.(syscall.Conn)
+			sc = s.conn.(syscall.Conn)
 		}
 	case "https":
 		if s.tls == nil {
@@ -702,9 +702,9 @@ func (s *WebsocketStream) dial(
 				port = "443"
 			}
 			addr := url.Hostname() + ":" + port
-			conn, err = tls.DialWithDialer(s.dialer, "tcp", addr, s.tls)
+			s.conn, err = tls.DialWithDialer(s.dialer, "tcp", addr, s.tls)
 			if err == nil {
-				sc = conn.(*tls.Conn).NetConn().(syscall.Conn)
+				sc = s.conn.(*tls.Conn).NetConn().(syscall.Conn)
 			}
 		}
 	default:
@@ -715,7 +715,7 @@ func (s *WebsocketStream) dial(
 		// s.ioc is not used by this constructor, so there is NO a race
 		// condition on the io context.
 		sonic.NewAsyncAdapter(
-			s.ioc, sc, conn, func(err error, stream *sonic.AsyncAdapter) {
+			s.ioc, sc, s.conn, func(err error, stream *sonic.AsyncAdapter) {
 				cb(err, stream)
 			}, sonicopts.NoDelay(true))
 	} else {
@@ -816,4 +816,12 @@ func (s *WebsocketStream) ControlCallback() ControlCallback {
 
 func (s *WebsocketStream) SetMaxMessageSize(bytes int) {
 	MaxMessageSize = bytes
+}
+
+func (s *WebsocketStream) RemoteAddr() net.Addr {
+	return s.conn.RemoteAddr()
+}
+
+func (s *WebsocketStream) LocalAddr() net.Addr {
+	return s.conn.LocalAddr()
 }

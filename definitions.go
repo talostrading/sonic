@@ -5,6 +5,10 @@ import (
 	"net"
 )
 
+// TODO this is quite a mess right now. Properly define what a Conn, Stream,
+// PacketConn is and what should the async adapter return, as more than TCP
+// streams can be "async-adapted".
+
 type AsyncCallback func(error, int)
 type AcceptCallback func(error, Conn)
 
