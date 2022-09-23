@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"errors"
 	"io"
 	"os"
 	"sync"
@@ -145,21 +146,20 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	n = int(nn)
 
 	if errno != 0 {
-		err = errno
-	}
-
-	// We can have n == -1 and errno = 0 if we epoll_wait on a closed
-	// epoll fd.
-	if n < 0 {
-		err = os.NewSyscallError("epoll_wait", err)
+		err = errno // we need to convert
 	}
 
 	if err != nil {
 		return n, err
 	}
 
+	// n == -1 and errno == 0 might happen if we epoll_wait on a closed epoll fd
+	if n < 0 {
+		return n, errors.New("unknown epoll_wait error")
+	}
+
 	if n == 0 && timeoutMs >= 0 {
-		return 0, sonicerrors.ErrTimeout
+		return n, sonicerrors.ErrTimeout
 	}
 
 	for i := 0; i < int(n); i++ {

@@ -84,7 +84,7 @@ func (ioc *IO) RunOne() (err error) {
 // RunOneFor runs the event processing loop for a specified duration to execute at
 // most one handler. The provided duration should not be lower than a millisecond.
 //
-// This blocks the calling goroutine until one event is ready to process
+// This blocks the calling goroutine until one event is ready to process.
 func (ioc *IO) RunOneFor(dur time.Duration) (err error) {
 	ms := int(dur.Milliseconds())
 	_, err = ioc.poll(ms)
@@ -109,8 +109,8 @@ func (ioc *IO) PollOne() (n int, err error) {
 	return ioc.poll(0)
 }
 
-func (ioc *IO) poll(timeoutMs int) (n int, err error) {
-	n, err = ioc.poller.Poll(timeoutMs)
+func (ioc *IO) poll(timeoutMs int) (int, error) {
+	n, err := ioc.poller.Poll(timeoutMs)
 
 	if err != nil {
 		if err == syscall.EINTR {
@@ -119,6 +119,7 @@ func (ioc *IO) poll(timeoutMs int) (n int, err error) {
 			}
 
 			runtime.Gosched()
+
 			return 0, nil
 		}
 
@@ -126,10 +127,11 @@ func (ioc *IO) poll(timeoutMs int) (n int, err error) {
 			return 0, err
 		}
 
-		return 0, os.NewSyscallError(fmt.Sprintf("poll_wait timeout=%d", timeoutMs), err)
+		return 0, os.NewSyscallError(
+			fmt.Sprintf("poll_wait timeout=%d", timeoutMs), err)
 	}
 
-	return
+	return n, nil
 }
 
 // Post schedules the provided handler to be run immediately by the event

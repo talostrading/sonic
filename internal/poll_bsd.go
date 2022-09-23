@@ -3,6 +3,7 @@
 package internal
 
 import (
+	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -151,12 +152,19 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	p.changes = p.changes[:0]
 
 	n, err = syscall.Kevent(p.fd, changelist, p.events, timeout)
+
 	if err != nil {
 		return n, err
 	}
 
+	// This should never happen on BSD, but it does on Linux, so we check it
+	// here aswell.
+	if n < 0 {
+		return n, errors.New("unknown kevent error")
+	}
+
 	if n == 0 && timeoutMs >= 0 {
-		return 0, sonicerrors.ErrTimeout
+		return n, sonicerrors.ErrTimeout
 	}
 
 	for i := 0; i < n; i++ {

@@ -32,7 +32,10 @@ func TestPost(t *testing.T) {
 		t.Fatalf("not accounting for pending operations correctly expected=%d given=%d", 1000, p)
 	}
 
-	ioc.RunPending()
+	err := ioc.RunPending()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for i, x := range xs {
 		if !x {
@@ -53,7 +56,7 @@ func TestEmptyPoll(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	if err := ioc.Poll(); err != sonicerrors.ErrTimeout {
+	if err := ioc.Poll(); !errors.Is(err, sonicerrors.ErrTimeout) {
 		t.Fatalf("expected timeout as not operations are scheduled")
 	}
 }
@@ -65,14 +68,20 @@ func TestRunOneFor(t *testing.T) {
 	start := time.Now()
 
 	expected := time.Millisecond
-	if err := ioc.RunOneFor(expected); err != sonicerrors.ErrTimeout {
-		t.Fatalf("expected timeout as no operations are scheduled received=%v", err)
+	if err := ioc.RunOneFor(expected); !errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatalf(
+			"expected timeout as no operations are scheduled received=%v",
+			err)
 	}
 
 	end := time.Now()
 
 	if given := end.Sub(start); given.Milliseconds() < expected.Milliseconds() {
-		t.Fatalf("invalid timeout ioc.RunOneFor(...) expected=%v given=%v", expected, given)
+		t.Fatalf(
+			"invalid timeout ioc.RunOneFor(...) expected=%v given=%v",
+			expected,
+			given,
+		)
 	}
 }
 
@@ -99,7 +108,7 @@ func TestRightNumberOfPolledEvents(t *testing.T) {
 		}
 
 		n, err := ioc.PollOne()
-		if err != nil && err != sonicerrors.ErrTimeout {
+		if err != nil && !errors.Is(err, sonicerrors.ErrTimeout) {
 			t.Fatal(err)
 		}
 
@@ -125,7 +134,7 @@ func TestPollOneAfterClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if n > 0 {
+	if n != 0 {
 		t.Fatalf("polled %d but should not have polled any", n)
 	}
 
@@ -141,6 +150,43 @@ func TestPollOneAfterClose(t *testing.T) {
 	n, err = ioc.PollOne()
 	if err == nil || errors.Is(err, sonicerrors.ErrTimeout) || n != 0 {
 		t.Fatalf("the poll should have failed after close n=%d err=%v", n, err)
+	}
+}
+
+func TestRunOneForAfterClose(t *testing.T) {
+	ioc := MustIO()
+
+	if ioc.Closed() {
+		t.Fatal("ioc should not be closed")
+	}
+
+	err := ioc.RunOneFor(time.Millisecond)
+	if err != nil && !errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatal(err)
+	}
+
+	err = ioc.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !ioc.Closed() {
+		t.Fatal("ioc should be closed")
+	}
+
+	err = ioc.RunOneFor(time.Millisecond)
+	if err == nil || errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatalf("the poll should have failed after close err=%v", err)
+	}
+}
+
+func TestPollNothing(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	n, err := ioc.PollOne()
+	if n != 0 && !errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatalf("wrong n=%d and err=%v", n, err)
 	}
 }
 
