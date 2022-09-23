@@ -107,9 +107,6 @@ func (p *poller) Close() error {
 		return io.EOF
 	}
 
-	p.events = nil
-	p.pending = 0
-
 	p.waker.Close()
 	return syscall.Close(p.fd)
 }
