@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"errors"
 	"runtime"
 	"testing"
 	"time"
@@ -109,6 +110,37 @@ func TestRightNumberOfPolledEvents(t *testing.T) {
 
 	if npolled != 1 {
 		t.Fatalf("expected to poll 1 operation, but polled %d", npolled)
+	}
+}
+
+func TestPollOneAfterClose(t *testing.T) {
+	ioc := MustIO()
+
+	if ioc.Closed() {
+		t.Fatal("ioc should not be closed")
+	}
+
+	n, err := ioc.PollOne()
+	if err != nil && !errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatal(err)
+	}
+
+	if n > 0 {
+		t.Fatalf("polled %d but should not have polled any", n)
+	}
+
+	err = ioc.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !ioc.Closed() {
+		t.Fatal("ioc should be closed")
+	}
+
+	n, err = ioc.PollOne()
+	if err == nil || errors.Is(err, sonicerrors.ErrTimeout) || n != 0 {
+		t.Fatalf("the poll should have failed after close n=%d err=%v", n, err)
 	}
 }
 

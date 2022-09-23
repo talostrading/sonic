@@ -2,10 +2,8 @@ package sonic
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"runtime"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -25,8 +23,6 @@ type IO struct {
 	// in case the object goes out of scope.
 	pendingReads, pendingWrites map[*internal.PollData]struct{}
 	pendingTimers               map[*Timer]struct{}
-
-	closed uint32
 }
 
 func NewIO() (*IO, error) {
@@ -156,9 +152,9 @@ func (ioc *IO) Pending() int64 {
 }
 
 func (ioc *IO) Close() error {
-	if !atomic.CompareAndSwapUint32(&ioc.closed, 0, 1) {
-		return io.EOF
-	}
-
 	return ioc.poller.Close()
+}
+
+func (ioc *IO) Closed() bool {
+	return ioc.poller.Closed()
 }
