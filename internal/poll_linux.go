@@ -145,6 +145,16 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	n = int(nn)
 
 	if errno != 0 {
+		err = errno
+	}
+
+	// We can have n == -1 and errno = 0 if we epoll_wait on a closed
+	// epoll fd.
+	if n < 0 {
+		err = os.NewSyscallError("epoll_wait", err)
+	}
+
+	if err != nil {
 		return n, err
 	}
 
@@ -174,7 +184,7 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		}
 	}
 
-	return
+	return n, nil
 }
 
 func (p *poller) dispatch() {

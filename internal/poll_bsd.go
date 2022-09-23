@@ -152,7 +152,7 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 
 	n, err = syscall.Kevent(p.fd, changelist, p.events, timeout)
 	if err != nil {
-		return
+		return n, err
 	}
 
 	if n == 0 && timeoutMs >= 0 {
@@ -183,7 +183,7 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		}
 	}
 
-	return
+	return n, nil
 }
 
 func (p *poller) executePost() {
