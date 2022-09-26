@@ -107,6 +107,10 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 
 // Encode encodes the frame and place the raw bytes into `dst`.
 func (c *FrameCodec) Encode(fr *Frame, dst *sonic.ByteBuffer) error {
+	// Make sure there is enough space in the buffer to hold the serialized
+	// frame.
+	dst.Reserve(fr.PayloadLen())
+
 	n, err := fr.WriteTo(dst)
 	dst.Commit(int(n))
 	if err != nil {

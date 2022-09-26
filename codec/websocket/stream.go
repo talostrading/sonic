@@ -815,6 +815,9 @@ func (s *WebsocketStream) ControlCallback() ControlCallback {
 }
 
 func (s *WebsocketStream) SetMaxMessageSize(bytes int) {
+	// This is just for checking against the length returned in the frame
+	// header. The sizes of the buffers in which we read or write the messages
+	// are dynamically adjusted in frame_codec.
 	MaxMessageSize = bytes
 }
 
