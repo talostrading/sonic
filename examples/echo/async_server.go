@@ -7,44 +7,44 @@ import (
 	"github.com/talostrading/sonic/sonicopts"
 )
 
-func onAccept(err error, conn sonic.Conn) {
+func main() {
+	ioc := sonic.MustIO()
+
+	listener, err := sonic.Listen(ioc, "tcp", ":8082", sonicopts.Nonblocking(true))
 	if err != nil {
 		panic(err)
 	}
 
-	fmt.Printf("accepted connection remote=%s local=%s\n",
-		conn.RemoteAddr().String(),
-		conn.LocalAddr().String())
+	var onAccept sonic.AcceptCallback
+	onAccept = func(err error, conn sonic.Conn) {
+		listener.AsyncAccept(onAccept)
 
-	b := make([]byte, 32)
-	conn.AsyncRead(b, func(err error, n int) {
 		if err != nil {
-			panic(err)
+			fmt.Println("could not accept", err)
 		}
 
-		b = b[:n]
-		fmt.Println("read:", string(b))
-
-		conn.AsyncWrite(b, func(err error, n int) {
+		b := make([]byte, 32)
+		conn.AsyncRead(b, func(err error, n int) {
 			if err != nil {
-				panic(err)
+				fmt.Println("could not read", err)
+			} else {
+				b = b[:n]
+				fmt.Println("read:", string(b))
+
+				conn.AsyncWrite(b, func(err error, n int) {
+					if err != nil {
+						fmt.Println("could not write", err)
+					} else {
+						fmt.Println("echoed")
+					}
+				})
 			}
-			fmt.Println("echoed")
 		})
-	})
-}
-
-func main() {
-	ioc := sonic.MustIO()
-
-	listener, err := sonic.Listen(ioc, "tcp", ":8080", sonicopts.Nonblocking(true))
-	if err != nil {
-		panic(err)
 	}
 
 	listener.AsyncAccept(onAccept)
 
 	fmt.Println("this is printed before accepting anything, as we do not block")
 
-	ioc.RunPending()
+	ioc.Run()
 }
