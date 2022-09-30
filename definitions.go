@@ -79,6 +79,7 @@ type FileDescriptor interface {
 type File interface {
 	FileDescriptor
 	io.Seeker
+	getFd() (fd int)
 }
 
 type AsyncCanceller interface {

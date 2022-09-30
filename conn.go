@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicopts"
 )
 
 var (
@@ -13,29 +14,37 @@ var (
 )
 
 type conn struct {
-	*file
+	File
 	sock *internal.Socket
 }
 
-func createConn(ioc *IO, sock *internal.Socket) *conn {
+func createConn(ioc *IO, sock *internal.Socket, opts ...sonicopts.Option) *conn {
+	nonBlckOpt := sonicopts.Nonblocking(true)
+	for _, val := range opts {
+		if val.Type() == sonicopts.TypeNonblocking {
+			nonBlckOpt = val
+		}
+	}
+	var f File
+	if nonBlckOpt.Value().(bool) {
+		f = newFile(ioc, sock.Fd)
+	} else {
+		f = newBlockingFile(ioc, sock.Fd)
+	}
+
 	c := &conn{
-		file: &file{
-			ioc: ioc,
-			fd:  sock.Fd,
-		},
+		File: f,
 		sock: sock,
 	}
-	c.pd.Fd = c.fd
-
 	return c
 }
 
-func Dial(ioc *IO, network, addr string) (Conn, error) {
-	return DialTimeout(ioc, network, addr, 0)
+func Dial(ioc *IO, network, addr string, opts ...sonicopts.Option) (Conn, error) {
+	return DialTimeout(ioc, network, addr, 0, opts...)
 }
 
-func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, error) {
-	sock, err := internal.NewSocket()
+func DialTimeout(ioc *IO, network, addr string, timeout time.Duration, opts ...sonicopts.Option) (Conn, error) {
+	sock, err := internal.NewSocket(opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -44,8 +53,7 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 	if err != nil {
 		return nil, err
 	}
-
-	return createConn(ioc, sock), nil
+	return createConn(ioc, sock, opts...), nil
 }
 
 func (c *conn) LocalAddr() net.Addr {

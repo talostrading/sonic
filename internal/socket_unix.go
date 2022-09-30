@@ -7,6 +7,7 @@ import (
 	"net"
 	"os"
 	"reflect"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -175,7 +176,7 @@ func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
 
 	// TODO get rid of this once you also support blocking sockets
 	// this means having two implementations of file: blocking and nonblocking
-	if err := setDefaultOpts(fd); err != nil {
+	if err := setDefaultOpts(s.Fd, s.opts...); err != nil {
 		return err
 	}
 
@@ -263,9 +264,15 @@ func createSocket(resolvedAddr net.Addr) (int, error) {
 	return fd, nil
 }
 
-func setDefaultOpts(fd int) error {
-	if err := syscall.SetNonblock(fd, true); err != nil {
-		return os.NewSyscallError("set_nonblock(true)", err)
+func setDefaultOpts(fd int, opts ...sonicopts.Option) error {
+	nonBlocking := true
+	for _, val := range opts {
+		if val.Type() == sonicopts.TypeNonblocking {
+			nonBlocking = val.Value().(bool)
+		}
+	}
+	if err := syscall.SetNonblock(fd, nonBlocking); err != nil {
+		return os.NewSyscallError(fmt.Sprintf("set_nonblock(%s)", strconv.FormatBool(nonBlocking)), err)
 	}
 
 	if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, 1); err != nil {

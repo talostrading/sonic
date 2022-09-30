@@ -2,7 +2,6 @@ package sonic
 
 import (
 	"io"
-	"os"
 	"sync/atomic"
 	"syscall"
 
@@ -10,9 +9,9 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-var _ File = &file{}
+var _ File = &blockingFile{}
 
-type file struct {
+type blockingFile struct {
 	ioc    *IO
 	fd     int
 	pd     internal.PollData
@@ -21,38 +20,37 @@ type file struct {
 	readDispatch, writeDispatch int
 }
 
-func newFile(ioc *IO, fd int) *file {
-	newFile := file{
+//func OpenB(ioc *IO, path string, flags int, mode os.FileMode) (File, error) {
+//	fd, err := syscall.Open(path, flags, uint32(mode))
+//	if err != nil {
+//		return nil, err
+//	}
+//
+//	f := &blockingFile{
+//		ioc: ioc,
+//		fd:  fd,
+//	}
+//	f.pd.Fd = fd
+//	return f, nil
+//}
+
+func newBlockingFile(ioc *IO, fd int) *blockingFile {
+	newBlockingFile := &blockingFile{
 		ioc: ioc,
 		fd:  fd,
 	}
-	newFile.pd.Fd = fd
-
-	return &newFile
+	newBlockingFile.pd.Fd = fd
+	return newBlockingFile
 }
 
-func Open(ioc *IO, path string, flags int, mode os.FileMode) (File, error) {
-	fd, err := syscall.Open(path, flags, uint32(mode))
-	if err != nil {
-		return nil, err
-	}
-
-	f := &file{
-		ioc: ioc,
-		fd:  fd,
-	}
-	f.pd.Fd = fd
-	return f, nil
+func (f *blockingFile) getFd() int {
+	return f.fd
 }
 
-func (f *file) Read(b []byte) (int, error) {
+func (f *blockingFile) Read(b []byte) (int, error) {
 	n, err := syscall.Read(f.fd, b)
 
 	if err != nil {
-		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-			return 0, sonicerrors.ErrWouldBlock
-		}
-
 		return 0, err
 	}
 
@@ -67,17 +65,9 @@ func (f *file) Read(b []byte) (int, error) {
 	return n, err
 }
 
-func (f *file) Write(b []byte) (int, error) {
+func (f *blockingFile) Write(b []byte) (int, error) {
 	n, err := syscall.Write(f.fd, b)
 
-	if err != nil {
-		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-			return 0, sonicerrors.ErrWouldBlock
-		}
-
-		return 0, err
-	}
-
 	if n == 0 {
 		return 0, io.EOF
 	}
@@ -89,27 +79,15 @@ func (f *file) Write(b []byte) (int, error) {
 	return n, err
 }
 
-func (f *file) AsyncRead(b []byte, cb AsyncCallback) {
-	f.asyncRead(b, false, cb)
+func (f *blockingFile) AsyncRead(b []byte, cb AsyncCallback) {
+	f.scheduleRead(b, 0, false, cb)
 }
 
-func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
-	f.asyncRead(b, true, cb)
+func (f *blockingFile) AsyncReadAll(b []byte, cb AsyncCallback) {
+	f.scheduleRead(b, 0, true, cb)
 }
 
-func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
-	if f.readDispatch < MaxCallbackDispatch {
-		f.asyncReadNow(b, 0, readAll, func(err error, n int) {
-			f.readDispatch++
-			cb(err, n)
-			f.readDispatch--
-		})
-	} else {
-		f.scheduleRead(b, 0, readAll, cb)
-	}
-}
-
-func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (f *blockingFile) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
 	n, err := f.Read(b[readBytes:])
 	readBytes += n
 
@@ -127,7 +105,7 @@ func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	f.scheduleRead(b, readBytes, readAll, cb)
 }
 
-func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (f *blockingFile) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
@@ -143,7 +121,7 @@ func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	}
 }
 
-func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
+func (f *blockingFile) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		delete(f.ioc.pendingReads, &f.pd)
 		if err != nil {
@@ -154,31 +132,19 @@ func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCal
 	}
 }
 
-func (f *file) setRead() error {
+func (f *blockingFile) setRead() error {
 	return f.ioc.poller.SetRead(f.fd, &f.pd)
 }
 
-func (f *file) AsyncWrite(b []byte, cb AsyncCallback) {
-	f.asyncWrite(b, false, cb)
+func (f *blockingFile) AsyncWrite(b []byte, cb AsyncCallback) {
+	f.scheduleWrite(b, 0, true, cb)
 }
 
-func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
-	f.asyncWrite(b, true, cb)
+func (f *blockingFile) AsyncWriteAll(b []byte, cb AsyncCallback) {
+	f.scheduleWrite(b, 0, true, cb)
 }
 
-func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
-	if f.writeDispatch < MaxCallbackDispatch {
-		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
-			f.writeDispatch++
-			cb(err, n)
-			f.writeDispatch--
-		})
-	} else {
-		f.scheduleWrite(b, 0, writeAll, cb)
-	}
-}
-
-func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (f *blockingFile) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
 	n, err := f.Write(b[writtenBytes:])
 	writtenBytes += n
 
@@ -196,7 +162,7 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 	f.scheduleWrite(b, writtenBytes, writeAll, cb)
 }
 
-func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (f *blockingFile) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
@@ -212,7 +178,7 @@ func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb Async
 	}
 }
 
-func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
+func (f *blockingFile) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		delete(f.ioc.pendingWrites, &f.pd)
 
@@ -224,11 +190,11 @@ func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb Asy
 	}
 }
 
-func (f *file) setWrite() error {
+func (f *blockingFile) setWrite() error {
 	return f.ioc.poller.SetWrite(f.fd, &f.pd)
 }
 
-func (f *file) Close() error {
+func (f *blockingFile) Close() error {
 	if !atomic.CompareAndSwapUint32(&f.closed, 0, 1) {
 		return io.EOF
 	}
@@ -241,24 +207,20 @@ func (f *file) Close() error {
 	return syscall.Close(f.fd)
 }
 
-func (f *file) Closed() bool {
+func (f *blockingFile) Closed() bool {
 	return atomic.LoadUint32(&f.closed) == 1
 }
 
-func (f *file) Seek(offset int64, whence int) (int64, error) {
+func (f *blockingFile) Seek(offset int64, whence int) (int64, error) {
 	return syscall.Seek(f.fd, offset, whence)
 }
 
-func (f *file) Cancel() {
+func (f *blockingFile) Cancel() {
 	f.cancelReads()
 	f.cancelWrites()
 }
 
-func (f *file) getFd() int {
-	return f.fd
-}
-
-func (f *file) cancelReads() {
+func (f *blockingFile) cancelReads() {
 	if f.pd.Flags&internal.ReadFlags == internal.ReadFlags {
 		err := f.ioc.poller.DelRead(f.fd, &f.pd)
 		if err == nil {
@@ -268,7 +230,7 @@ func (f *file) cancelReads() {
 	}
 }
 
-func (f *file) cancelWrites() {
+func (f *blockingFile) cancelWrites() {
 	if f.pd.Flags&internal.WriteFlags == internal.WriteFlags {
 		err := f.ioc.poller.DelWrite(f.fd, &f.pd)
 		if err == nil {
