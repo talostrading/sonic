@@ -122,7 +122,10 @@ func (s *WebsocketStream) reset() {
 }
 
 func (s *WebsocketStream) NextLayer() sonic.Stream {
-	return s.cs.NextLayer()
+	if s.cs != nil {
+		return s.cs.NextLayer()
+	}
+	return nil
 }
 
 func (s *WebsocketStream) SupportsUTF8() bool {
