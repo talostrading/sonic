@@ -83,6 +83,7 @@ func NewPoller() (Poller, error) {
 		Flags:  syscall.EV_ADD | syscall.EV_CLEAR,
 	}}, nil, nil)
 	if err != nil {
+		pipe.Close()
 		syscall.Close(kqueueFd)
 		return nil, err
 	}

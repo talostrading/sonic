@@ -78,6 +78,7 @@ func NewPoller() (Poller, error) {
 
 	eventFd, err := NewEventFd(true)
 	if err != nil {
+		syscall.Close(epollFd)
 		return nil, err
 	}
 
