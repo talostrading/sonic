@@ -61,5 +61,7 @@ func (t *Timer) Unset() error {
 }
 
 func (t *Timer) Close() error {
+	// There's not need to close the file descriptor as it's been chosen by
+	// us and not returned by the kernel.
 	return t.Unset()
 }
