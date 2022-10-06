@@ -21,7 +21,6 @@ import (
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/sonicopts"
-	"github.com/talostrading/sonic/util"
 )
 
 var (
@@ -74,10 +73,6 @@ type WebsocketStream struct {
 
 	// The size of the currently read message.
 	messageSize int
-
-	// If this timer expires, we forcefully disconnect the underlying stream.
-	// Only used in the closing handshake.
-	closeTimer *sonic.Timer
 }
 
 func NewWebsocketStream(
@@ -101,8 +96,6 @@ func NewWebsocketStream(
 
 	s.src.Reserve(4096)
 	s.dst.Reserve(4096)
-
-	s.closeTimer, err = sonic.NewTimer(ioc)
 
 	return s, nil
 }
@@ -529,18 +522,6 @@ func (s *WebsocketStream) prepareClose(payload []byte) {
 	}
 
 	s.pending = append(s.pending, closeFrame)
-
-	s.closeTimer.ScheduleOnce(CloseTimeout, func() {
-		s.closeUnderlying()
-	})
-}
-
-func (s *WebsocketStream) closeUnderlying() {
-	if s.state == StateClosedByPeer ||
-		s.state == StateCloseAcked ||
-		s.state == StateTerminated {
-		s.stream.Close()
-	}
 }
 
 func (s *WebsocketStream) Flush() (err error) {
@@ -555,8 +536,6 @@ func (s *WebsocketStream) Flush() (err error) {
 	}
 	s.pending = s.pending[flushed:]
 
-	//s.closeUnderlying() // TODO (differs between client and server)
-
 	return
 }
 
@@ -566,12 +545,13 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 	} else {
 		sent := s.pending[0]
 		s.pending = s.pending[1:]
+
 		s.cs.AsyncWriteNext(sent, func(err error, _ int) {
+			ReleaseFrame(sent)
+
 			if err != nil {
-				s.pending = util.PrependSlice(sent, s.pending)
 				cb(err)
 			} else {
-				ReleaseFrame(sent)
 				s.AsyncFlush(cb)
 			}
 		})
