@@ -117,6 +117,7 @@ func (s *WebsocketStream) reset() {
 	s.hb = s.hb[:cap(s.hb)]
 	s.state = StateHandshake
 	s.stream = nil
+	s.conn = nil
 	s.src.Reset()
 	s.dst.Reset()
 }
@@ -810,4 +811,11 @@ func (s *WebsocketStream) RemoteAddr() net.Addr {
 
 func (s *WebsocketStream) LocalAddr() net.Addr {
 	return s.conn.LocalAddr()
+}
+
+func (s *WebsocketStream) RawFd() int {
+	if s.NextLayer() != nil {
+		return s.NextLayer().(*sonic.AsyncAdapter).RawFd()
+	}
+	return -1
 }

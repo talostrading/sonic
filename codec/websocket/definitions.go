@@ -329,4 +329,6 @@ type Stream interface {
 	RemoteAddr() net.Addr
 
 	LocalAddr() net.Addr
+
+	RawFd() int
 }

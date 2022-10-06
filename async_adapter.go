@@ -47,7 +47,7 @@ func NewAsyncAdapter(
 		return
 	}
 
-	rc.Control(func(fd uintptr) {
+	err = rc.Control(func(fd uintptr) {
 		ifd := int(fd)
 		a := &AsyncAdapter{
 			fd:  ifd,
@@ -61,6 +61,9 @@ func NewAsyncAdapter(
 
 		cb(err, a)
 	})
+	if err != nil {
+		cb(err, nil)
+	}
 }
 
 // Read reads data from the underlying file descriptor into b.
@@ -212,10 +215,7 @@ func (a *AsyncAdapter) Close() error {
 		return io.EOF
 	}
 
-	err := a.ioc.poller.Del(a.fd, &a.pd)
-	if err != nil {
-		return err
-	}
+	a.ioc.poller.Del(a.fd, &a.pd)
 
 	return syscall.Close(a.fd)
 }
@@ -253,4 +253,8 @@ func (a *AsyncAdapter) cancelWrites() {
 		}
 		a.pd.Cbs[internal.WriteEvent](err)
 	}
+}
+
+func (a *AsyncAdapter) RawFd() int {
+	return a.fd
 }
