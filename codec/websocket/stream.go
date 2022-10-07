@@ -819,3 +819,10 @@ func (s *WebsocketStream) RawFd() int {
 	}
 	return -1
 }
+
+func (s *WebsocketStream) CloseNextLayer() error {
+	if s.conn != nil {
+		return s.conn.Close()
+	}
+	return nil
+}

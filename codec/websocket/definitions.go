@@ -331,4 +331,6 @@ type Stream interface {
 	LocalAddr() net.Addr
 
 	RawFd() int
+
+	CloseNextLayer() error
 }
