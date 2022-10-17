@@ -16,6 +16,7 @@ type Timer struct {
 	fd     int
 	poller Poller
 	pd     PollData
+	b      [8]byte
 }
 
 func NewTimer(p Poller) (*Timer, error) {
@@ -44,7 +45,10 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 		Value:    timespec,
 	}, nil)
 	if err == nil {
-		t.pd.Set(ReadEvent, func(_ error) { cb() })
+		t.pd.Set(ReadEvent, func(err error) {
+			syscall.Read(t.fd, t.b[:])
+			cb()
+		})
 		err = t.poller.SetRead(t.fd, &t.pd)
 	}
 
