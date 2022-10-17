@@ -51,13 +51,15 @@ func (t *Timer) Unset() error {
 	if t.pd.Flags&ReadFlags != ReadFlags {
 		return nil
 	}
-	err := t.poller.set(t.fd, createEvent(
+
+	// We should actually be calling poller.Del but that besides EV_DELETE we also need EV_DISABLE for a timer,
+	// so we delete it here.
+	t.pd.Flags ^= ReadFlags
+	t.poller.pending--
+
+	return t.poller.set(t.fd, createEvent(
 		syscall.EV_DELETE|syscall.EV_DISABLE,
 		syscall.EVFILT_TIMER, &t.pd, 0))
-	if err == nil {
-		t.poller.pending--
-	}
-	return err
 }
 
 func (t *Timer) Close() error {

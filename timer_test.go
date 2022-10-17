@@ -375,11 +375,10 @@ func TestTimerCancel(t *testing.T) {
 
 	// schedule once and cancel before trigger
 	triggered := false
-	err = timer.ScheduleOnce(5 * time.Millisecond, func(){ triggered = true })
+	err = timer.ScheduleOnce(5*time.Millisecond, func() { triggered = true })
 	if err != nil {
 		t.Fatal(err)
 	}
-
 
 	_, err = ioc.PollOne()
 	if !errors.Is(err, sonicerrors.ErrTimeout) {
@@ -427,7 +426,23 @@ func TestTimerCancel(t *testing.T) {
 
 	// schedule again and let it trigger
 	triggered = false
-	err = timer.ScheduleOnce(0, func() { triggered = true})
+	err = timer.ScheduleOnce(10*time.Millisecond, func() {
+		triggered = true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = ioc.RunOneFor(5 * time.Millisecond)
+	if !errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatal(err)
+	}
+
+	if triggered {
+		t.Fatal("timer should not have triggered")
+	}
+
+	err = ioc.RunOneFor(20 * time.Millisecond)
 	if err != nil {
 		t.Fatal(err)
 	}
