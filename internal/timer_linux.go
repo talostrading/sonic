@@ -40,7 +40,7 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 
 	timespec := unix.NsecToTimespec(dur.Nanoseconds())
 	err := unix.TimerfdSettime(t.fd, 0, &unix.ItimerSpec{
-		Interval: timespec,
+		Interval: unix.Timespec{},
 		Value:    timespec,
 	}, nil)
 	if err == nil {

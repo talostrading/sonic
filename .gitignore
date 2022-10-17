@@ -2,3 +2,4 @@ todo.md
 bin/
 *.pem
 tests/autobahn/reports/
+.idea/
