@@ -100,6 +100,14 @@ func (t *Timer) Scheduled() bool {
 	return t.state == stateScheduled
 }
 
+func (t *Timer) Cancel() error {
+	err := t.it.Unset()
+	if err == nil {
+		t.state = stateReady
+	}
+	return err
+}
+
 // Close closes the timer, render it useless for scheduling any more operations
 // on it. A timer cannot be used after Close(). Any pending operations
 // that have been scheduled but not yet completed are cancelled, and will

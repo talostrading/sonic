@@ -349,7 +349,7 @@ func TestTimerZeroTimeout(t *testing.T) {
 
 	timer, err := NewTimer(ioc)
 	if err != nil {
-		panic(err)
+		t.Fatal(err)
 	}
 
 	done := false
@@ -361,5 +361,78 @@ func TestTimerZeroTimeout(t *testing.T) {
 
 	if !done {
 		t.Fatal("timer did not fire")
+	}
+}
+
+func TestTimerCancel(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// schedule once and cancel before trigger
+	triggered := false
+	err = timer.ScheduleOnce(5 * time.Millisecond, func(){ triggered = true })
+	if err != nil {
+		t.Fatal(err)
+	}
+
+
+	_, err = ioc.PollOne()
+	if !errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatal(err)
+	}
+
+	if timer.state != stateScheduled {
+		t.Fatal("timer should be in scheduled state")
+	}
+
+	if !timer.Scheduled() {
+		t.Fatal("timer should be scheduled")
+	}
+
+	if ioc.Pending() != 1 {
+		t.Fatal("ioc should have one pending timer")
+	}
+
+	// cancel and make sure it does not trigger
+	err = timer.Cancel()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if ioc.Pending() != 0 {
+		t.Fatal("ioc should have no pending operations")
+	}
+
+	if timer.Scheduled() {
+		t.Fatal("timer should not be scheduled")
+	}
+
+	err = ioc.RunOneFor(10 * time.Millisecond)
+	if !errors.Is(err, sonicerrors.ErrTimeout) {
+		t.Fatal(err)
+	}
+
+	if triggered {
+		t.Fatal("cancelled timer should have not triggered")
+	}
+
+	if timer.state != stateReady {
+		t.Fatal("time should be in ready state")
+	}
+
+	// schedule again and let it trigger
+	triggered = false
+	err = timer.ScheduleOnce(0, func() { triggered = true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !triggered {
+		t.Fatal("timer should have triggered")
 	}
 }
