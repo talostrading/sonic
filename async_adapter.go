@@ -31,9 +31,9 @@ type AsyncAdapter struct {
 // NewAsyncAdapter takes in an IO instance and an interface of syscall.Conn and io.ReadWriter
 // pertaining to the same object and invokes a completion handler which:
 //   - provides the async adapter on successful completion
-//   - provides an error if any occured when async-adapting the provided object
+//   - provides an error if any occurred when async-adapting the provided object
 //
-// See async_adapter_test.go for examples on how to setup an AsyncAdapter.
+// See async_adapter_test.go for examples on how to set up an AsyncAdapter.
 func NewAsyncAdapter(
 	ioc *IO,
 	sc syscall.Conn,
@@ -87,7 +87,7 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 // AsyncReadAll reads data from the underlying file descriptor into b asynchronously.
 //
 // The provided handler is invoked in the following cases:
-//   - an error occured
+//   - an error occurred
 //   - the provided buffer has been fully filled after zero or several underlying
 //     read(...) operations.
 func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
@@ -154,7 +154,7 @@ func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 // AsyncWriteAll writes data from the supplied buffer to the underlying file descriptor asynchronously.
 //
 // The provided handler is invoked in the following cases:
-//   - an error occured
+//   - an error occurred
 //   - the provided buffer has been fully written after zero or several underlying
 //     write(...) operations.
 func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {
@@ -220,22 +220,11 @@ func (a *AsyncAdapter) Close() error {
 	return syscall.Close(a.fd)
 }
 
-func (a *AsyncAdapter) AsyncClose(cb func(err error)) {
-	err := a.Close()
-	cb(err)
-}
-
 func (a *AsyncAdapter) Closed() bool {
 	return atomic.LoadUint32(&a.closed) == 1
 }
 
-// Cancel cancels any asynchronous operations scheduled on the underlying file descriptor.
-func (a *AsyncAdapter) Cancel() {
-	a.cancelReads()
-	a.cancelWrites()
-}
-
-func (a *AsyncAdapter) cancelReads() {
+func (a *AsyncAdapter) CancelReads() {
 	if a.pd.Flags&internal.ReadFlags == internal.ReadFlags {
 		err := a.ioc.poller.DelRead(a.fd, &a.pd)
 		if err == nil {
@@ -245,7 +234,7 @@ func (a *AsyncAdapter) cancelReads() {
 	}
 }
 
-func (a *AsyncAdapter) cancelWrites() {
+func (a *AsyncAdapter) CancelWrites() {
 	if a.pd.Flags&internal.WriteFlags == internal.WriteFlags {
 		err := a.ioc.poller.DelWrite(a.fd, &a.pd)
 		if err == nil {

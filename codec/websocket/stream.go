@@ -36,7 +36,7 @@ type WebsocketStream struct {
 	tls *tls.Config
 
 	// Underlying transport stream that we async adapt from the net.Conn.
-	stream sonic.Stream
+	stream sonic.FileDescriptor
 	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
@@ -102,7 +102,7 @@ func NewWebsocketStream(
 
 // init is run when we transition into StateActive which happens
 // after a successful handshake.
-func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
+func (s *WebsocketStream) init(stream sonic.FileDescriptor) (err error) {
 	if s.state != StateActive {
 		return fmt.Errorf("stream must be in StateActive")
 	}
@@ -122,7 +122,7 @@ func (s *WebsocketStream) reset() {
 	s.dst.Reset()
 }
 
-func (s *WebsocketStream) NextLayer() sonic.Stream {
+func (s *WebsocketStream) NextLayer() sonic.FileDescriptor {
 	if s.cs != nil {
 		return s.cs.NextLayer()
 	}
@@ -577,10 +577,10 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 
 	s.reset()
 
-	var stream sonic.Stream
+	var stream sonic.FileDescriptor
 
 	done := make(chan struct{}, 1)
-	s.handshake(addr, func(rerr error, rstream sonic.Stream) {
+	s.handshake(addr, func(rerr error, rstream sonic.FileDescriptor) {
 		err = rerr
 		stream = rstream
 		done <- struct{}{}
@@ -608,7 +608,7 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine here
 	go func() {
-		s.handshake(addr, func(err error, stream sonic.Stream) {
+		s.handshake(addr, func(err error, stream sonic.FileDescriptor) {
 			s.ioc.Post(func() {
 				if err != nil {
 					s.state = StateTerminated
@@ -624,13 +624,13 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 
 func (s *WebsocketStream) handshake(
 	addr string,
-	cb func(err error, stream sonic.Stream),
+	cb func(err error, stream sonic.FileDescriptor),
 ) {
 	url, err := s.resolve(addr)
 	if err != nil {
 		cb(err, nil)
 	} else {
-		s.dial(url, func(err error, stream sonic.Stream) {
+		s.dial(url, func(err error, stream sonic.FileDescriptor) {
 			if err == nil {
 				err = s.upgrade(url, stream)
 			}
@@ -657,7 +657,7 @@ func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
 
 func (s *WebsocketStream) dial(
 	url *url.URL,
-	cb func(err error, stream sonic.Stream),
+	cb func(err error, stream sonic.FileDescriptor),
 ) {
 	var (
 		err error
@@ -707,7 +707,7 @@ func (s *WebsocketStream) dial(
 	}
 }
 
-func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.Stream) error {
+func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.FileDescriptor) error {
 	req, err := http.NewRequest("GET", uri.String(), nil)
 	if err != nil {
 		return err

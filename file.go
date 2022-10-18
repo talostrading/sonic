@@ -239,12 +239,7 @@ func (f *file) Seek(offset int64, whence int) (int64, error) {
 	return syscall.Seek(f.fd, offset, whence)
 }
 
-func (f *file) Cancel() {
-	f.cancelReads()
-	f.cancelWrites()
-}
-
-func (f *file) cancelReads() {
+func (f *file) CancelReads() {
 	if f.pd.Flags&internal.ReadFlags == internal.ReadFlags {
 		err := f.ioc.poller.DelRead(f.fd, &f.pd)
 		if err == nil {
@@ -254,7 +249,7 @@ func (f *file) cancelReads() {
 	}
 }
 
-func (f *file) cancelWrites() {
+func (f *file) CancelWrites() {
 	if f.pd.Flags&internal.WriteFlags == internal.WriteFlags {
 		err := f.ioc.poller.DelWrite(f.fd, &f.pd)
 		if err == nil {
@@ -262,4 +257,8 @@ func (f *file) cancelWrites() {
 		}
 		f.pd.Cbs[internal.WriteEvent](err)
 	}
+}
+
+func (f *file) RawFd() int {
+	return f.fd
 }

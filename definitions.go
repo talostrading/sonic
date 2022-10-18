@@ -5,12 +5,7 @@ import (
 	"net"
 )
 
-// TODO this is quite a mess right now. Properly define what a Conn, Stream,
-// PacketConn is and what should the async adapter return, as more than TCP
-// streams can be "async-adapted".
-
 type AsyncCallback func(error, int)
-type AcceptCallback func(error, Conn)
 
 // AsyncReader is the interface that wraps the AsyncRead and AsyncReadAll methods.
 type AsyncReader interface {
@@ -35,9 +30,12 @@ type AsyncReader interface {
 
 	// AsyncReadAll reads len(b) bytes into b asynchronously.
 	AsyncReadAll(b []byte, cb AsyncCallback)
+
+	// CancelReads cancels all pending reads on the AsyncReader.
+	CancelReads()
 }
 
-// AsyncReader is the interface that wraps the AsyncRead and AsyncReadAll methods.
+// AsyncWriter is the interface that wraps the AsyncRead and AsyncReadAll methods.
 type AsyncWriter interface {
 	// AsyncWrite writes up to len(b) bytes into the underlying data stream asynchronously.
 	//
@@ -52,8 +50,11 @@ type AsyncWriter interface {
 	// AsyncWrite must not modify b, even temporarily.
 	AsyncWrite(b []byte, cb AsyncCallback)
 
-	// AsyncReadAll writes len(b) bytes into the underlying data stream asynchronously.
+	// AsyncWriteAll writes len(b) bytes into the underlying data stream asynchronously.
 	AsyncWriteAll(b []byte, cb AsyncCallback)
+
+	// CancelWrites cancels all pending writes on the AsyncWriter.
+	CancelWrites()
 }
 
 type AsyncReadWriter interface {
@@ -71,58 +72,17 @@ type AsyncWriterTo interface {
 
 type FileDescriptor interface {
 	io.Closer
+	Closed() bool
+
 	io.ReadWriter
 	AsyncReadWriter
-	AsyncCanceller
+
+	RawFd() int
 }
 
 type File interface {
 	FileDescriptor
 	io.Seeker
-}
-
-type AsyncCanceller interface {
-	// Cancel cancells all asynchronous operations on the next layer.
-	Cancel()
-}
-
-// Stream represents a full-duplex connection between two processes,
-// where data represented as bytes may be received reliably in the same order
-// they were written.
-type Stream interface {
-	AsyncStream
-	SyncStream
-}
-
-type AsyncStream interface {
-	AsyncReadStream
-	AsyncWriteStream
-}
-
-type AsyncReadStream interface {
-	AsyncReader
-	AsyncCanceller
-}
-
-type AsyncWriteStream interface {
-	AsyncWriter
-	AsyncCanceller
-}
-
-type SyncStream interface {
-	SyncReadStream
-	SyncWriteStream
-	io.Closer
-}
-
-type SyncReadStream interface {
-	io.Reader
-	io.Closer
-}
-
-type SyncWriteStream interface {
-	io.Writer
-	io.Closer
 }
 
 // Conn is a generic stream-oriented network connection.
@@ -131,9 +91,13 @@ type Conn interface {
 	net.Conn
 }
 
-// TODO
+// PacketConn is a generic packet-oriented network connection.
 type PacketConn interface {
+	FileDescriptor
+	net.PacketConn
 }
+
+type AcceptCallback func(error, Conn)
 
 // Listener is a generic network listener for stream-oriented protocols.
 type Listener interface {

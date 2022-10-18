@@ -122,7 +122,7 @@ type Stream interface {
 	//
 	// The returned object is constructed by the Stream and maintained throughout its
 	// entire lifetime. All reads and writes will go through the next layer.
-	NextLayer() sonic.Stream
+	NextLayer() sonic.FileDescriptor
 
 	// SupportsDeflate returns true if Deflate compression is supported.
 	//

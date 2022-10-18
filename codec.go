@@ -23,8 +23,7 @@ type Decoder[Item any] interface {
 	Decode(src *ByteBuffer) (Item, error)
 }
 
-// Codec defines a generic interface through which one can encode/decode
-// a raw stream of bytes.
+// Codec defines a generic interface through which one can encode/decode raw bytes.
 //
 // Implementations are optionally able to track their state which enables
 // writing both stateful and stateless parsers.
@@ -36,7 +35,7 @@ type Codec[Enc, Dec any] interface {
 // BlockingCodecStream handles the decoding/encoding of bytes funneled through a
 // provided blocking file descriptor.
 type BlockingCodecStream[Enc, Dec any] struct {
-	stream Stream
+	stream FileDescriptor
 	codec  Codec[Enc, Dec]
 	src    *ByteBuffer
 	dst    *ByteBuffer
@@ -46,7 +45,7 @@ type BlockingCodecStream[Enc, Dec any] struct {
 }
 
 func NewBlockingCodecStream[Enc, Dec any](
-	stream Stream,
+	stream FileDescriptor,
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 ) (*BlockingCodecStream[Enc, Dec], error) {
@@ -115,6 +114,6 @@ func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallbac
 	}
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) NextLayer() Stream {
+func (s *BlockingCodecStream[Enc, Dec]) NextLayer() FileDescriptor {
 	return s.stream
 }

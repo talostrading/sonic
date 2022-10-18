@@ -97,7 +97,7 @@ func (s *MockServer) IsClosed() bool {
 	return atomic.LoadInt32(&s.closed) == 1
 }
 
-var _ sonic.Stream = &MockStream{}
+var _ sonic.FileDescriptor = &MockStream{}
 
 // MockStream is a mock TCP stream that's not attached to any operating system
 // IO executor. It is used to test reads and writes for WebSocket servers and
@@ -144,14 +144,8 @@ func (s *MockStream) AsyncWriteAll(b []byte, cb sonic.AsyncCallback) {
 	cb(err, n)
 }
 
-func (s *MockStream) Cancel() {
-
-}
-
-func (s *MockStream) AsyncClose(cb func(err error)) {
-
-}
-
-func (s *MockStream) Close() error {
-	return nil
-}
+func (s *MockStream) RawFd() int    { return -1 }
+func (s *MockStream) CancelReads()  {}
+func (s *MockStream) CancelWrites() {}
+func (s *MockStream) Closed() bool  { return false }
+func (s *MockStream) Close() error  { return nil }
