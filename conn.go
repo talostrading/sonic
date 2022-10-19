@@ -55,11 +55,14 @@ func (c *conn) RemoteAddr() net.Addr {
 }
 
 func (c *conn) SetDeadline(t time.Time) error {
+	// TODO
 	panic("not supported")
 }
 func (c *conn) SetReadDeadline(t time.Time) error {
+	// TODO
 	panic("not supported")
 }
 func (c *conn) SetWriteDeadline(t time.Time) error {
+	// TODO
 	panic("not supported")
 }
