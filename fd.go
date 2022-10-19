@@ -247,9 +247,13 @@ var _ FileDescriptor = &nonblockingFd{}
 type nonblockingFd struct {
 	*baseFd
 
-	// TODO should be a single counter
-	// TODO doc
-	readDispatch, writeDispatch int
+	// dispatched keeps track of how many callbacks have been placed onto the stack consecutively, and hence invoked
+	// immediately. If dispatched >= MaxCallbackDispatch, callbacks will be scheduled to run asynchronously instead
+	// being invoked immediately.
+	//
+	// This is required because, by default, Go has a 1GB limit for its stack size. If the number of callbacks invoked
+	// consecutively is not bound, a stack overflow will occur.
+	dispatched int
 }
 
 func newNonblockingFd(ioc *IO, rawFd int, opts ...sonicopts.Option) (fd *nonblockingFd, err error) {
@@ -311,11 +315,11 @@ func (fd *nonblockingFd) AsyncReadAll(b []byte, cb AsyncCallback) {
 }
 
 func (fd *nonblockingFd) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
-	if fd.readDispatch < MaxCallbackDispatch {
+	if fd.dispatched < MaxCallbackDispatch {
 		fd.asyncReadNow(b, 0, readAll, func(err error, n int) {
-			fd.readDispatch++
+			fd.dispatched++
 			cb(err, n)
-			fd.readDispatch--
+			fd.dispatched--
 		})
 	} else {
 		fd.scheduleRead(b, 0, readAll, cb)
@@ -331,11 +335,11 @@ func (fd *nonblockingFd) AsyncWriteAll(b []byte, cb AsyncCallback) {
 }
 
 func (fd *nonblockingFd) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
-	if fd.writeDispatch < MaxCallbackDispatch {
+	if fd.dispatched < MaxCallbackDispatch {
 		fd.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
-			fd.writeDispatch++
+			fd.dispatched++
 			cb(err, n)
-			fd.writeDispatch--
+			fd.dispatched--
 		})
 	} else {
 		fd.scheduleWrite(b, 0, writeAll, cb)

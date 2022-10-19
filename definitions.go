@@ -6,6 +6,13 @@ import (
 	"net"
 )
 
+const (
+	// MaxCallbackDispatch is the maximum number of callbacks which can be
+	// placed onto the stack for immediate invocation. Any additional callback
+	// will be scheduled to run asynchronously.
+	MaxCallbackDispatch int = 1024
+)
+
 type AsyncCallback func(error, int)
 
 // AsyncReader is the interface that wraps the AsyncRead and AsyncReadAll methods.
@@ -159,9 +166,3 @@ type CodecConn[Enc, Dec any] interface {
 
 	NextLayer() FileDescriptor // TODO this should be Conn
 }
-
-const (
-	// MaxCallbackDispatch is the maximum number of callbacks which can be
-	// placed onto the stack for immediate invocation.
-	MaxCallbackDispatch int = 1024
-)
