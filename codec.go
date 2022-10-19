@@ -2,21 +2,21 @@ package sonic
 
 import (
 	"errors"
+	"github.com/talostrading/sonic/sonicopts"
 
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
 type Encoder[Item any] interface {
-	// Encode encodes the given item into the `dst` byte stream.
+	// Encode encodes the given `Item` into the `dst` buffer.
 	Encode(item Item, dst *ByteBuffer) error
 }
 
 type Decoder[Item any] interface {
-	// Decode decodes the given stream into an `Item`.
+	// Decode decodes the read area of the buffer into an `Item`.
 	//
 	// An implementation of Codec takes a byte stream that has already
-	// been buffered in `src` and decodes the data into a stream of
-	// `Item` objects.
+	// been buffered in `src` and decodes the data into `Item`s.
 	//
 	// Implementations should return an empty Item and ErrNeedMore if
 	// there are not enough bytes to decode into an Item.
@@ -32,28 +32,66 @@ type Codec[Enc, Dec any] interface {
 	Decoder[Dec]
 }
 
+// CodecConn defines a generic interface through which a stream
+// of bytes from Conn can be encoded/decoded with a Codec.
+type CodecConn[Enc, Dec any] interface {
+	ReadNext() (Dec, error)
+	AsyncReadNext(func(error, Dec))
+
+	WriteNext(Enc) error
+	AsyncWriteNext(Enc, func(error))
+
+	NextLayer() FileDescriptor // TODO this should be Conn
+}
+
+func NewCodecConn[Enc, Dec any](
+	ioc *IO,
+	conn FileDescriptor,
+	codec Codec[Enc, Dec],
+	src, dst *ByteBuffer,
+	opts ...sonicopts.Option,
+) (codecConn CodecConn[Enc, Dec], err error) {
+	nonblocking := false
+	for _, opt := range opts {
+		switch opt.Type() {
+		case sonicopts.TypeNonblocking:
+			nonblocking = opt.Value().(bool)
+		}
+	}
+
+	if nonblocking {
+		panic("not implemented")
+	} else {
+		return newBlockingCodecStream(ioc, conn, codec, src, dst)
+	}
+}
+
 // BlockingCodecStream handles the decoding/encoding of bytes funneled through a
 // provided blocking file descriptor.
 type BlockingCodecStream[Enc, Dec any] struct {
-	stream FileDescriptor
-	codec  Codec[Enc, Dec]
-	src    *ByteBuffer
-	dst    *ByteBuffer
+	ioc      *IO
+	conn     FileDescriptor
+	codec    Codec[Enc, Dec]
+	src, dst *ByteBuffer
 
 	emptyEnc Enc
 	emptyDec Dec
 }
 
-func NewBlockingCodecStream[Enc, Dec any](
-	stream FileDescriptor,
+var _ CodecConn[any, any] = &BlockingCodecStream[interface{}, interface{}]{}
+
+func newBlockingCodecStream[Enc, Dec any](
+	ioc *IO,
+	conn FileDescriptor,
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 ) (*BlockingCodecStream[Enc, Dec], error) {
 	s := &BlockingCodecStream[Enc, Dec]{
-		stream: stream,
-		codec:  codec,
-		src:    src,
-		dst:    dst,
+		ioc:   ioc,
+		conn:  conn,
+		codec: codec,
+		src:   src,
+		dst:   dst,
 	}
 	return s, nil
 }
@@ -68,7 +106,7 @@ func (s *BlockingCodecStream[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
 }
 
 func (s *BlockingCodecStream[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
-	s.src.AsyncReadFrom(s.stream, func(err error, _ int) {
+	s.src.AsyncReadFrom(s.conn, func(err error, _ int) {
 		if err != nil {
 			cb(err, s.emptyDec)
 		} else {
@@ -88,32 +126,32 @@ func (s *BlockingCodecStream[Enc, Dec]) ReadNext() (Dec, error) {
 			return s.emptyDec, err
 		}
 
-		_, err = s.src.ReadFrom(s.stream)
+		_, err = s.src.ReadFrom(s.conn)
 		if err != nil {
 			return s.emptyDec, err
 		}
 	}
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
+func (s *BlockingCodecStream[Enc, Dec]) WriteNext(item Enc) (err error) {
 	err = s.codec.Encode(item, s.dst)
 	if err == nil {
-		var nn int64
-		nn, err = s.dst.WriteTo(s.stream)
-		n = int(nn)
+		_, err = s.dst.WriteTo(s.conn)
 	}
 	return
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback) {
+func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb func(error)) {
 	err := s.codec.Encode(item, s.dst)
 	if err == nil {
-		s.dst.AsyncWriteTo(s.stream, cb)
+		s.dst.AsyncWriteTo(s.conn, func(err error, _ int) {
+			cb(err)
+		})
 	} else {
-		cb(err, 0)
+		cb(err)
 	}
 }
 
 func (s *BlockingCodecStream[Enc, Dec]) NextLayer() FileDescriptor {
-	return s.stream
+	return s.conn
 }

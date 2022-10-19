@@ -40,7 +40,7 @@ type WebsocketStream struct {
 	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
-	cs *sonic.BlockingCodecStream[*Frame, *Frame]
+	cs sonic.CodecConn[*Frame, *Frame]
 
 	// Websocket role: client or server.
 	role Role
@@ -109,7 +109,7 @@ func (s *WebsocketStream) init(stream sonic.FileDescriptor) (err error) {
 
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewBlockingCodecStream[*Frame, *Frame](stream, codec, s.src, s.dst)
+	s.cs, err = sonic.NewCodecConn[*Frame, *Frame](s.ioc, stream, codec, s.src, s.dst, sonicopts.Nonblocking(false))
 	return
 }
 
@@ -531,7 +531,7 @@ func (s *WebsocketStream) prepareClose(payload []byte) {
 func (s *WebsocketStream) Flush() (err error) {
 	flushed := 0
 	for i := 0; i < len(s.pending); i++ {
-		_, err = s.cs.WriteNext(s.pending[i])
+		err = s.cs.WriteNext(s.pending[i])
 		if err != nil {
 			break
 		}
@@ -550,8 +550,8 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 		sent := s.pending[0]
 		s.pending = s.pending[1:]
 
-		s.cs.AsyncWriteNext(sent, func(err error, _ int) {
-			ReleaseFrame(sent)
+		s.cs.AsyncWriteNext(sent, func(err error) {
+			ReleaseFrame(sent) // TODO can get rid of this and just allocate a single frame.
 
 			if err != nil {
 				cb(err)
