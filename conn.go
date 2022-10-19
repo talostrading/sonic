@@ -12,6 +12,7 @@ var _ Conn = &conn{}
 
 type conn struct {
 	FileDescriptor
+
 	sock *internal.Socket
 }
 

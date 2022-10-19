@@ -127,6 +127,10 @@ func (fd *baseFd) Closed() bool {
 	return atomic.LoadUint32(&fd.closed) == 1
 }
 
+func (fd *baseFd) Opts() []sonicopts.Option {
+	return fd.opts
+}
+
 func (fd *baseFd) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
 	n, err := fd.Read(b[readBytes:])
 	readBytes += n

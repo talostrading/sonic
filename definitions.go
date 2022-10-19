@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"github.com/talostrading/sonic/sonicopts"
 	"io"
 	"net"
 )
@@ -80,6 +81,8 @@ type FileDescriptor interface {
 	AsyncReadWriter
 
 	RawFd() int
+
+	Opts() []sonicopts.Option
 }
 
 // File is POSIX file.

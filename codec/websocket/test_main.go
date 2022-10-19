@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"github.com/talostrading/sonic/sonicopts"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -144,8 +145,9 @@ func (s *MockStream) AsyncWriteAll(b []byte, cb sonic.AsyncCallback) {
 	cb(err, n)
 }
 
-func (s *MockStream) RawFd() int    { return -1 }
-func (s *MockStream) CancelReads()  {}
-func (s *MockStream) CancelWrites() {}
-func (s *MockStream) Closed() bool  { return false }
-func (s *MockStream) Close() error  { return nil }
+func (s *MockStream) RawFd() int               { return -1 }
+func (s *MockStream) CancelReads()             {}
+func (s *MockStream) CancelWrites()            {}
+func (s *MockStream) Closed() bool             { return false }
+func (s *MockStream) Close() error             { return nil }
+func (s *MockStream) Opts() []sonicopts.Option { return nil }
