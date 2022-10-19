@@ -19,7 +19,7 @@ type IO struct {
 	poller internal.Poller
 
 	// pending* prevents the PollData owned by an object to be garbage
-	// collected while an async operation is in-flight on the object's file descriptor,
+	// collected while an async operation is in-flight on the object's nonblockingFd descriptor,
 	// in case the object goes out of scope.
 	pendingReads, pendingWrites map[*internal.PollData]struct{}
 	pendingTimers               map[*Timer]struct{}

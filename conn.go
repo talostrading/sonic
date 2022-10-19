@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"github.com/talostrading/sonic/sonicopts"
 	"net"
 	"time"
 
@@ -10,28 +11,29 @@ import (
 var _ Conn = &conn{}
 
 type conn struct {
-	*file
+	FileDescriptor
 	sock *internal.Socket
 }
 
-func createConn(ioc *IO, sock *internal.Socket) *conn {
+func createConn(ioc *IO, sock *internal.Socket, opts ...sonicopts.Option) (Conn, error) {
 	c := &conn{
-		file: &file{
-			ioc: ioc,
-			fd:  sock.Fd,
-		},
 		sock: sock,
 	}
-	c.pd.Fd = c.fd
 
-	return c
+	var err error
+	c.FileDescriptor, err = NewFileDescriptor(ioc, sock.Fd, opts...)
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
 }
 
-func Dial(ioc *IO, network, addr string) (Conn, error) {
-	return DialTimeout(ioc, network, addr, 0)
+func Dial(ioc *IO, network, addr string, opts ...sonicopts.Option) (Conn, error) {
+	return DialTimeout(ioc, network, addr, 0, opts...)
 }
 
-func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, error) {
+func DialTimeout(ioc *IO, network, addr string, timeout time.Duration, opts ...sonicopts.Option) (Conn, error) {
 	sock, err := internal.NewSocket()
 	if err != nil {
 		return nil, err
@@ -42,7 +44,7 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 		return nil, err
 	}
 
-	return createConn(ioc, sock), nil
+	return createConn(ioc, sock, opts...)
 }
 
 func (c *conn) LocalAddr() net.Addr {

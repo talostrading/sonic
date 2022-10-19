@@ -3,6 +3,7 @@ package sonic
 import (
 	"errors"
 	"fmt"
+	"github.com/talostrading/sonic/sonicopts"
 	"io"
 	"net"
 	"syscall"
@@ -10,7 +11,11 @@ import (
 	"time"
 )
 
-func TestAsyncTCPEchoClient(t *testing.T) {
+// TODO more tests
+// TODO figure out how to close the listeners fast such that tests do not fail
+// TODO make a global listener factory only for tests such that you can tests in parallel.
+
+func TestAsyncNonblocking(t *testing.T) {
 	closer := make(chan struct{}, 1)
 
 	go func() {
@@ -53,7 +58,7 @@ func TestAsyncTCPEchoClient(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := Dial(ioc, "tcp", "localhost:8080")
+	conn, err := Dial(ioc, "tcp", "localhost:8080", sonicopts.Nonblocking(true))
 	if err != nil {
 		panic(err)
 	}
@@ -93,7 +98,7 @@ func TestAsyncTCPEchoClient(t *testing.T) {
 	closer <- struct{}{}
 }
 
-func TestReadHandlesError(t *testing.T) {
+func TestAsyncNonblockingReadError(t *testing.T) {
 	go func() {
 		ln, err := net.Listen("tcp", "localhost:8082")
 		if err != nil {
@@ -118,7 +123,7 @@ func TestReadHandlesError(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := Dial(ioc, "tcp", "localhost:8082")
+	conn, err := Dial(ioc, "tcp", "localhost:8082", sonicopts.Nonblocking(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +152,7 @@ func TestReadHandlesError(t *testing.T) {
 	}
 }
 
-func TestWriteHandlesError(t *testing.T) {
+func TestAsyncNonblockingWriteError(t *testing.T) {
 	go func() {
 		ln, err := net.Listen("tcp", "localhost:8083")
 		if err != nil {
@@ -177,7 +182,7 @@ func TestWriteHandlesError(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := Dial(ioc, "tcp", "localhost:8083")
+	conn, err := Dial(ioc, "tcp", "localhost:8083", sonicopts.Nonblocking(true))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -107,7 +107,7 @@ func (l *listener) accept() (Conn, error) {
 		return nil, os.NewSyscallError("accept", err)
 	}
 
-	// TODO remove non blocking here once you split file
+	// TODO remove non blocking here once you split nonblockingFd
 	sock, err := internal.NewSocket(
 		sonicopts.Nonblocking(true),
 		sonicopts.NoDelay(true),
@@ -119,7 +119,7 @@ func (l *listener) accept() (Conn, error) {
 	sock.LocalAddr = l.sock.LocalAddr
 	sock.LocalAddr = internal.FromSockaddr(remoteAddr)
 
-	return createConn(l.ioc, sock), nil
+	return createConn(l.ioc, sock)
 }
 
 func (l *listener) Close() error {

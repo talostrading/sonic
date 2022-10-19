@@ -30,7 +30,7 @@ func NewCodecConn[Enc, Dec any](
 }
 
 // BlockingCodecStream handles the decoding/encoding of bytes funneled through a
-// provided blocking file descriptor.
+// provided blocking nonblockingFd descriptor.
 type BlockingCodecStream[Enc, Dec any] struct {
 	ioc      *IO
 	conn     FileDescriptor

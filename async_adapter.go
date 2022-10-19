@@ -16,7 +16,7 @@ type AsyncAdapterHandler func(error, *AsyncAdapter)
 
 // AsyncAdapter is a wrapper around syscall.Conn which enables
 // clients to schedule async read and write operations on the
-// underlying file descriptor.
+// underlying nonblockingFd descriptor.
 type AsyncAdapter struct {
 	ioc    *IO
 	fd     int
@@ -64,17 +64,17 @@ func NewAsyncAdapter(
 	}
 }
 
-// Read reads data from the underlying file descriptor into b.
+// Read reads data from the underlying nonblockingFd descriptor into b.
 func (a *AsyncAdapter) Read(b []byte) (int, error) {
 	return a.rw.Read(b)
 }
 
-// Write writes data from the supplied buffer to the underlying file descriptor.
+// Write writes data from the supplied buffer to the underlying nonblockingFd descriptor.
 func (a *AsyncAdapter) Write(b []byte) (int, error) {
 	return a.rw.Write(b)
 }
 
-// AsyncRead reads data from the underlying file descriptor into b asynchronously.
+// AsyncRead reads data from the underlying nonblockingFd descriptor into b asynchronously.
 //
 // AsyncRead returns no error on short reads. If you want to ensure that the provided
 // buffer is completely filled, use AsyncReadAll.
@@ -82,7 +82,7 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 	a.scheduleRead(b, 0, false, cb)
 }
 
-// AsyncReadAll reads data from the underlying file descriptor into b asynchronously.
+// AsyncReadAll reads data from the underlying nonblockingFd descriptor into b asynchronously.
 //
 // The provided handler is invoked in the following cases:
 //   - an error occurred
@@ -141,7 +141,7 @@ func (a *AsyncAdapter) setRead() error {
 	return a.ioc.poller.SetRead(a.fd, &a.pd)
 }
 
-// AsyncWrite writes data from the supplied buffer to the underlying file descriptor asynchronously.
+// AsyncWrite writes data from the supplied buffer to the underlying nonblockingFd descriptor asynchronously.
 //
 // AsyncWrite returns no error on short writes. If you want to ensure that the provided
 // buffer is completely written, use AsyncWriteAll.
@@ -149,7 +149,7 @@ func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 	a.scheduleWrite(b, 0, false, cb)
 }
 
-// AsyncWriteAll writes data from the supplied buffer to the underlying file descriptor asynchronously.
+// AsyncWriteAll writes data from the supplied buffer to the underlying nonblockingFd descriptor asynchronously.
 //
 // The provided handler is invoked in the following cases:
 //   - an error occurred
