@@ -7,10 +7,7 @@ import (
 	"github.com/talostrading/sonic/internal"
 )
 
-var (
-	_ Conn     = &conn{}
-	_ net.Conn = &conn{}
-)
+var _ Conn = &conn{}
 
 type conn struct {
 	*file

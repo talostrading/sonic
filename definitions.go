@@ -117,6 +117,43 @@ type Listener interface {
 	Addr() net.Addr
 }
 
+type Encoder[Item any] interface {
+	// Encode encodes the given `Item` into the `dst` buffer.
+	Encode(item Item, dst *ByteBuffer) error
+}
+
+type Decoder[Item any] interface {
+	// Decode decodes the read area of the buffer into an `Item`.
+	//
+	// An implementation of Codec takes a byte stream that has already
+	// been buffered in `src` and decodes the data into `Item`s.
+	//
+	// Implementations should return an empty Item and ErrNeedMore if
+	// there are not enough bytes to decode into an Item.
+	Decode(src *ByteBuffer) (Item, error)
+}
+
+// Codec defines a generic interface through which one can encode/decode raw bytes.
+//
+// Implementations are optionally able to track their state which enables
+// writing both stateful and stateless parsers.
+type Codec[Enc, Dec any] interface {
+	Encoder[Enc]
+	Decoder[Dec]
+}
+
+// CodecConn defines a generic interface through which a stream
+// of bytes from Conn can be encoded/decoded with a Codec.
+type CodecConn[Enc, Dec any] interface {
+	ReadNext() (Dec, error)
+	AsyncReadNext(func(error, Dec))
+
+	WriteNext(Enc) error
+	AsyncWriteNext(Enc, func(error))
+
+	NextLayer() FileDescriptor // TODO this should be Conn
+}
+
 const (
 	// MaxCallbackDispatch is the maximum number of callbacks which can be
 	// placed onto the stack for immediate invocation.

@@ -10,9 +10,7 @@ import (
 	"github.com/talostrading/sonic/sonicopts"
 )
 
-var (
-	_ FileDescriptor = &AsyncAdapter{}
-)
+var _ FileDescriptor = &AsyncAdapter{}
 
 type AsyncAdapterHandler func(error, *AsyncAdapter)
 
