@@ -70,6 +70,8 @@ type AsyncWriterTo interface {
 	AsyncWriteTo(AsyncWriter, AsyncCallback)
 }
 
+// FileDescriptor is a POSIX file descriptor i.e. a unique identifier for a file or other input/output resource,
+// such as a pipe or network socket.
 type FileDescriptor interface {
 	io.Closer
 	Closed() bool
@@ -80,6 +82,7 @@ type FileDescriptor interface {
 	RawFd() int
 }
 
+// File is POSIX file.
 type File interface {
 	FileDescriptor
 	io.Seeker
