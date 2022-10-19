@@ -22,7 +22,6 @@ type ByteBuffer struct {
 
 // Interfaces which ByteBuffer implements.
 var (
-	// TODO AsyncReader and AsyncWriter
 	_ io.Reader      = &ByteBuffer{}
 	_ io.ByteReader  = &ByteBuffer{}
 	_ io.ByteScanner = &ByteBuffer{}
