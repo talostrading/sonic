@@ -31,13 +31,13 @@ type AsyncReader interface {
 	// AsyncReadAll reads len(b) bytes into b asynchronously.
 	AsyncReadAll(b []byte, cb AsyncCallback)
 
-	// CancelReads cancels all pending reads on the AsyncReader.
+	// CancelReads cancels all pending asynchronous reads.
 	CancelReads()
 }
 
 // AsyncWriter is the interface that wraps the AsyncRead and AsyncReadAll methods.
 type AsyncWriter interface {
-	// AsyncWrite writes up to len(b) bytes into the underlying data stream asynchronously.
+	// AsyncWrite writes up to len(b) bytes asynchronously.
 	//
 	// This call should not block. The provided completion handler is called in the following cases:
 	//  - a write of n bytes completes
@@ -50,10 +50,10 @@ type AsyncWriter interface {
 	// AsyncWrite must not modify b, even temporarily.
 	AsyncWrite(b []byte, cb AsyncCallback)
 
-	// AsyncWriteAll writes len(b) bytes into the underlying data stream asynchronously.
+	// AsyncWriteAll writes len(b) bytes asynchronously.
 	AsyncWriteAll(b []byte, cb AsyncCallback)
 
-	// CancelWrites cancels all pending writes on the AsyncWriter.
+	// CancelWrites cancels all pending asynchronous writes.
 	CancelWrites()
 }
 
@@ -101,17 +101,20 @@ type AcceptCallback func(error, Conn)
 
 // Listener is a generic network listener for stream-oriented protocols.
 type Listener interface {
-	// Accept waits for and returns the next connection to the listener synchronously.
+	// Accept waits for and returns the next connection to the listener.
 	Accept() (Conn, error)
 
 	// AsyncAccept waits for and returns the next connection to the listener asynchronously.
 	AsyncAccept(AcceptCallback)
 
 	// Close closes the listener.
+	//
+	// Any blocked Accept operations will be unblocked and return errors.
+	// Any pending AsyncAccept operations will be cancelled and report errors.
 	Close() error
 
 	// Addr returns the listener's network address.
-	Addr() error
+	Addr() net.Addr
 }
 
 const (

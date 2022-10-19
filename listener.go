@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"net"
 	"os"
 	"syscall"
 
@@ -126,7 +127,7 @@ func (l *listener) Close() error {
 	return syscall.Close(l.fd)
 }
 
-func (l *listener) Addr() error {
+func (l *listener) Addr() net.Addr {
 	// TODO
 	return nil
 }
