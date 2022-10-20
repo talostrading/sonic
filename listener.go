@@ -123,7 +123,7 @@ func (l *listener) accept() (Conn, error) {
 	sock.LocalAddr = l.sock.LocalAddr
 	sock.LocalAddr = internal.FromSockaddr(remoteAddr)
 
-	return createConn(l.ioc, sock)
+	return newSonicConn(l.ioc, sock)
 }
 
 func (l *listener) Close() error {
