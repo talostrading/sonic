@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"syscall"
 	"time"
 
 	"github.com/talostrading/sonic"
@@ -660,9 +659,7 @@ func (s *WebsocketStream) dial(
 	cb func(err error, stream sonic.FileDescriptor),
 ) {
 	var (
-		err error
-		sc  syscall.Conn
-
+		err  error
 		port = url.Port()
 	)
 
@@ -673,9 +670,6 @@ func (s *WebsocketStream) dial(
 		}
 		addr := url.Hostname() + ":" + port
 		s.conn, err = net.DialTimeout("tcp", addr, DialTimeout)
-		if err == nil {
-			sc = s.conn.(syscall.Conn)
-		}
 	case "https":
 		if s.tls == nil {
 			err = fmt.Errorf("wss:// scheme endpoints require a TLS configuration.")
@@ -687,9 +681,6 @@ func (s *WebsocketStream) dial(
 			}
 			addr := url.Hostname() + ":" + port
 			s.conn, err = tls.DialWithDialer(s.dialer, "tcp", addr, s.tls)
-			if err == nil {
-				sc = s.conn.(*tls.Conn).NetConn().(syscall.Conn)
-			}
 		}
 	default:
 		err = fmt.Errorf("invalid url scheme=%s", url.Scheme)
@@ -698,10 +689,10 @@ func (s *WebsocketStream) dial(
 	if err == nil {
 		// s.ioc is not used by this constructor, so there is NO a race
 		// condition on the io context.
-		sonic.NewAsyncAdapter(
-			s.ioc, sc, s.conn, func(err error, stream *sonic.AsyncAdapter) {
-				cb(err, stream)
-			}, sonicopts.NoDelay(true))
+		adapter, err := sonic.NewAsyncAdapter(
+			s.ioc, s.conn, sonicopts.NoDelay(true))
+
+		cb(err, adapter)
 	} else {
 		cb(err, nil)
 	}
@@ -815,7 +806,7 @@ func (s *WebsocketStream) LocalAddr() net.Addr {
 
 func (s *WebsocketStream) RawFd() int {
 	if s.NextLayer() != nil {
-		return s.NextLayer().(*sonic.AsyncAdapter).RawFd()
+		return s.NextLayer().RawFd()
 	}
 	return -1
 }

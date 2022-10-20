@@ -1,364 +1,233 @@
 package sonic
 
 import (
-	"fmt"
 	"net"
 	"strings"
-	"syscall"
 	"testing"
-	"time"
 )
 
 var msg = []byte("hello, sonic!")
 
-func TestRead(t *testing.T) {
+func TestAsyncAdapter_Read(t *testing.T) {
+	flag := make(chan struct{})
+	defer func() { <-flag }()
+	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			ln.Close()
+			flag <- struct{}{}
+		}()
+		flag <- struct{}{}
+
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		conn.Write(msg)
+	}()
+	<-flag
+
 	ioc := MustIO()
 	defer ioc.Close()
 
-	go func() {
-		ln, err := net.Listen("tcp", "localhost:9080")
-		if err != nil {
-			panic(err)
-		}
-		defer ln.Close()
-
-		client, err := ln.Accept()
-		if err != nil {
-			panic(err)
-		}
-		defer client.Close()
-
-		client.Write(msg)
-	}()
-
-	time.Sleep(10 * time.Millisecond)
-
-	client, err := net.Dial("tcp", "localhost:9080")
+	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	sc := client.(syscall.Conn)
-	NewAsyncAdapter(ioc, sc, client, func(err error, adapter *AsyncAdapter) {
-		if err != nil {
-			t.Fatal(err)
-		}
+	adapter, err := NewAsyncAdapter(ioc, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		buf := make([]byte, 128)
-		n, err := adapter.Read(buf)
-		if err != nil {
-			t.Fatal(err)
-		}
-		buf = buf[:n]
+	b := make([]byte, 128)
 
-		smsg := string(msg)
-		sbuf := string(buf)
-		if !strings.EqualFold(smsg, sbuf) {
-			t.Fatalf("short read expected=%s given=%s", smsg, sbuf)
-		}
-	})
+	n, err := adapter.Read(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = b[:n]
+
+	if !strings.EqualFold(string(msg), string(b)) {
+		t.Fatalf("short read expected=%s given=%s", string(msg), string(b))
+	}
 }
 
-func TestAsyncRead(t *testing.T) {
+func TestAsyncAdapter_AsyncRead(t *testing.T) {
+	flag := make(chan struct{})
+	defer func() { <-flag }()
+	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			ln.Close()
+			flag <- struct{}{}
+		}()
+		flag <- struct{}{}
+
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		conn.Write(msg)
+	}()
+	<-flag
+
 	ioc := MustIO()
 	defer ioc.Close()
 
-	go func() {
-		ln, err := net.Listen("tcp", "localhost:9081")
-		if err != nil {
-			panic(err)
-		}
-		defer ln.Close()
-
-		client, err := ln.Accept()
-		if err != nil {
-			panic(err)
-		}
-		defer client.Close()
-
-		client.Write(msg)
-	}()
-
-	time.Sleep(10 * time.Millisecond)
-
-	client, err := net.Dial("tcp", "localhost:9081")
+	conn, err := net.Dial("tcp", "localhost:8080")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	invoked := false
+	adapter, err := NewAsyncAdapter(ioc, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	sc := client.(syscall.Conn)
-	NewAsyncAdapter(ioc, sc, client, func(err error, adapter *AsyncAdapter) {
+	b := make([]byte, 128)
+
+	invoked := false
+	adapter.AsyncRead(b, func(err error, n int) {
+		invoked = true
+
 		if err != nil {
 			t.Fatal(err)
 		}
+		b = b[:n]
 
-		buf := make([]byte, 128)
-		adapter.AsyncRead(buf, func(err error, n int) {
-			invoked = true
-
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			buf = buf[:n]
-
-			smsg := string(msg)
-			sbuf := string(buf)
-			if !strings.EqualFold(smsg, sbuf) {
-				t.Fatalf("short read expected=%s given=%s", smsg, sbuf)
-			}
-		})
+		if !strings.EqualFold(string(msg), string(b)) {
+			t.Fatalf("short read expected=%s given=%s", string(msg), string(b))
+		}
 	})
 
 	ioc.RunOne()
 
 	if !invoked {
-		t.Fatalf("AsyncRead completion handler not invoked. Did you call ioc.Run*/ioc.Poll*?")
+		t.Fatal("callback was not invoked")
 	}
 }
 
-func TestAsyncReadAll(t *testing.T) {
+func TestAsyncAdapter_Write(t *testing.T) {
+	flag := make(chan struct{})
+	defer func() { <-flag }()
+	go func() {
+		ln, err := net.Listen("tcp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			ln.Close()
+			flag <- struct{}{}
+		}()
+		flag <- struct{}{}
+
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		b := make([]byte, 128)
+		n, err := conn.Read(b)
+		if err != nil {
+			panic(err)
+		}
+		b = b[:n]
+
+		if !strings.EqualFold(string(msg), string(b)) {
+			t.Fatalf("short read expected=%s given=%s", string(msg), string(b))
+		}
+	}()
+	<-flag
+
 	ioc := MustIO()
 	defer ioc.Close()
 
+	conn, err := net.Dial("tcp", "localhost:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adapter, err := NewAsyncAdapter(ioc, conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = adapter.Write(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAsyncAdapter_AsyncWrite(t *testing.T) {
+	flag := make(chan struct{})
+	defer func() { <-flag }()
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:9082")
+		ln, err := net.Listen("tcp", "localhost:8080")
 		if err != nil {
 			panic(err)
 		}
+		defer func() {
+			ln.Close()
+			flag <- struct{}{}
+		}()
+		flag <- struct{}{}
 
-		defer ln.Close()
-		client, err := ln.Accept()
+		conn, err := ln.Accept()
 		if err != nil {
 			panic(err)
 		}
-		defer client.Close()
+		defer conn.Close()
 
-		client.Write(msg)
+		b := make([]byte, 128)
+		n, err := conn.Read(b)
+		if err != nil {
+			panic(err)
+		}
+		b = b[:n]
+
+		if !strings.EqualFold(string(msg), string(b)) {
+			t.Fatalf("short read expected=%s given=%s", string(msg), string(b))
+		}
 	}()
+	<-flag
 
-	time.Sleep(10 * time.Millisecond)
+	ioc := MustIO()
+	defer ioc.Close()
 
-	client, err := net.Dial("tcp", "localhost:9082")
+	conn, err := net.Dial("tcp", "localhost:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adapter, err := NewAsyncAdapter(ioc, conn)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	invoked := false
+	adapter.AsyncWrite(msg, func(err error, n int) {
+		invoked = true
 
-	sc := client.(syscall.Conn)
-	NewAsyncAdapter(ioc, sc, client, func(err error, adapter *AsyncAdapter) {
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		buf := make([]byte, len(msg))
-		adapter.AsyncReadAll(buf, func(err error, n int) {
-			invoked = true
-
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			smsg := string(msg)
-			sbuf := string(buf)
-			if !strings.EqualFold(smsg, sbuf) {
-				t.Fatalf("short read expected=%s given=%s", smsg, sbuf)
-			}
-		})
 	})
 
 	ioc.RunOne()
 
 	if !invoked {
-		t.Fatalf("AsyncReadAll completion handler not invoked. Did you call ioc.Run*/ioc.Poll*?")
-	}
-}
-
-func TestWrite(t *testing.T) {
-	ioc := MustIO()
-	defer ioc.Close()
-
-	go func() {
-		ln, err := net.Listen("tcp", "localhost:9083")
-		if err != nil {
-			panic(err)
-		}
-		defer ln.Close()
-
-		client, err := ln.Accept()
-		if err != nil {
-			panic(err)
-		}
-		defer client.Close()
-
-		buf := make([]byte, 128)
-		n, err := client.Read(buf)
-		if err != nil {
-			panic(err)
-		}
-		buf = buf[:n]
-
-		smsg := string(msg)
-		sbuf := string(buf)
-		if !strings.EqualFold(smsg, sbuf) {
-			panic(fmt.Errorf("short read expected=%s given=%s", smsg, sbuf))
-		}
-	}()
-
-	time.Sleep(10 * time.Millisecond)
-
-	client, err := net.Dial("tcp", "localhost:9083")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	sc := client.(syscall.Conn)
-	NewAsyncAdapter(ioc, sc, client, func(err error, adapter *AsyncAdapter) {
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		n, err := adapter.Write(msg)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if n != len(msg) {
-			t.Fatalf("short write expected=%d given=%d", len(msg), n)
-		}
-	})
-}
-
-func TestAsyncWrite(t *testing.T) {
-	ioc := MustIO()
-	defer ioc.Close()
-
-	go func() {
-		ln, err := net.Listen("tcp", "localhost:9084")
-		if err != nil {
-			panic(err)
-		}
-		defer ln.Close()
-
-		client, err := ln.Accept()
-		if err != nil {
-			panic(err)
-		}
-		defer client.Close()
-
-		buf := make([]byte, 128)
-		n, err := client.Read(buf)
-		if err != nil {
-			panic(err)
-		}
-		buf = buf[:n]
-
-		smsg := string(msg)
-		sbuf := string(buf)
-		if !strings.EqualFold(smsg, sbuf) {
-			panic(fmt.Errorf("short read expected=%s given=%s", smsg, sbuf))
-		}
-	}()
-
-	time.Sleep(10 * time.Millisecond)
-
-	client, err := net.Dial("tcp", "localhost:9084")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	invoked := false
-
-	sc := client.(syscall.Conn)
-	NewAsyncAdapter(ioc, sc, client, func(err error, adapter *AsyncAdapter) {
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		adapter.AsyncWrite(msg, func(err error, n int) {
-			invoked = true
-
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if n != len(msg) {
-				t.Fatalf("short write expected=%d given=%d", len(msg), n)
-			}
-		})
-	})
-
-	ioc.RunOne()
-
-	if !invoked {
-		t.Fatalf("AsyncWrite completion handler not invoked. Did you call ioc.Run*/ioc.Poll*?")
-	}
-}
-
-func TestAsyncWriteAll(t *testing.T) {
-	ioc := MustIO()
-	defer ioc.Close()
-
-	go func() {
-		ln, err := net.Listen("tcp", "localhost:9085")
-		if err != nil {
-			panic(err)
-		}
-		defer ln.Close()
-
-		client, err := ln.Accept()
-		if err != nil {
-			panic(err)
-		}
-		defer client.Close()
-
-		buf := make([]byte, 128)
-		n, err := client.Read(buf)
-		if err != nil {
-			panic(err)
-		}
-		buf = buf[:n]
-
-		smsg := string(msg)
-		sbuf := string(buf)
-		if !strings.EqualFold(smsg, sbuf) {
-			panic(fmt.Errorf("short read expected=%s given=%s", smsg, sbuf))
-		}
-	}()
-
-	time.Sleep(10 * time.Millisecond)
-
-	client, err := net.Dial("tcp", "localhost:9085")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	invoked := false
-
-	sc := client.(syscall.Conn)
-	NewAsyncAdapter(ioc, sc, client, func(err error, adapter *AsyncAdapter) {
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		adapter.AsyncWriteAll(msg, func(err error, n int) {
-			invoked = true
-
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			if n != len(msg) {
-				t.Fatalf("short write expected=%d given=%d", len(msg), n)
-			}
-		})
-	})
-
-	ioc.RunOne()
-
-	if !invoked {
-		t.Fatalf("AsyncWriteAll completion handler not invoked. Did you call ioc.Run*/ioc.Poll*?")
+		t.Fatal("callback was not invoked")
 	}
 }

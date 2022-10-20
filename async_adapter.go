@@ -2,24 +2,24 @@ package sonic
 
 import (
 	"fmt"
+	"github.com/talostrading/sonic/sonicopts"
 	"io"
 	"syscall"
-
-	"github.com/talostrading/sonic/sonicopts"
 )
 
-var _ FileDescriptor = &AsyncAdapter{}
+var _ FileDescriptor = &AsyncAdapter[AdapteeType]{}
 
-type AsyncAdapterHandler func(error, *AsyncAdapter)
+// AdapteeType is the interface a type must implement in order to be async-adapted.
+type AdapteeType interface {
+	io.ReadWriter
+}
 
 // AsyncAdapter is a wrapper around syscall.Conn which enables
 // clients to schedule async read and write operations on the
 // underlying file descriptor.
-type AsyncAdapter struct {
-	*baseFd[*AsyncAdapter]
-
-	rw io.ReadWriter
-	rc syscall.RawConn
+type AsyncAdapter[T AdapteeType] struct {
+	*baseFd[*AsyncAdapter[T]]
+	adaptee T
 }
 
 // NewAsyncAdapter takes in an IO instance and an interface of syscall.Conn and io.ReadWriter
@@ -28,27 +28,23 @@ type AsyncAdapter struct {
 //   - provides an error if any occurred when async-adapting the provided object
 //
 // See async_adapter_test.go for examples on how to set up an AsyncAdapter.
-func NewAsyncAdapter(
+func NewAsyncAdapter[T AdapteeType](
 	ioc *IO,
-	sc syscall.Conn,
-	rw io.ReadWriter,
-	cb AsyncAdapterHandler,
+	adaptee T,
 	opts ...sonicopts.Option,
-) {
-	rc, err := sc.SyscallConn()
-	if err != nil {
-		cb(err, nil)
-		return
+) (adapter *AsyncAdapter[T], err error) {
+	syscallConn, ok := interface{}(adaptee).(syscall.Conn)
+	if !ok {
+		return nil, fmt.Errorf("adaptee must implement syscall.Conn")
 	}
 
-	err = rc.Control(func(fd uintptr) {
-		var (
-			err     error
-			adapter *AsyncAdapter
+	rawConn, err := syscallConn.SyscallConn()
+	if err != nil {
+		return nil, err
+	}
 
-			rawFd = int(fd)
-		)
-
+	wait := make(chan struct{}, 1)
+	err = rawConn.Control(func(fd uintptr) {
 		for _, opt := range opts {
 			if opt.Type() == sonicopts.TypeNonblocking {
 				err = fmt.Errorf("option nonblocking not supported for AsyncAdapter")
@@ -57,41 +53,41 @@ func NewAsyncAdapter(
 		}
 
 		if err == nil {
-			adapter = &AsyncAdapter{
-				rw: rw,
-				rc: rc,
+			rawFd := int(fd)
+
+			adapter = &AsyncAdapter[T]{
+				adaptee: adaptee,
 			}
 			adapter.baseFd, err = newBaseFd(ioc, rawFd, adapter, opts...)
 		}
 
-		cb(err, adapter)
+		wait <- struct{}{}
 	})
+	<-wait
 
-	if err != nil {
-		cb(err, nil)
-	}
+	return
 }
 
-func (a *AsyncAdapter) Read(b []byte) (int, error) {
-	return a.rw.Read(b)
+func (a *AsyncAdapter[T]) Read(b []byte) (int, error) {
+	return a.adaptee.Read(b)
 }
 
-func (a *AsyncAdapter) Write(b []byte) (int, error) {
-	return a.rw.Write(b)
-}
-
-func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
+func (a *AsyncAdapter[T]) AsyncRead(b []byte, cb AsyncCallback) {
 	a.scheduleRead(b, 0, false, cb)
 }
 
-func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
+func (a *AsyncAdapter[T]) AsyncReadAll(b []byte, cb AsyncCallback) {
 	a.scheduleRead(b, 0, true, cb)
 }
 
-func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
+func (a *AsyncAdapter[T]) Write(b []byte) (int, error) {
+	return a.adaptee.Write(b)
+}
+
+func (a *AsyncAdapter[T]) AsyncWrite(b []byte, cb AsyncCallback) {
 	a.scheduleWrite(b, 0, false, cb)
 }
 
-func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {
+func (a *AsyncAdapter[T]) AsyncWriteAll(b []byte, cb AsyncCallback) {
 	a.scheduleWrite(b, 0, true, cb)
 }
