@@ -1,5 +1,7 @@
 package sonicopts
 
+// TODO make sonicopts.Opts type
+
 type OptionType uint8
 
 const (

@@ -35,5 +35,3 @@ func Open(
 func (f *file) Seek(offset int64, whence int) (int64, error) {
 	return syscall.Seek(f.RawFd(), offset, whence)
 }
-
-// TODO file_test.go

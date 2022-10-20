@@ -81,11 +81,11 @@ type AsyncWriterTo interface {
 // FileDescriptor is a POSIX file descriptor i.e. a unique identifier for a file or other input/output resource,
 // such as a pipe or network socket.
 type FileDescriptor interface {
-	io.Closer
-	Closed() bool
-
 	io.ReadWriter
 	AsyncReadWriter
+
+	io.Closer
+	Closed() bool
 
 	RawFd() int
 

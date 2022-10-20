@@ -12,6 +12,10 @@ import (
 
 var _ Listener = &listener{}
 
+// TODO review this
+// TODO check the nonblocking async accept stuff
+// TODO write tests
+
 type listener struct {
 	ioc            *IO
 	sock           *internal.Socket
