@@ -33,27 +33,28 @@ func NewFileDescriptor(
 }
 
 // baseFd implements behaviour common to all FileDescriptors.
-type baseFd struct {
+type baseFd[Impl FileDescriptor] struct {
 	ioc   *IO
 	rawFd int
 
 	// impl is a concrete implementation of a FileDescriptor which defines the *Read and *Write behaviour.
-	impl FileDescriptor
+	impl Impl
+
 	opts []sonicopts.Option
 
 	pd     internal.PollData
 	closed uint32
 }
 
-var _ FileDescriptor = &baseFd{}
+var _ FileDescriptor = &baseFd[FileDescriptor]{}
 
-func newBaseFd(
+func newBaseFd[Impl FileDescriptor](
 	ioc *IO,
 	rawFd int,
-	impl FileDescriptor,
+	impl Impl,
 	opts ...sonicopts.Option,
-) (fd *baseFd, err error) {
-	fd = &baseFd{
+) (fd *baseFd[Impl], err error) {
+	fd = &baseFd[Impl]{
 		ioc:   ioc,
 		rawFd: rawFd,
 		impl:  impl,
@@ -66,31 +67,31 @@ func newBaseFd(
 	return
 }
 
-func (fd *baseFd) Read(b []byte) (int, error) {
+func (fd *baseFd[Impl]) Read(b []byte) (int, error) {
 	return fd.impl.Read(b)
 }
 
-func (fd *baseFd) Write(b []byte) (int, error) {
+func (fd *baseFd[Impl]) Write(b []byte) (int, error) {
 	return fd.impl.Write(b)
 }
 
-func (fd *baseFd) AsyncRead(b []byte, cb AsyncCallback) {
+func (fd *baseFd[Impl]) AsyncRead(b []byte, cb AsyncCallback) {
 	fd.impl.AsyncRead(b, cb)
 }
 
-func (fd *baseFd) AsyncReadAll(b []byte, cb AsyncCallback) {
+func (fd *baseFd[Impl]) AsyncReadAll(b []byte, cb AsyncCallback) {
 	fd.impl.AsyncReadAll(b, cb)
 }
 
-func (fd *baseFd) AsyncWrite(b []byte, cb AsyncCallback) {
+func (fd *baseFd[Impl]) AsyncWrite(b []byte, cb AsyncCallback) {
 	fd.impl.AsyncWrite(b, cb)
 }
 
-func (fd *baseFd) AsyncWriteAll(b []byte, cb AsyncCallback) {
+func (fd *baseFd[Impl]) AsyncWriteAll(b []byte, cb AsyncCallback) {
 	fd.impl.AsyncWriteAll(b, cb)
 }
 
-func (fd *baseFd) CancelReads() {
+func (fd *baseFd[Impl]) CancelReads() {
 	if fd.pd.Flags&internal.ReadFlags == internal.ReadFlags {
 		err := fd.ioc.poller.DelRead(fd.rawFd, &fd.pd)
 		if err == nil {
@@ -100,7 +101,7 @@ func (fd *baseFd) CancelReads() {
 	}
 }
 
-func (fd *baseFd) CancelWrites() {
+func (fd *baseFd[Impl]) CancelWrites() {
 	if fd.pd.Flags&internal.WriteFlags == internal.WriteFlags {
 		err := fd.ioc.poller.DelWrite(fd.rawFd, &fd.pd)
 		if err == nil {
@@ -110,7 +111,7 @@ func (fd *baseFd) CancelWrites() {
 	}
 }
 
-func (fd *baseFd) Close() error {
+func (fd *baseFd[Impl]) Close() error {
 	if !atomic.CompareAndSwapUint32(&fd.closed, 0, 1) {
 		return io.EOF
 	}
@@ -123,15 +124,15 @@ func (fd *baseFd) Close() error {
 	return syscall.Close(fd.rawFd)
 }
 
-func (fd *baseFd) Closed() bool {
+func (fd *baseFd[Impl]) Closed() bool {
 	return atomic.LoadUint32(&fd.closed) == 1
 }
 
-func (fd *baseFd) Opts() []sonicopts.Option {
+func (fd *baseFd[Impl]) Opts() []sonicopts.Option {
 	return fd.opts
 }
 
-func (fd *baseFd) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (fd *baseFd[Impl]) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
 	n, err := fd.Read(b[readBytes:])
 	readBytes += n
 
@@ -153,7 +154,7 @@ func (fd *baseFd) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCa
 	}
 }
 
-func (fd *baseFd) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (fd *baseFd[Impl]) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
 	if fd.Closed() {
 		cb(io.EOF, 0)
 		return
@@ -169,7 +170,7 @@ func (fd *baseFd) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCa
 	}
 }
 
-func (fd *baseFd) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
+func (fd *baseFd[Impl]) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		delete(fd.ioc.pendingReads, &fd.pd)
 		if err != nil {
@@ -180,11 +181,11 @@ func (fd *baseFd) getReadHandler(b []byte, readBytes int, readAll bool, cb Async
 	}
 }
 
-func (fd *baseFd) setRead() error {
+func (fd *baseFd[Impl]) setRead() error {
 	return fd.ioc.poller.SetRead(fd.rawFd, &fd.pd)
 }
 
-func (fd *baseFd) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (fd *baseFd[Impl]) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
 	n, err := fd.Write(b[writtenBytes:])
 	writtenBytes += n
 
@@ -206,7 +207,7 @@ func (fd *baseFd) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb As
 	}
 }
 
-func (fd *baseFd) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (fd *baseFd[Impl]) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
 	if fd.Closed() {
 		cb(io.EOF, 0)
 		return
@@ -222,7 +223,7 @@ func (fd *baseFd) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb As
 	}
 }
 
-func (fd *baseFd) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
+func (fd *baseFd[Impl]) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		delete(fd.ioc.pendingWrites, &fd.pd)
 
@@ -234,18 +235,18 @@ func (fd *baseFd) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb 
 	}
 }
 
-func (fd *baseFd) setWrite() error {
+func (fd *baseFd[Impl]) setWrite() error {
 	return fd.ioc.poller.SetWrite(fd.rawFd, &fd.pd)
 }
 
-func (fd *baseFd) RawFd() int {
+func (fd *baseFd[Impl]) RawFd() int {
 	return fd.rawFd
 }
 
 var _ FileDescriptor = &nonblockingFd{}
 
 type nonblockingFd struct {
-	*baseFd
+	*baseFd[*nonblockingFd]
 
 	// dispatched keeps track of how many callbacks have been placed onto the stack consecutively, and hence invoked
 	// immediately. If dispatched >= MaxCallbackDispatch, callbacks will be scheduled to run asynchronously instead
@@ -349,7 +350,7 @@ func (fd *nonblockingFd) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
 var _ FileDescriptor = &blockingFd{}
 
 type blockingFd struct {
-	*baseFd
+	*baseFd[*blockingFd]
 }
 
 func newBlockingFd(ioc *IO, rawFd int, opts ...sonicopts.Option) (fd *blockingFd, err error) {

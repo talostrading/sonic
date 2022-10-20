@@ -16,7 +16,7 @@ type AsyncAdapterHandler func(error, *AsyncAdapter)
 // clients to schedule async read and write operations on the
 // underlying file descriptor.
 type AsyncAdapter struct {
-	*baseFd
+	*baseFd[*AsyncAdapter]
 
 	rw io.ReadWriter
 	rc syscall.RawConn
