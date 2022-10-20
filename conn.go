@@ -53,6 +53,7 @@ func AsyncDialTimeout(
 	cb AsyncDialCallback,
 	opts ...sonicopts.Option,
 ) {
+	// TODO needs some work in internal/socket_unix.go
 	panic("AsyncDial not yet supported")
 }
 
@@ -62,7 +63,11 @@ type sonicConn struct {
 	sock *internal.Socket
 }
 
-func newSonicConn(ioc *IO, sock *internal.Socket, opts ...sonicopts.Option) (Conn, error) {
+func newSonicConn(
+	ioc *IO,
+	sock *internal.Socket,
+	opts ...sonicopts.Option,
+) (Conn, error) {
 	c := &sonicConn{sock: sock}
 
 	var err error
@@ -74,6 +79,7 @@ func newSonicConn(ioc *IO, sock *internal.Socket, opts ...sonicopts.Option) (Con
 func (c *sonicConn) LocalAddr() net.Addr {
 	return c.sock.LocalAddr
 }
+
 func (c *sonicConn) RemoteAddr() net.Addr {
 	return c.sock.RemoteAddr
 }
@@ -81,9 +87,11 @@ func (c *sonicConn) RemoteAddr() net.Addr {
 func (c *sonicConn) SetDeadline(t time.Time) error {
 	panic("not supported")
 }
+
 func (c *sonicConn) SetReadDeadline(t time.Time) error {
 	panic("not supported")
 }
+
 func (c *sonicConn) SetWriteDeadline(t time.Time) error {
 	panic("not supported")
 }

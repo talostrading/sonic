@@ -30,6 +30,14 @@ func NewSocket(opts ...sonicopts.Option) (*Socket, error) {
 	return s, nil
 }
 
+// TODO AsyncConnect
+// steps: (requires non blocking socket)
+// 1. res := connect()
+// 2. if res <  res != EINPROGRESS, fail and close socket
+// 3. if res == 0 then we connected
+// 3. otherwise you have to wait for the socket to be writable
+//https://stackoverflow.com/questions/10187347/async-connect-and-disconnect-with-epoll-linux
+
 func (s *Socket) ConnectTimeout(
 	network,
 	addr string,
