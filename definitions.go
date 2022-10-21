@@ -164,5 +164,5 @@ type CodecConn[Enc, Dec any] interface {
 	WriteNext(Enc) error
 	AsyncWriteNext(Enc, func(error))
 
-	NextLayer() FileDescriptor // TODO this should be Conn
+	NextLayer() Conn
 }

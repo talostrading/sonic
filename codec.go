@@ -9,7 +9,7 @@ import (
 
 func NewCodecConn[Enc, Dec any](
 	ioc *IO,
-	conn FileDescriptor,
+	conn Conn,
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 	opts ...sonicopts.Option,
@@ -33,7 +33,7 @@ func NewCodecConn[Enc, Dec any](
 // provided blocking nonblockingFd descriptor.
 type BlockingCodecStream[Enc, Dec any] struct {
 	ioc      *IO
-	conn     FileDescriptor
+	conn     Conn
 	codec    Codec[Enc, Dec]
 	src, dst *ByteBuffer
 
@@ -45,7 +45,7 @@ var _ CodecConn[any, any] = &BlockingCodecStream[interface{}, interface{}]{}
 
 func newBlockingCodecStream[Enc, Dec any](
 	ioc *IO,
-	conn FileDescriptor,
+	conn Conn,
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 ) (*BlockingCodecStream[Enc, Dec], error) {
@@ -115,6 +115,6 @@ func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb func(error))
 	}
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) NextLayer() FileDescriptor {
+func (s *BlockingCodecStream[Enc, Dec]) NextLayer() Conn {
 	return s.conn
 }

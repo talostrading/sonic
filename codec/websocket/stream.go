@@ -101,7 +101,7 @@ func NewWebsocketStream(
 
 // init is run when we transition into StateActive which happens
 // after a successful handshake.
-func (s *WebsocketStream) init(stream sonic.FileDescriptor) (err error) {
+func (s *WebsocketStream) init(stream sonic.Conn) (err error) {
 	if s.state != StateActive {
 		return fmt.Errorf("stream must be in StateActive")
 	}
@@ -576,10 +576,10 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 
 	s.reset()
 
-	var stream sonic.FileDescriptor
+	var stream sonic.Conn
 
 	done := make(chan struct{}, 1)
-	s.handshake(addr, func(rerr error, rstream sonic.FileDescriptor) {
+	s.handshake(addr, func(rerr error, rstream sonic.Conn) {
 		err = rerr
 		stream = rstream
 		done <- struct{}{}
@@ -607,7 +607,7 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine here
 	go func() {
-		s.handshake(addr, func(err error, stream sonic.FileDescriptor) {
+		s.handshake(addr, func(err error, stream sonic.Conn) {
 			s.ioc.Post(func() {
 				if err != nil {
 					s.state = StateTerminated
@@ -623,13 +623,13 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 
 func (s *WebsocketStream) handshake(
 	addr string,
-	cb func(err error, stream sonic.FileDescriptor),
+	cb func(err error, stream sonic.Conn),
 ) {
 	url, err := s.resolve(addr)
 	if err != nil {
 		cb(err, nil)
 	} else {
-		s.dial(url, func(err error, stream sonic.FileDescriptor) {
+		s.dial(url, func(err error, stream sonic.Conn) {
 			if err == nil {
 				err = s.upgrade(url, stream)
 			}
@@ -656,7 +656,7 @@ func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
 
 func (s *WebsocketStream) dial(
 	url *url.URL,
-	cb func(err error, stream sonic.FileDescriptor),
+	cb func(err error, stream sonic.Conn),
 ) {
 	var (
 		err  error
@@ -687,12 +687,8 @@ func (s *WebsocketStream) dial(
 	}
 
 	if err == nil {
-		// s.ioc is not used by this constructor, so there is NO a race
-		// condition on the io context.
-		adapter, err := sonic.NewAsyncAdapter(
-			s.ioc, s.conn, sonicopts.NoDelay(true))
-
-		cb(err, adapter)
+		conn, err := sonic.AdaptNetConn(s.ioc, s.conn, sonicopts.NoDelay(true))
+		cb(err, conn)
 	} else {
 		cb(err, nil)
 	}

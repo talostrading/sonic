@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"sync/atomic"
+	"time"
 
 	"github.com/talostrading/sonic"
 )
@@ -98,56 +99,61 @@ func (s *MockServer) IsClosed() bool {
 	return atomic.LoadInt32(&s.closed) == 1
 }
 
-var _ sonic.FileDescriptor = &MockStream{}
+var _ sonic.Conn = &MockConn{}
 
-// MockStream is a mock TCP stream that's not attached to any operating system
+// MockConn is a mock TCP stream that's not attached to any operating system
 // IO executor. It is used to test reads and writes for WebSocket servers and
 // clients.
 //
-// A WebsocketStream can be set to use a MockStream only if it is in
-// StateActive, which occurs after a successful handshake or a call to init().
-type MockStream struct {
+// A WebsocketStream can be set to use a MockConn only if it is in
+// StateActive, which occurs after a successful HandshakeClient or a call to init().
+type MockConn struct {
 	b *sonic.ByteBuffer
 }
 
-func NewMockStream() *MockStream {
-	s := &MockStream{
+func NewMockStream() *MockConn {
+	s := &MockConn{
 		b: sonic.NewByteBuffer(),
 	}
 	return s
 }
 
-func (s *MockStream) Read(b []byte) (n int, err error) {
+func (s *MockConn) Read(b []byte) (n int, err error) {
 	return s.b.Read(b)
 }
 
-func (s *MockStream) AsyncRead(b []byte, cb sonic.AsyncCallback) {
+func (s *MockConn) AsyncRead(b []byte, cb sonic.AsyncCallback) {
 	n, err := s.b.Read(b)
 	cb(err, n)
 }
 
-func (s *MockStream) AsyncReadAll(b []byte, cb sonic.AsyncCallback) {
+func (s *MockConn) AsyncReadAll(b []byte, cb sonic.AsyncCallback) {
 	n, err := s.b.Read(b)
 	cb(err, n)
 }
 
-func (s *MockStream) Write(b []byte) (n int, err error) {
+func (s *MockConn) Write(b []byte) (n int, err error) {
 	return s.b.Write(b)
 }
 
-func (s *MockStream) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
+func (s *MockConn) AsyncWrite(b []byte, cb sonic.AsyncCallback) {
 	n, err := s.b.Write(b)
 	cb(err, n)
 }
 
-func (s *MockStream) AsyncWriteAll(b []byte, cb sonic.AsyncCallback) {
+func (s *MockConn) AsyncWriteAll(b []byte, cb sonic.AsyncCallback) {
 	n, err := s.b.Write(b)
 	cb(err, n)
 }
 
-func (s *MockStream) RawFd() int               { return -1 }
-func (s *MockStream) CancelReads()             {}
-func (s *MockStream) CancelWrites()            {}
-func (s *MockStream) Closed() bool             { return false }
-func (s *MockStream) Close() error             { return nil }
-func (s *MockStream) Opts() []sonicopts.Option { return nil }
+func (s *MockConn) RawFd() int                         { return -1 }
+func (s *MockConn) CancelReads()                       {}
+func (s *MockConn) CancelWrites()                      {}
+func (s *MockConn) Closed() bool                       { return false }
+func (s *MockConn) Close() error                       { return nil }
+func (s *MockConn) Opts() []sonicopts.Option           { return nil }
+func (s *MockConn) LocalAddr() net.Addr                { return nil }
+func (s *MockConn) RemoteAddr() net.Addr               { return nil }
+func (s *MockConn) SetDeadline(t time.Time) error      { return nil }
+func (s *MockConn) SetReadDeadline(t time.Time) error  { return nil }
+func (s *MockConn) SetWriteDeadline(t time.Time) error { return nil }

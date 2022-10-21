@@ -201,7 +201,7 @@ func TestClientReadUnfragmentedMessage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Skip the handshake and the stream initialization.
+	// Skip the HandshakeClient and the stream initialization.
 	// We put the messages in the buffer such that the codec stream
 	// does not need to do any reads.
 	ws.state = StateActive
