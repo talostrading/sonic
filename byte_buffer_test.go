@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"io"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
@@ -207,6 +209,203 @@ func TestByteBuffer_PrepareRead(t *testing.T) {
 	err = b.PrepareRead(10)
 	if !errors.Is(err, sonicerrors.ErrNeedMore) {
 		t.Fatal("should not be able to prepare read")
+	}
+}
+
+func TestByteBuffer_ReadLineEOF(t *testing.T) {
+	b := NewByteBuffer()
+
+	line, err := b.ReadLine()
+	if err != io.EOF {
+		t.Fatal("expected EOF")
+	}
+	if line != nil {
+		t.Fatal("line should be nil")
+	}
+}
+
+func TestByteBuffer_ReadLineNeedMore(t *testing.T) {
+	b := NewByteBuffer()
+
+	msg := []byte("something")
+
+	n, err := b.Write(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Commit(n)
+
+	line, err := b.ReadLine()
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("expected ErrNeedMore")
+	}
+	if line != nil {
+		t.Fatal("line should be nil")
+	}
+}
+
+func TestByteBuffer_ReadLineCLRFSingle(t *testing.T) {
+	b := NewByteBuffer()
+
+	msg := []byte("GET / HTTP/1.1\r\n")
+
+	n, err := b.Write(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Commit(n)
+
+	line, err := b.ReadLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want, have := strings.TrimSpace(string(msg)), string(line)
+	if want != have {
+		t.Fatalf("incorrect line want=%s have=%s", want, have)
+	}
+}
+
+func TestByteBuffer_ReadLineHTTP1(t *testing.T) {
+	b := NewByteBuffer()
+
+	first, second, delim, body := "GET / HTTP/1.1\r\n", "Content-Length: 10\r\n", "\r\n", "1234567890"
+
+	var msg []byte
+	msg = append(msg, first...)
+	msg = append(msg, second...)
+	msg = append(msg, delim...)
+	msg = append(msg, body...)
+
+	n, err := b.Write(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Commit(n)
+
+	assert := func(want string) {
+		line, err := b.ReadLine()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(line) != strings.TrimSpace(want) {
+			t.Fatal("wrong line")
+		}
+		if b.leftover != len(want) {
+			t.Fatal("wrong leftover")
+		}
+	}
+
+	assert(first)
+	assert(second)
+	assert(delim)
+
+	// We try to read one more line here to consume the leftover.
+	if b.leftover <= 0 {
+		t.Fatal("wrong leftover")
+	}
+	_, err = b.ReadLine()
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("expected ErrNeedMore")
+	}
+	if b.leftover != 0 {
+		t.Fatal("should have no leftover")
+	}
+
+	err = b.PrepareRead(10)
+	if err == sonicerrors.ErrNeedMore {
+		t.Fatal("should be able to read the body")
+	}
+
+	if string(b.Data()) != body {
+		t.Fatal("wrong body")
+	}
+}
+
+func TestByteBuffer_ReadLineHTTP2(t *testing.T) {
+	b := NewByteBuffer()
+
+	first, second, delim, body := "GET / HTTP/1.1\r\n", "Content-Length: 10\r\n", "\r\n", "1234567890"
+
+	var msg []byte
+	msg = append(msg, first...)
+	msg = append(msg, second...)
+	msg = append(msg, delim...)
+	msg = append(msg, body...)
+
+	n, err := b.Write(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Commit(n)
+
+	assert := func(want string) {
+		line, err := b.ReadLine()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(line) != strings.TrimSpace(want) {
+			t.Fatal("wrong line")
+		}
+		if b.leftover != len(want) {
+			t.Fatal("wrong leftover")
+		}
+	}
+
+	assert(first)
+	assert(second)
+	assert(delim)
+
+	// We try to read the body - the leftover should be consumed before that.
+	if b.leftover <= 0 {
+		t.Fatal("wrong leftover")
+	}
+	err = b.PrepareRead(10)
+	if err == sonicerrors.ErrNeedMore {
+		t.Fatal("should be able to read the body")
+	}
+	if b.leftover != 0 {
+		t.Fatal("should have no leftover")
+	}
+
+	if string(b.Data()) != body {
+		t.Fatal("wrong body")
+	}
+}
+
+func TestByteBuffer_ReadLineAndRead(t *testing.T) {
+	b := NewByteBuffer()
+
+	msg := "something\nsomethingelse"
+
+	n, err := b.Write([]byte(msg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	b.Commit(n)
+
+	line, err := b.ReadLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(line) != "something" {
+		t.Fatal("wrong line")
+	}
+	if b.leftover != len("something")+1 {
+		t.Fatal("wrong leftover")
+	}
+
+	buf := make([]byte, 128)
+	n, err = b.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf = buf[:n]
+	if b.leftover != 0 {
+		t.Fatal("wrong leftover")
+	}
+	if string(buf) != "somethingelse" {
+		t.Fatal("wrong read")
 	}
 }
 

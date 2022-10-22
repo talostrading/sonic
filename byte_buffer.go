@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"bytes"
 	"github.com/talostrading/sonic/sonicerrors"
 	"io"
 )
@@ -16,6 +17,10 @@ type ByteBuffer struct {
 
 	// Underlying byte slice where read and write region are mapped.
 	data []byte
+
+	// leftover bytes to consume before doing a Read, ReadByte, ReadLine, Consume, WriteTo, AsyncWriteTo or PrepareRead.
+	// This prevents copying the buffer on ReadLine.
+	leftover int
 
 	oneByte [1]byte
 }
@@ -116,9 +121,17 @@ func (b *ByteBuffer) Consume(n int) {
 }
 
 func (b *ByteBuffer) Reset() {
-	b.data = b.data[:0]
-	b.wi = 0
 	b.ri = 0
+	b.wi = 0
+	b.data = b.data[:0]
+	b.leftover = 0
+}
+
+func (b *ByteBuffer) consumeLeftover() {
+	if b.leftover > 0 {
+		b.Consume(b.leftover)
+		b.leftover = 0
+	}
 }
 
 // Read reads and consumes the bytes from the read region into `dst`.
@@ -126,6 +139,8 @@ func (b *ByteBuffer) Read(dst []byte) (int, error) {
 	if len(dst) == 0 {
 		return 0, nil
 	}
+
+	b.consumeLeftover()
 
 	if b.ri == 0 {
 		return 0, io.EOF
@@ -143,8 +158,45 @@ func (b *ByteBuffer) ReadByte() (byte, error) {
 	return b.oneByte[0], err
 }
 
-// ReadFrom reads the data from the supplied reader into the write region
-// of the buffer.
+// ReadLine reads the next line from the buffer.
+//
+// The returned byte slice is only valid until the next invocation of Consume, Read, ReadByte, WriteTo, AsyncWriteTo
+// or PrepareRead.
+//
+// If there are no bytes in the buffer, io.EOF is returned.
+// If there are bytes but no `\r\n` or `\n` characters, ErrNeedMore is returned.
+// In any other case, the next line is returned along with a nil error.
+func (b *ByteBuffer) ReadLine() (line []byte, err error) {
+	b.consumeLeftover()
+
+	if b.ri == 0 {
+		return nil, io.EOF
+	}
+
+	if i := bytes.IndexByte(b.data[:b.ri], '\n'); i >= 0 {
+		line = b.data[:i+1]
+	}
+
+	if len(line) == 0 {
+		return nil, sonicerrors.ErrNeedMore
+	}
+
+	if line[len(line)-1] == '\n' {
+		// Number of bytes to consume before executing the next call that reads from the read region.
+		// This prevents us from copying the slice.
+		b.leftover = len(line)
+
+		drop := 1
+		if len(line) > 1 && line[len(line)-2] == '\r' {
+			drop = 2
+		}
+		line = line[:len(line)-drop]
+	}
+
+	return
+}
+
+// ReadFrom reads the data from the supplied reader into the write region of the buffer.
 //
 // The buffer is not automatically grown to accommodate all data from the reader.
 // The caller must reserve enough space in the buffer with a call to Reserve.
@@ -157,7 +209,7 @@ func (b *ByteBuffer) ReadFrom(r io.Reader) (int64, error) {
 	return int64(n), err
 }
 
-// UnreadByte removes the last byte from the write region.
+// UnreadByte removes the last byte from the read region.
 func (b *ByteBuffer) UnreadByte() error {
 	if can := b.wi - b.ri; can > 0 {
 		b.wi -= 1
@@ -167,8 +219,7 @@ func (b *ByteBuffer) UnreadByte() error {
 	return io.EOF
 }
 
-// AsyncReadFrom reads the data from the supplied reader into the write region
-// of the buffer, asynchronously.
+// AsyncReadFrom reads the data from the supplied reader into the write region of the buffer, asynchronously.
 //
 // The buffer is not automatically grown to accommodate all data from the reader.
 // The caller must reserve enough space in the buffer with a call to Reserve.
@@ -182,7 +233,7 @@ func (b *ByteBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
 	})
 }
 
-// Write writes the supplied bytes into the buffer, growing the buffer
+// Write writes the supplied bytes into the buffer's write region, growing the buffer
 // as needed to accommodate the new data.
 func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	b.data = append(b.data, bb...)
@@ -192,7 +243,7 @@ func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	return n, nil
 }
 
-// WriteByte writes the supplied byte into the buffer, growing the buffer
+// WriteByte writes the supplied byte into the buffer's write region, growing the buffer
 // as needed to accommodate the new data.
 func (b *ByteBuffer) WriteByte(bb byte) error {
 	b.data = append(b.data, bb)
@@ -201,7 +252,7 @@ func (b *ByteBuffer) WriteByte(bb byte) error {
 	return nil
 }
 
-// WriteString writes the supplied string into the buffer, growing the buffer
+// WriteString writes the supplied string into the buffer's write region, growing the buffer
 // as needed to accommodate the new data.
 func (b *ByteBuffer) WriteString(s string) (int, error) {
 	b.data = append(b.data, s...)
@@ -213,6 +264,8 @@ func (b *ByteBuffer) WriteString(s string) (int, error) {
 
 // WriteTo consumes and writes the bytes from the read region to the provided writer.
 func (b *ByteBuffer) WriteTo(w io.Writer) (int64, error) {
+	b.consumeLeftover()
+
 	var (
 		n            int
 		err          error
@@ -236,6 +289,8 @@ func (b *ByteBuffer) WriteTo(w io.Writer) (int64, error) {
 
 // AsyncWriteTo writes all the bytes from the read region to the provided writer asynchronously.
 func (b *ByteBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
+	b.consumeLeftover()
+
 	w.AsyncWriteAll(b.data[:b.ri], func(err error, n int) {
 		b.Consume(n)
 		cb(err, n)
@@ -245,6 +300,8 @@ func (b *ByteBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
 // PrepareRead prepares n bytes to be read from the read region. If less than n bytes are
 // available, ErrNeedMore is returned and no bytes are committed to the read region.
 func (b *ByteBuffer) PrepareRead(n int) (err error) {
+	b.consumeLeftover()
+
 	if need := n - b.ReadLen(); need > 0 {
 		if b.WriteLen() >= need {
 			b.Commit(need)
