@@ -24,6 +24,16 @@ func Dial(
 	return DialTimeout(ioc, network, addr, 0, opts...)
 }
 
+func AsyncDial(
+	ioc *IO,
+	network string,
+	addr string,
+	cb AsyncDialCallback,
+	opts ...sonicopts.Option,
+) {
+	AsyncDialTimeout(ioc, network, addr, 0, cb)
+}
+
 func DialTimeout(
 	ioc *IO,
 	network string,
