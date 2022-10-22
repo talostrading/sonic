@@ -11,7 +11,7 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-func TestByteBufferReserve(t *testing.T) {
+func TestByteBuffer_Reserve(t *testing.T) {
 	b := NewByteBuffer()
 
 	b.Reserve(512)
@@ -41,7 +41,7 @@ func TestByteBufferReserve(t *testing.T) {
 	}
 }
 
-func TestByteBufferReads1(t *testing.T) {
+func TestByteBuffer_Reads1(t *testing.T) {
 	b := NewByteBuffer()
 
 	b.Reserve(512)
@@ -113,7 +113,7 @@ func TestByteBufferReads1(t *testing.T) {
 	}
 }
 
-func TestByteBufferReads2(t *testing.T) {
+func TestByteBuffer_Reads2(t *testing.T) {
 	b := NewByteBuffer()
 
 	msg := []byte("hello")
@@ -132,7 +132,7 @@ func TestByteBufferReads2(t *testing.T) {
 	}
 }
 
-func TestByteBufferWrites(t *testing.T) {
+func TestByteBuffer_Writes(t *testing.T) {
 	b := NewByteBuffer()
 
 	n, err := b.Write([]byte("hello"))
@@ -181,7 +181,7 @@ func TestByteBufferWrites(t *testing.T) {
 	}
 }
 
-func TestByteBufferPrepareRead(t *testing.T) {
+func TestByteBuffer_PrepareRead(t *testing.T) {
 	b := NewByteBuffer()
 
 	b.Write([]byte("hello"))
