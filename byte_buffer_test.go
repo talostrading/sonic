@@ -320,11 +320,11 @@ func TestByteBuffer_ReadSlice(t *testing.T) {
 		t.Fatal("wrong slice")
 	}
 
-	if b.ReadLen() != len(s)+1 {
+	if b.ReadLen() != 0 {
 		t.Fatal("wrong read region")
 	}
-	if b.leftover != 6 {
-		t.Fatal("should have one as leftover")
+	if b.leftover != 0 {
+		t.Fatal("should have no leftover")
 	}
 
 	b.Commit(100) // commit the rest
@@ -366,10 +366,6 @@ func TestByteBuffer_ReadLineLF(t *testing.T) {
 	if string(s) != string(bytes.TrimSpace(msg)) {
 		t.Fatal("wrong slice")
 	}
-
-	if b.ReadLen() != len(s)+1 {
-		t.Fatal("wrong read region")
-	}
 }
 
 func TestByteBuffer_ReadLineCLRF(t *testing.T) {
@@ -395,10 +391,6 @@ func TestByteBuffer_ReadLineCLRF(t *testing.T) {
 
 	if string(s) != string(bytes.TrimSpace(msg)) {
 		t.Fatal("wrong slice")
-	}
-
-	if b.ReadLen() != len(s)+2 {
-		t.Fatal("wrong read region")
 	}
 
 	// This should consume the line and one more byte, the LF newline.
@@ -435,9 +427,6 @@ func TestByteBuffer_ReadLineMulti(t *testing.T) {
 	if string(s) != "hello" {
 		t.Fatal("wrong slice")
 	}
-	if b.ReadLen() != len(s)+1 {
-		t.Fatal("wrong read region")
-	}
 	if b.leftover != 6 {
 		t.Fatal("wrong leftover")
 	}
@@ -457,9 +446,6 @@ func TestByteBuffer_ReadLineMulti(t *testing.T) {
 		fmt.Println(string(s))
 		t.Fatal("wrong slice")
 	}
-	if b.ReadLen() != len(s)+2 {
-		t.Fatal("wrong read region")
-	}
 	if b.leftover != 7 {
 		t.Fatal("wrong leftover")
 	}
@@ -472,9 +458,6 @@ func TestByteBuffer_ReadLineMulti(t *testing.T) {
 	}
 	if string(s) != "again" {
 		t.Fatal("wrong slice")
-	}
-	if b.ReadLen() != len(s)+1 {
-		t.Fatal("wrong region region")
 	}
 	if b.leftover != 6 {
 		t.Fatal("wrong leftover")
