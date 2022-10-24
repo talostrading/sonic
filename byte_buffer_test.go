@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"math/rand"
-	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +79,7 @@ func TestByteBuffer_Reads1(t *testing.T) {
 
 	// consume some part of the data
 	b.Consume(1)
+
 	if string(b.Data()) != string(msg[1:]) || b.ReadLen() != len(msg[1:]) {
 		t.Fatal("invalid data")
 	}
@@ -107,6 +107,7 @@ func TestByteBuffer_Reads1(t *testing.T) {
 
 	// consume more than needed
 	b.Consume(100)
+
 	if string(b.Data()) != "" || b.ReadLen() != 0 {
 		t.Fatal("invalid data")
 	}
@@ -174,7 +175,8 @@ func TestByteBuffer_Writes(t *testing.T) {
 		t.Fatal("wrong write area length")
 	}
 
-	b.Consume(5)
+	b.Consume(100)
+
 	if b.ReadLen() != 0 {
 		t.Fatal("wrong read area length")
 	}
@@ -200,7 +202,7 @@ func TestByteBuffer_PrepareRead(t *testing.T) {
 
 	err = b.PrepareRead(5)
 	if b.ReadLen() != 5 {
-		t.Fatal("invalid write length")
+		t.Fatal("invalid read length")
 	}
 	if b.WriteLen() != 0 {
 		t.Fatal("invalid write length")
@@ -212,200 +214,183 @@ func TestByteBuffer_PrepareRead(t *testing.T) {
 	}
 }
 
-func TestByteBuffer_ReadLineEOF(t *testing.T) {
+func TestByteBuffer_PrepareReadSlice(t *testing.T) {
 	b := NewByteBuffer()
 
-	line, err := b.ReadLine()
+	msg := []byte("hello.hello")
+
+	b.Write(msg)
+	err := b.PrepareReadSlice('.')
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.ReadLen() != len("hello.") {
+		t.Fatal("invalid read length")
+	}
+	if b.WriteLen() != len("hello") {
+		t.Fatal("invalid write length")
+	}
+
+	err = b.PrepareReadSlice('.')
+	if !errors.Is(err, sonicerrors.ErrNeedMore) {
+		t.Fatal("should have received ErrNeedMore")
+	}
+}
+
+func TestByteBuffer_PrepareReadLineLF(t *testing.T) {
+	b := NewByteBuffer()
+
+	msg := []byte("hello.hello\n")
+
+	b.Write(msg)
+	err := b.PrepareReadLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.ReadLen() != len(msg) {
+		t.Fatal("invalid read length")
+	}
+	if b.WriteLen() != 0 {
+		t.Fatal("invalid write length")
+	}
+
+	err = b.PrepareReadLine()
+	if !errors.Is(err, sonicerrors.ErrNeedMore) {
+		t.Fatal("should have received ErrNeedMore")
+	}
+}
+
+func TestByteBuffer_PrepareReadLineCLRF(t *testing.T) {
+	b := NewByteBuffer()
+
+	msg := []byte("hello.hello\r\n")
+
+	b.Write(msg)
+	err := b.PrepareReadLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.ReadLen() != len(msg) {
+		t.Fatal("invalid read length")
+	}
+	if b.WriteLen() != 0 {
+		t.Fatal("invalid write length")
+	}
+
+	err = b.PrepareReadLine()
+	if !errors.Is(err, sonicerrors.ErrNeedMore) {
+		t.Fatal("should have received ErrNeedMore")
+	}
+}
+
+func TestByteBuffer_ReadSlice(t *testing.T) {
+	b := NewByteBuffer()
+
+	msg := []byte("hello.hello")
+	b.Write(msg)
+
+	_, err := b.ReadSlice('z')
 	if err != io.EOF {
-		t.Fatal("expected EOF")
+		t.Fatal("should have received EOF")
 	}
-	if line != nil {
-		t.Fatal("line should be nil")
-	}
-}
 
-func TestByteBuffer_ReadLineNeedMore(t *testing.T) {
-	b := NewByteBuffer()
-
-	msg := []byte("something")
-
-	n, err := b.Write(msg)
+	err = b.PrepareReadSlice('.')
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.Commit(n)
 
-	line, err := b.ReadLine()
+	_, err = b.ReadSlice('z')
 	if err != sonicerrors.ErrNeedMore {
-		t.Fatal("expected ErrNeedMore")
+		t.Fatal("should have received ErrNeedMore")
 	}
-	if line != nil {
-		t.Fatal("line should be nil")
+
+	s, err := b.ReadSlice('.')
+	if err != nil {
+		t.Fatal("should have read slice")
 	}
+
+	if string(s) != "hello" {
+		t.Fatal("wrong slice")
+	}
+
+	if b.ReadLen() != len(s)+1 {
+		t.Fatal("wrong read region")
+	}
+
+	// This should consume the slice and one more byte, the delim.
+	b.Consume(len(s))
 }
 
-func TestByteBuffer_ReadLineCLRFSingle(t *testing.T) {
+func TestByteBuffer_ReadLineLF(t *testing.T) {
 	b := NewByteBuffer()
 
-	msg := []byte("GET / HTTP/1.1\r\n")
+	msg := []byte("hello.hello\n")
+	b.Write(msg)
 
-	n, err := b.Write(msg)
+	_, err := b.ReadLine()
+	if err != io.EOF {
+		t.Fatal("should have received EOF")
+	}
+
+	err = b.PrepareReadLine()
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.Commit(n)
 
-	line, err := b.ReadLine()
+	s, err := b.ReadLine()
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("should have read line")
 	}
 
-	want, have := strings.TrimSpace(string(msg)), string(line)
-	if want != have {
-		t.Fatalf("incorrect line want=%s have=%s", want, have)
+	if string(s) != string(bytes.TrimSpace(msg)) {
+		t.Fatal("wrong slice")
 	}
+
+	if b.ReadLen() != len(s)+1 {
+		t.Fatal("wrong read region")
+	}
+
+	// This should consume the line and one more byte, the LF newline.
+	b.Consume(len(s))
 }
 
-func TestByteBuffer_ReadLineHTTP1(t *testing.T) {
+func TestByteBuffer_ReadLineCLRF(t *testing.T) {
 	b := NewByteBuffer()
 
-	first, second, delim, body := "GET / HTTP/1.1\r\n", "Content-Length: 10\r\n", "\r\n", "1234567890"
+	msg := []byte("hello.hello\r\n")
+	b.Write(msg)
 
-	var msg []byte
-	msg = append(msg, first...)
-	msg = append(msg, second...)
-	msg = append(msg, delim...)
-	msg = append(msg, body...)
+	_, err := b.ReadLine()
+	if err != io.EOF {
+		t.Fatal("should have received EOF")
+	}
 
-	n, err := b.Write(msg)
+	err = b.PrepareReadLine()
 	if err != nil {
 		t.Fatal(err)
 	}
-	b.Commit(n)
 
-	assert := func(want string) {
-		line, err := b.ReadLine()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(line) != strings.TrimSpace(want) {
-			t.Fatal("wrong line")
-		}
-		if b.leftover != len(want) {
-			t.Fatal("wrong leftover")
-		}
-	}
-
-	assert(first)
-	assert(second)
-	assert(delim)
-
-	// We try to read one more line here to consume the leftover.
-	if b.leftover <= 0 {
-		t.Fatal("wrong leftover")
-	}
-	_, err = b.ReadLine()
-	if err != sonicerrors.ErrNeedMore {
-		t.Fatal("expected ErrNeedMore")
-	}
-	if b.leftover != 0 {
-		t.Fatal("should have no leftover")
-	}
-
-	err = b.PrepareRead(10)
-	if err == sonicerrors.ErrNeedMore {
-		t.Fatal("should be able to read the body")
-	}
-
-	if string(b.Data()) != body {
-		t.Fatal("wrong body")
-	}
-}
-
-func TestByteBuffer_ReadLineHTTP2(t *testing.T) {
-	b := NewByteBuffer()
-
-	first, second, delim, body := "GET / HTTP/1.1\r\n", "Content-Length: 10\r\n", "\r\n", "1234567890"
-
-	var msg []byte
-	msg = append(msg, first...)
-	msg = append(msg, second...)
-	msg = append(msg, delim...)
-	msg = append(msg, body...)
-
-	n, err := b.Write(msg)
+	s, err := b.ReadLine()
 	if err != nil {
-		t.Fatal(err)
-	}
-	b.Commit(n)
-
-	assert := func(want string) {
-		line, err := b.ReadLine()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if string(line) != strings.TrimSpace(want) {
-			t.Fatal("wrong line")
-		}
-		if b.leftover != len(want) {
-			t.Fatal("wrong leftover")
-		}
+		t.Fatal("should have read line")
 	}
 
-	assert(first)
-	assert(second)
-	assert(delim)
-
-	// We try to read the body - the leftover should be consumed before that.
-	if b.leftover <= 0 {
-		t.Fatal("wrong leftover")
-	}
-	err = b.PrepareRead(10)
-	if err == sonicerrors.ErrNeedMore {
-		t.Fatal("should be able to read the body")
-	}
-	if b.leftover != 0 {
-		t.Fatal("should have no leftover")
+	if string(s) != string(bytes.TrimSpace(msg)) {
+		t.Fatal("wrong slice")
 	}
 
-	if string(b.Data()) != body {
-		t.Fatal("wrong body")
-	}
-}
-
-func TestByteBuffer_ReadLineAndRead(t *testing.T) {
-	b := NewByteBuffer()
-
-	msg := "something\nsomethingelse"
-
-	n, err := b.Write([]byte(msg))
-	if err != nil {
-		t.Fatal(err)
-	}
-	b.Commit(n)
-
-	line, err := b.ReadLine()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(line) != "something" {
-		t.Fatal("wrong line")
-	}
-	if b.leftover != len("something")+1 {
-		t.Fatal("wrong leftover")
+	if b.ReadLen() != len(s)+2 {
+		t.Fatal("wrong read region")
 	}
 
-	buf := make([]byte, 128)
-	n, err = b.Read(buf)
-	if err != nil {
-		t.Fatal(err)
+	// This should consume the line and one more byte, the LF newline.
+	b.Consume(len(s))
+
+	if b.WriteLen() != 0 {
+		t.Fatal("write region should be empty")
 	}
-	buf = buf[:n]
-	if b.leftover != 0 {
-		t.Fatal("wrong leftover")
-	}
-	if string(buf) != "somethingelse" {
-		t.Fatal("wrong read")
+	if b.ReadLen() != 0 {
+		t.Fatal("read region should be empty")
 	}
 }
 
