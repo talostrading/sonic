@@ -154,22 +154,18 @@ func (b *ByteBuffer) ReadByte() (byte, error) {
 	return b.oneByte[0], err
 }
 
-// ReadSlice reads until the first occurrence of delim in the input,
-// returning a slice pointing at the bytes in the buffer.
-//
-// The returned byte slice is invalided by a call to Consume.
+// ReadSlice reads until the first occurrence of delim in the read region, returning a slice pointing at the bytes.
+// The returned bytes are consumed from the read region after the call returns.
 //
 // If there are no bytes in the buffer, io.EOF is returned.
 // If there are bytes but `delim` is not found, ErrNeedMore is returned.
 // In any other case, the slice is returned along with a nil error.
 func (b *ByteBuffer) ReadSlice(delim byte) (s []byte, err error) {
-	if b.ri == 0 {
-		return nil, io.EOF
-	}
+	b.Consume(0) // consume the leftover delim from the previous call
 
 	if i := bytes.IndexByte(b.data[:b.ri], delim); i >= 0 {
 		s = b.data[:i]
-		b.leftover++
+		b.leftover += len(s) + 1 // 1 for the delim
 	} else {
 		err = sonicerrors.ErrNeedMore
 	}
@@ -177,9 +173,8 @@ func (b *ByteBuffer) ReadSlice(delim byte) (s []byte, err error) {
 	return
 }
 
-// ReadLine reads the next line from the buffer.
-//
-// The returned byte slice is invalided by a call to Consume.
+// ReadLine reads the next line from the read region, returning a slice pointing at the bytes.
+// The returned line is consumed from the read region after the call returns.
 //
 // If there are no bytes in the buffer, io.EOF is returned.
 // If there are bytes but no `\r\n` or `\n` characters, ErrNeedMore is returned.
@@ -188,9 +183,8 @@ func (b *ByteBuffer) ReadLine() (line []byte, err error) {
 	line, err = b.ReadSlice('\n')
 	if len(line) > 0 && line[len(line)-1] == '\r' {
 		line = line[:len(line)-1]
-		b.leftover++
 	}
-	return line, err
+	return
 }
 
 // ReadFrom reads the data from the supplied reader into the write region of the buffer.

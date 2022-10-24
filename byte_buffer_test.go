@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
-	"io"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -286,12 +286,16 @@ func TestByteBuffer_PrepareReadLineCLRF(t *testing.T) {
 func TestByteBuffer_ReadSlice(t *testing.T) {
 	b := NewByteBuffer()
 
-	msg := []byte("hello.hello")
+	msg := []byte("hello.sonic")
 	b.Write(msg)
 
 	_, err := b.ReadSlice('z')
-	if err != io.EOF {
-		t.Fatal("should have received EOF")
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("should have received ErrNeedMore")
+	}
+
+	if b.ReadLen() != 0 {
+		t.Fatal("read region should be empty")
 	}
 
 	err = b.PrepareReadSlice('.')
@@ -299,12 +303,15 @@ func TestByteBuffer_ReadSlice(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = b.ReadSlice('z')
+	s, err := b.ReadSlice('z')
 	if err != sonicerrors.ErrNeedMore {
 		t.Fatal("should have received ErrNeedMore")
 	}
+	if len(s) != 0 {
+		t.Fatal("should have returned no slice")
+	}
 
-	s, err := b.ReadSlice('.')
+	s, err = b.ReadSlice('.')
 	if err != nil {
 		t.Fatal("should have read slice")
 	}
@@ -316,9 +323,23 @@ func TestByteBuffer_ReadSlice(t *testing.T) {
 	if b.ReadLen() != len(s)+1 {
 		t.Fatal("wrong read region")
 	}
+	if b.leftover != 6 {
+		t.Fatal("should have one as leftover")
+	}
 
-	// This should consume the slice and one more byte, the delim.
-	b.Consume(len(s))
+	b.Commit(100) // commit the rest
+	s, err = b.ReadSlice('.')
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("should have ErrNeedMore")
+	}
+
+	if len(s) != 0 {
+		t.Fatal("no slice since no delim")
+	}
+
+	if b.leftover != 0 {
+		t.Fatal("should have consumed everything")
+	}
 }
 
 func TestByteBuffer_ReadLineLF(t *testing.T) {
@@ -328,8 +349,8 @@ func TestByteBuffer_ReadLineLF(t *testing.T) {
 	b.Write(msg)
 
 	_, err := b.ReadLine()
-	if err != io.EOF {
-		t.Fatal("should have received EOF")
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("should have received ErrNeedMore")
 	}
 
 	err = b.PrepareReadLine()
@@ -349,9 +370,6 @@ func TestByteBuffer_ReadLineLF(t *testing.T) {
 	if b.ReadLen() != len(s)+1 {
 		t.Fatal("wrong read region")
 	}
-
-	// This should consume the line and one more byte, the LF newline.
-	b.Consume(len(s))
 }
 
 func TestByteBuffer_ReadLineCLRF(t *testing.T) {
@@ -361,8 +379,8 @@ func TestByteBuffer_ReadLineCLRF(t *testing.T) {
 	b.Write(msg)
 
 	_, err := b.ReadLine()
-	if err != io.EOF {
-		t.Fatal("should have received EOF")
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("should have received ErrNeedMore")
 	}
 
 	err = b.PrepareReadLine()
@@ -385,6 +403,88 @@ func TestByteBuffer_ReadLineCLRF(t *testing.T) {
 
 	// This should consume the line and one more byte, the LF newline.
 	b.Consume(len(s))
+
+	if b.WriteLen() != 0 {
+		t.Fatal("write region should be empty")
+	}
+	if b.ReadLen() != 0 {
+		t.Fatal("read region should be empty")
+	}
+}
+
+func TestByteBuffer_ReadLineMulti(t *testing.T) {
+	b := NewByteBuffer()
+
+	msg := []byte("hello\nsonic\r\nagain\n")
+	b.Write(msg)
+
+	_, err := b.ReadLine()
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("should have received ErrNeedMore")
+	}
+
+	err = b.PrepareReadLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s, err := b.ReadLine()
+	if err != nil {
+		t.Fatal("should have read line")
+	}
+	if string(s) != "hello" {
+		t.Fatal("wrong slice")
+	}
+	if b.ReadLen() != len(s)+1 {
+		t.Fatal("wrong read region")
+	}
+	if b.leftover != 6 {
+		t.Fatal("wrong leftover")
+	}
+
+	s, err = b.ReadLine()
+	if err != sonicerrors.ErrNeedMore {
+		t.Fatal("should have returned ErrNeedMore")
+	}
+
+	b.PrepareReadLine()
+
+	s, err = b.ReadLine()
+	if err != nil {
+		t.Fatal("should have read line")
+	}
+	if string(s) != "sonic" {
+		fmt.Println(string(s))
+		t.Fatal("wrong slice")
+	}
+	if b.ReadLen() != len(s)+2 {
+		t.Fatal("wrong read region")
+	}
+	if b.leftover != 7 {
+		t.Fatal("wrong leftover")
+	}
+
+	b.PrepareReadLine()
+
+	s, err = b.ReadLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(s) != "again" {
+		t.Fatal("wrong slice")
+	}
+	if b.ReadLen() != len(s)+1 {
+		t.Fatal("wrong region region")
+	}
+	if b.leftover != 6 {
+		t.Fatal("wrong leftover")
+	}
+
+	s, err = b.ReadLine()
+	if err != sonicerrors.ErrNeedMore {
+		fmt.Println(err)
+		t.Fatal("should have returned ErrNeedMore")
+	}
 
 	if b.WriteLen() != 0 {
 		t.Fatal("write region should be empty")
