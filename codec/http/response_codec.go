@@ -6,57 +6,56 @@ import (
 	"strconv"
 )
 
-var _ sonic.Codec[*Request, *Request] = &RequestCodec{}
+var _ sonic.Codec[*Response, *Response] = &ResponseCodec{}
 
-type RequestCodec struct {
+type ResponseCodec struct {
 	decodeState decodeState
-	decodeReq   *Request // request we decode into
+	decodeRes   *Response
 }
 
-func NewRequestCodec() (*RequestCodec, error) {
-	req, err := NewRequest()
+func NewResponseCodec() (*ResponseCodec, error) {
+	res, err := NewResponse()
 	if err != nil {
 		return nil, err
 	}
 
-	c := &RequestCodec{
+	c := &ResponseCodec{
 		decodeState: stateFirstLine,
-		decodeReq:   req,
+		decodeRes:   res,
 	}
-
 	return c, nil
 }
 
-func (c *RequestCodec) Encode(req *Request, dst *sonic.ByteBuffer) error {
+func (c *ResponseCodec) Encode(res *Response, dst *sonic.ByteBuffer) error {
 	// encode request-line
-	dst.WriteString(req.Method.String())
+	dst.WriteString(res.Proto.String())
 	dst.WriteString(" ")
 
-	dst.WriteString(req.URL.String())
+	dst.WriteString(strconv.FormatInt(int64(res.StatusCode), 10))
 	dst.WriteString(" ")
 
-	dst.WriteString(req.Proto.String())
+	dst.WriteString(res.Status)
 	dst.WriteString(" ")
 
 	dst.WriteString(CLRF)
 
 	// encode headers
-	req.Header.WriteTo(dst)
+	res.Header.WriteTo(dst)
 
 	// encode body
-	dst.Write(req.Body)
+	dst.Write(res.Body)
 
 	return nil
 }
 
-func (c *RequestCodec) resetDecode() {
+func (c *ResponseCodec) resetDecode() {
 	if c.decodeState == stateDone {
+		c.decodeRes.Reset()
 		c.decodeState = stateFirstLine
-		c.decodeReq.Reset()
 	}
 }
 
-func (c *RequestCodec) Decode(src *sonic.ByteBuffer) (*Request, error) {
+func (c *ResponseCodec) Decode(src *sonic.ByteBuffer) (*Response, error) {
 	c.resetDecode()
 
 	var (
@@ -89,7 +88,7 @@ prepareDecode:
 decodeFirstLine:
 	line, err = src.NextLine()
 	if err == nil {
-		err = DecodeRequestLine(line, c.decodeReq)
+		err = DecodeResponseLine(line, c.decodeRes)
 	}
 
 	if err == nil {
@@ -104,7 +103,7 @@ decodeHeader:
 	if err == nil {
 		if len(line) == 0 {
 			// CLRF - end of header
-			if ExpectBody(c.decodeReq.Header) {
+			if ExpectBody(c.decodeRes.Header) {
 				c.decodeState = stateBody
 			} else {
 				c.decodeState = stateDone
@@ -112,23 +111,23 @@ decodeHeader:
 		} else {
 			headerKey, headerValue, err = DecodeHeaderLine(line)
 			if err == nil {
-				c.decodeReq.Header.Add(string(headerKey), string(headerValue))
+				c.decodeRes.Header.Add(string(headerKey), string(headerValue))
 			}
 		}
 	}
 	goto prepareDecode
 
 decodeBody:
-	n, err = strconv.ParseInt(c.decodeReq.Header.Get("Content-Length"), 10, 64)
+	n, err = strconv.ParseInt(c.decodeRes.Header.Get("Content-Length"), 10, 64)
 	if err == nil {
 		err = src.PrepareRead(int(n))
 		if err == nil {
-			c.decodeReq.Body = src.Data()
+			c.decodeRes.Body = src.Data()
 			c.decodeState = stateDone
 		}
 	}
 	goto prepareDecode
 
 done:
-	return c.decodeReq, err
+	return c.decodeRes, err
 }

@@ -68,3 +68,7 @@ func DecodeHeaderLine(line []byte) (key, value []byte, err error) {
 	}
 	return
 }
+
+func ExpectBody(header Header) bool {
+	return header.Has("Content-Length") || header.Has("Transfer-Encoding")
+}

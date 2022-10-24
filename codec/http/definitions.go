@@ -6,6 +6,15 @@ import (
 	"io"
 )
 
+type decodeState uint8
+
+const (
+	stateFirstLine decodeState = iota
+	stateHeader
+	stateBody
+	stateDone
+)
+
 type Proto string
 
 const (

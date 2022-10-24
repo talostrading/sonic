@@ -8,6 +8,7 @@ import (
 )
 
 func TestRequestCodec_EncodeValidRequest(t *testing.T) {
+	// TODO
 }
 
 func TestRequestCodec_DecodeValidRequest(t *testing.T) {
@@ -60,7 +61,7 @@ func TestRequestCodec_DecodeRequestPartByPart(t *testing.T) {
 	}
 
 	b := sonic.NewByteBuffer()
-	if codec.decodeState != stateRequestLine {
+	if codec.decodeState != stateFirstLine {
 		t.Fatal("wrong decoder state")
 	}
 
