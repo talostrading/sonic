@@ -8,10 +8,8 @@ type Request struct {
 	Method Method
 	URL    *url.URL
 	Proto  Proto
-
 	Header Header
-
-	Body []byte
+	Body   []byte
 }
 
 func NewRequest() (*Request, error) {
@@ -31,5 +29,5 @@ func (r *Request) Reset() {
 	r.URL = nil
 	r.Proto = ""
 	r.Header.Reset()
-	r.Body = r.Body[:0]
+	r.Body = nil
 }
