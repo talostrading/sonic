@@ -477,6 +477,17 @@ func TestByteBuffer_ReadLineMulti(t *testing.T) {
 	}
 }
 
+func TestByteBuffer_CommitAll(t *testing.T) {
+	b := NewByteBuffer()
+
+	b.Write([]byte("all"))
+	b.CommitAll()
+
+	if len(b.Data()) != 3 || b.ReadLen() != 3 {
+		t.Fatal("wrong read region length")
+	}
+}
+
 func BenchmarkByteBuffer(b *testing.B) {
 	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 

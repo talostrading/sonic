@@ -92,6 +92,12 @@ func (b *ByteBuffer) Commit(n int) {
 	}
 }
 
+// CommitAll moves all the bytes from the write region to the read region.
+func (b *ByteBuffer) CommitAll() {
+	n := len(b.data[b.ri:b.wi])
+	b.Commit(n)
+}
+
 // Data returns the bytes in the read region.
 func (b *ByteBuffer) Data() []byte {
 	b.consumeLeftover()
