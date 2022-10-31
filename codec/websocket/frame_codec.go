@@ -23,12 +23,12 @@ type FrameCodec struct {
 	decodeReset bool   // true if we must reset the state on the next decode
 }
 
-func NewFrameCodec(src, dst *sonic.ByteBuffer) *FrameCodec {
+func NewFrameCodec(src, dst *sonic.ByteBuffer) (*FrameCodec, error) {
 	return &FrameCodec{
 		decodeFrame: NewFrame(),
 		src:         src,
 		dst:         dst,
-	}
+	}, nil
 }
 
 func (c *FrameCodec) resetDecode() {

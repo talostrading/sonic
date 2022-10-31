@@ -1,25 +1,13 @@
 package websocket
 
 import (
-	"bufio"
-	"bytes"
-	"crypto/rand"
-	"crypto/sha1"
-	"crypto/tls"
-	"encoding/base64"
 	"errors"
-	"fmt"
-	"hash"
 	"io"
-	"net"
-	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"time"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/sonicopts"
 )
 
 var (
@@ -31,34 +19,19 @@ type WebsocketStream struct {
 	// Async operations executor.
 	ioc *sonic.IO
 
-	// User provided TLS config; nil if we don't use TLS
-	tls *tls.Config
-
-	// Underlying transport stream that we async adapt from the net.Conn.
-	stream sonic.FileDescriptor
-	conn   net.Conn
-
-	// Codec stream wrapping the underlying transport stream.
-	cs sonic.CodecConn[*Frame, *Frame]
-
-	// Websocket role: client or server.
+	// Websocket role. Undefined until:
+	// - AsyncAccept or Accept is called: the role is then set to RoleServer.
+	// - AsyncHandshake or Accept is called: the role is then set to RoleServer.
 	role Role
 
 	// State of the stream.
 	state StreamState
-
-	// Hashes the Sec-Websocket-Key when the stream is a client.
-	hasher hash.Hash
 
 	// Buffer for stream reads.
 	src *sonic.ByteBuffer
 
 	// Buffer for stream writes.
 	dst *sonic.ByteBuffer
-
-	// Contains the handshake response. Is emptied after the
-	// handshake is over.
-	hb []byte
 
 	// Contains frames waiting to be sent to the peer.
 	// Is emptied by AsyncFlush or Flush.
@@ -67,30 +40,37 @@ type WebsocketStream struct {
 	// Optional callback invoked when a control frame is received.
 	ccb ControlCallback
 
-	// Used to establish a TCP connection to the peer with a timeout.
-	dialer *net.Dialer
-
 	// The size of the currently read message.
 	messageSize int
+
+	// Handshake
+	handshake *Handshake
+
+	// FrameCodec used by codecConn to encode/decode frames
+	codec *FrameCodec
+
+	// Codec conn wrapping the underlying transport stream.
+	codecConn sonic.CodecConn[*Frame, *Frame]
 }
 
-func NewWebsocketStream(
-	ioc *sonic.IO,
-	tls *tls.Config,
-	role Role,
-) (s *WebsocketStream, err error) {
+func NewWebsocketStream(ioc *sonic.IO) (s *WebsocketStream, err error) {
 	s = &WebsocketStream{
-		ioc:    ioc,
-		tls:    tls,
-		role:   role,
-		src:    sonic.NewByteBuffer(),
-		dst:    sonic.NewByteBuffer(),
-		state:  StateHandshake,
-		hasher: sha1.New(),
-		hb:     make([]byte, 1024),
-		dialer: &net.Dialer{
-			Timeout: DialTimeout,
-		},
+		ioc: ioc,
+
+		role:  RoleUndefined,
+		src:   sonic.NewByteBuffer(),
+		dst:   sonic.NewByteBuffer(),
+		state: StateHandshake,
+	}
+
+	s.handshake, err = NewHandshake(s.src)
+	if err != nil {
+		return nil, err
+	}
+
+	s.codec, err = NewFrameCodec(s.src, s.dst)
+	if err != nil {
+		return nil, err
 	}
 
 	s.src.Reserve(4096)
@@ -99,33 +79,17 @@ func NewWebsocketStream(
 	return s, nil
 }
 
-// init is run when we transition into StateActive which happens
-// after a successful handshake.
-func (s *WebsocketStream) init(stream sonic.Conn) (err error) {
-	if s.state != StateActive {
-		return fmt.Errorf("stream must be in StateActive")
-	}
-
-	s.stream = stream
-	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewCodecConn[*Frame, *Frame](s.ioc, stream, codec, s.src, s.dst, sonicopts.Nonblocking(false))
-	return
-}
-
 func (s *WebsocketStream) reset() {
-	s.hb = s.hb[:cap(s.hb)]
+	s.role = RoleUndefined
 	s.state = StateHandshake
-	s.stream = nil
-	s.conn = nil
 	s.src.Reset()
 	s.dst.Reset()
 }
 
-func (s *WebsocketStream) NextLayer() sonic.FileDescriptor {
-	if s.cs != nil {
-		return s.cs.NextLayer()
-	}
-	return nil
+func (s *WebsocketStream) NextLayer() sonic.Conn {
+	// TODO This next layer thing should be generic
+	// after that we can do: return s.codecConn
+	return s.codecConn.NextLayer()
 }
 
 func (s *WebsocketStream) SupportsUTF8() bool {
@@ -165,7 +129,7 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 }
 
 func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
-	f, err = s.cs.ReadNext()
+	f, err = s.codecConn.ReadNext()
 	if err == nil {
 		err = s.handleFrame(f)
 	}
@@ -202,7 +166,7 @@ func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 }
 
 func (s *WebsocketStream) asyncNextFrame(cb AsyncFrameHandler) {
-	s.cs.AsyncReadNext(func(err error, f *Frame) {
+	s.codecConn.AsyncReadNext(func(err error, f *Frame) {
 		if err == nil {
 			err = s.handleFrame(f)
 		} else if err == io.EOF {
@@ -530,7 +494,7 @@ func (s *WebsocketStream) prepareClose(payload []byte) {
 func (s *WebsocketStream) Flush() (err error) {
 	flushed := 0
 	for i := 0; i < len(s.pending); i++ {
-		err = s.cs.WriteNext(s.pending[i])
+		err = s.codecConn.WriteNext(s.pending[i])
 		if err != nil {
 			break
 		}
@@ -549,7 +513,7 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 		sent := s.pending[0]
 		s.pending = s.pending[1:]
 
-		s.cs.AsyncWriteNext(sent, func(err error) {
+		s.codecConn.AsyncWriteNext(sent, func(err error) {
 			ReleaseFrame(sent) // TODO can get rid of this and just allocate a single frame.
 
 			if err != nil {
@@ -569,211 +533,39 @@ func (s *WebsocketStream) State() StreamState {
 	return s.state
 }
 
-func (s *WebsocketStream) Handshake(addr string) (err error) {
-	if s.role != RoleClient {
-		return ErrWrongHandshakeRole
-	}
-
+func (s *WebsocketStream) Handshake(conn sonic.Conn, url *url.URL) (err error) {
 	s.reset()
+	s.role = RoleClient
 
-	var stream sonic.Conn
-
-	done := make(chan struct{}, 1)
-	s.handshake(addr, func(rerr error, rstream sonic.Conn) {
-		err = rerr
-		stream = rstream
-		done <- struct{}{}
-	})
-	<-done
-
-	if err != nil {
-		s.state = StateTerminated
-	} else {
-		s.state = StateActive
-		err = s.init(stream)
+	if err := s.handshake.Do(conn, url, RoleClient); err != nil {
+		return err
 	}
 
-	return
+	return s.prepareStream(conn)
 }
 
-func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
-	if s.role != RoleClient {
-		cb(ErrWrongHandshakeRole)
-		return
-	}
-
+func (s *WebsocketStream) AsyncHandshake(conn sonic.Conn, url *url.URL, cb func(err error)) {
 	s.reset()
+	s.role = RoleClient
 
-	// I know, this is horrible, but if you help me write a TLS client for sonic
-	// we can asynchronously dial endpoints and remove the need for a goroutine here
-	go func() {
-		s.handshake(addr, func(err error, stream sonic.Conn) {
-			s.ioc.Post(func() {
-				if err != nil {
-					s.state = StateTerminated
-				} else {
-					s.state = StateActive
-					err = s.init(stream)
-				}
-				cb(err)
-			})
-		})
-	}()
-}
-
-func (s *WebsocketStream) handshake(
-	addr string,
-	cb func(err error, stream sonic.Conn),
-) {
-	url, err := s.resolve(addr)
-	if err != nil {
-		cb(err, nil)
-	} else {
-		s.dial(url, func(err error, stream sonic.Conn) {
-			if err == nil {
-				err = s.upgrade(url, stream)
-			}
-			cb(err, stream)
-		})
-	}
-}
-
-func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
-	url, err = url.Parse(addr)
-	if err == nil {
-		switch url.Scheme {
-		case "ws":
-			url.Scheme = "http"
-		case "wss":
-			url.Scheme = "https"
-		default:
-			err = ErrInvalidAddress
-		}
-	}
-
-	return
-}
-
-func (s *WebsocketStream) dial(
-	url *url.URL,
-	cb func(err error, stream sonic.Conn),
-) {
-	var (
-		err  error
-		port = url.Port()
-	)
-
-	switch url.Scheme {
-	case "http":
-		if port == "" {
-			port = "80"
-		}
-		addr := url.Hostname() + ":" + port
-		s.conn, err = net.DialTimeout("tcp", addr, DialTimeout)
-	case "https":
-		if s.tls == nil {
-			err = fmt.Errorf("wss:// scheme endpoints require a TLS configuration.")
-		}
-
+	s.handshake.AsyncDo(conn, url, RoleClient, func(err error) {
 		if err == nil {
-			if port == "" {
-				port = "443"
-			}
-			addr := url.Hostname() + ":" + port
-			s.conn, err = tls.DialWithDialer(s.dialer, "tcp", addr, s.tls)
+			err = s.prepareStream(conn)
 		}
-	default:
-		err = fmt.Errorf("invalid url scheme=%s", url.Scheme)
-	}
-
-	if err == nil {
-		conn, err := sonic.AdaptNetConn(s.ioc, s.conn, sonicopts.NoDelay(true))
-		cb(err, conn)
-	} else {
-		cb(err, nil)
-	}
+		cb(err)
+	})
 }
 
-func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.FileDescriptor) error {
-	req, err := http.NewRequest("GET", uri.String(), nil)
-	if err != nil {
-		return err
-	}
-
-	sentKey, expectedKey := s.makeHandshakeKey()
-	req.Header.Set("Upgrade", "websocket")
-	req.Header.Set("Connection", "upgrade")
-	req.Header.Set("Sec-WebSocket-Key", string(sentKey))
-	req.Header.Set("Sec-Websocket-Version", "13")
-
-	err = req.Write(stream)
-	if err != nil {
-		return err
-	}
-
-	s.hb = s.hb[:cap(s.hb)]
-	n, err := stream.Read(s.hb)
-	if err != nil {
-		return err
-	}
-	s.hb = s.hb[:n]
-	rd := bytes.NewReader(s.hb)
-	res, err := http.ReadResponse(bufio.NewReader(rd), req)
-	if err != nil {
-		return err
-	}
-
-	rawRes, err := httputil.DumpResponse(res, true)
-	if err != nil {
-		return err
-	}
-
-	resLen := len(rawRes)
-	extra := len(s.hb) - resLen
-	if extra > 0 {
-		// we got some frames as well with the handshake so we can put
-		// them in src for later decoding before clearing the handshake
-		// buffer
-		s.src.Write(s.hb[resLen:])
-	}
-	s.hb = s.hb[:0]
-
-	if !IsUpgradeRes(res) {
-		return ErrCannotUpgrade
-	}
-
-	if key := res.Header.Get("Sec-WebSocket-Accept"); key != expectedKey {
-		return ErrCannotUpgrade
-	}
-
-	return nil
+func (s *WebsocketStream) prepareStream(conn sonic.Conn) (err error) {
+	s.codecConn, err = sonic.NewCodecConn[*Frame, *Frame](s.ioc, conn, s.codec, s.src, s.dst)
+	return err
 }
 
-// makeHandshakeKey generates the key of Sec-WebSocket-Key header as well as the expected
-// response present in Sec-WebSocket-Accept header.
-func (s *WebsocketStream) makeHandshakeKey() (req, res string) {
-	// request
-	b := make([]byte, 16)
-	rand.Read(b)
-	req = base64.StdEncoding.EncodeToString(b)
-
-	// response
-	var resKey []byte
-	resKey = append(resKey, []byte(req)...)
-	resKey = append(resKey, GUID...)
-
-	s.hasher.Reset()
-	s.hasher.Write(resKey)
-	res = base64.StdEncoding.EncodeToString(s.hasher.Sum(nil))
-
-	return
-}
-
-func (s *WebsocketStream) Accept() error {
+func (s *WebsocketStream) Accept(conn sonic.Conn) error {
 	panic("implement me")
 }
 
-func (s *WebsocketStream) AsyncAccept(func(error)) {
+func (s *WebsocketStream) AsyncAccept(conn sonic.Conn, cb func(error)) {
 	panic("implement me")
 }
 
@@ -786,30 +578,8 @@ func (s *WebsocketStream) ControlCallback() ControlCallback {
 }
 
 func (s *WebsocketStream) SetMaxMessageSize(bytes int) {
-	// This is just for checking against the length returned in the frame
+	// This is just for checking against the length returned to the frame
 	// header. The sizes of the buffers in which we read or write the messages
 	// are dynamically adjusted in frame_codec.
 	MaxMessageSize = bytes
-}
-
-func (s *WebsocketStream) RemoteAddr() net.Addr {
-	return s.conn.RemoteAddr()
-}
-
-func (s *WebsocketStream) LocalAddr() net.Addr {
-	return s.conn.LocalAddr()
-}
-
-func (s *WebsocketStream) RawFd() int {
-	if s.NextLayer() != nil {
-		return s.NextLayer().RawFd()
-	}
-	return -1
-}
-
-func (s *WebsocketStream) CloseNextLayer() error {
-	if s.conn != nil {
-		return s.conn.Close()
-	}
-	return nil
 }

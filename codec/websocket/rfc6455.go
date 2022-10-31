@@ -2,7 +2,7 @@ package websocket
 
 import (
 	"encoding/binary"
-	"net/http"
+	"github.com/talostrading/sonic/codec/http"
 	"strings"
 )
 
@@ -11,16 +11,16 @@ import (
 // a single frame with the FIN bit set and an opcode of 0.
 
 // GUID is used when constructing the Sec-WebSocket-Accept key based on Sec-WebSocket-Key.
-var GUID = []byte("258EAFA5-E914-47DA-95CA-C5AB0DC85B11")
+var GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 // IsUpgradeReq returns true if the HTTP request is a valid WebSocket upgrade.
 func IsUpgradeReq(req *http.Request) bool {
 	return strings.EqualFold(req.Header.Get("Upgrade"), "websocket")
 }
 
-// IsUpgradeReq returns true if the HTTP response is a valid WebSocket upgrade.
+// IsUpgradeRes returns true if the HTTP response is a valid WebSocket upgrade.
 func IsUpgradeRes(res *http.Response) bool {
-	return res.StatusCode == 101 && strings.EqualFold(res.Header.Get("Upgrade"), "websocket")
+	return res != nil && res.StatusCode == 101 && strings.EqualFold(res.Header.Get("Upgrade"), "websocket")
 }
 
 const (
@@ -31,15 +31,12 @@ const (
 	maskBit = byte(1 << 7)
 )
 
-// The max size of the ping/pong control frame payload.
 const MaxControlFramePayloadSize = 125
 
-// The type representing the reason string in a close frame.
+// ReasonString is the reason the connection was closed.
 type ReasonString [123]byte
 
-// Close status codes.
-//
-// These codes accompany close frames.
+// CloseCode close status codes contained in close frames.
 type CloseCode uint16
 
 const (
@@ -47,7 +44,7 @@ const (
 	// completed whatever purpose for which it was created.
 	CloseNormal CloseCode = 1000
 
-	// GoingaAway means endpoint is going away, either because of a
+	// CloseGoingAway means endpoint is going away, either because of a
 	// server failure or because the browser is navigating away from
 	// the page that opened the connection.
 	CloseGoingAway CloseCode = 1001

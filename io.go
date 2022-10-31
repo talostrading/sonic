@@ -60,7 +60,7 @@ func (ioc *IO) Run() error {
 //
 // Subsequent handlers scheduled to run on a successful completion of the
 // pending operation will not be executed.
-func (ioc *IO) RunPending() error {
+func (ioc *IO) RunPending() error { // TODO this should return the number operations that ran
 	for {
 		if ioc.poller.Pending() <= 0 {
 			break

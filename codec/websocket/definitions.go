@@ -1,7 +1,7 @@
 package websocket
 
 import (
-	"net"
+	"net/url"
 	"time"
 
 	"github.com/talostrading/sonic"
@@ -17,6 +17,7 @@ type Role uint8
 const (
 	RoleClient Role = iota
 	RoleServer
+	RoleUndefined
 )
 
 func (r Role) String() string {
@@ -25,6 +26,8 @@ func (r Role) String() string {
 		return "role_client"
 	case RoleServer:
 		return "role_client"
+	case RoleUndefined:
+		return "role_undefined"
 	default:
 		return "role_unknown"
 	}
@@ -62,25 +65,25 @@ func (t MessageType) String() string {
 type StreamState uint8
 
 const (
-	// Start state. Handshake is ongoing.
+	// StateHandshake Start state. Handshake is ongoing.
 	StateHandshake StreamState = iota
 
-	// Intermediate state. Connection is active, can read/write/close.
+	// StateActive Intermediate state. Connection is active, can read/write/close.
 	StateActive
 
-	// Intermediate state. We initiated the closing handshake and
+	// StateClosedByUs Intermediate state. We initiated the closing handshake and
 	// are waiting for a reply from the peer.
 	StateClosedByUs
 
-	// Terminal state. The peer initiated the closing handshake,
+	// StateClosedByPeer Terminal state. The peer initiated the closing handshake,
 	// we received a close frame and immediately replied.
 	StateClosedByPeer
 
-	// Terminal state. The peer replied to our closing handshake.
+	// StateCloseAcked Terminal state. The peer replied to our closing handshake.
 	// Can only end up here from StateClosedByUs.
 	StateCloseAcked
 
-	// Terminal state. The connection is closed or some error
+	// StateTerminated Terminal state. The connection is closed or some error
 	// occurred which rendered the stream unusable.
 	StateTerminated
 )
@@ -118,11 +121,10 @@ type ControlCallback = func(mt MessageType, payload []byte)
 // it is important to call Flush or AsyncFlush in order to write any pending
 // control frame replies to the underlying stream.
 type Stream interface {
-	// NextLayer returns the underlying stream object.
+	// NextLayer returns the underlying Stream layer.
 	//
-	// The returned object is constructed by the Stream and maintained throughout its
-	// entire lifetime. All reads and writes will go through the next layer.
-	NextLayer() sonic.FileDescriptor
+	// The returned layer is provided to the Stream and owned by it throughout its entire lifetime.
+	NextLayer() sonic.Conn
 
 	// SupportsDeflate returns true if Deflate compression is supported.
 	//
@@ -234,7 +236,7 @@ type Stream interface {
 	// This call blocks.
 	Flush() error
 
-	// Flush writes any pending control frames to the underlying stream asynchronously.
+	// AsyncFlush writes any pending control frames to the underlying stream asynchronously.
 	//
 	// This call does not block.
 	AsyncFlush(cb func(err error))
@@ -245,39 +247,27 @@ type Stream interface {
 	// State returns the state of the WebSocket connection.
 	State() StreamState
 
-	// Handshake performs the WebSocket handshake in the client role.
+	// Handshake performs the handshake in the client role.
 	//
-	// The call blocks until one of the following conditions is true:
-	//	- the request is sent and the response is received
-	//	- an error occurs
-	Handshake(addr string) error
+	// The call blocks until the handshake completes successfully or with and error.
+	Handshake(sonic.Conn, *url.URL) error
 
-	// AsyncHandshake performs the WebSocket handshake asynchronously in the client role.
+	// AsyncHandshake performs the handshake in the client role, asynchronously.
 	//
-	// This call does not block. The provided completion handler is called when the request is
-	// sent and the response is received or when an error occurs.
-	//
-	// Regardless of  whether the asynchronous operation completes immediately or not,
-	// the handler will not be invoked from within this function. Invocation of the handler
-	// will be performed in a manner equivalent to using sonic.Post(...).
-	AsyncHandshake(addr string, cb func(error))
+	// This call does not block. The provided completion handler is called when the handshake completes successfully
+	// or with the provided error.
+	AsyncHandshake(sonic.Conn, *url.URL, func(error))
 
 	// Accept performs the handshake in the server role.
 	//
-	// The call blocks until one of the following conditions is true:
-	//	- the request is sent and the response is received
-	//	- an error occurs
-	Accept() error
+	// The call blocks until the handshake completes successfully or with and error.
+	Accept(sonic.Conn) error
 
-	// AsyncAccept performs the handshake asynchronously in the server role.
+	// AsyncAccept performs the handshake in the server role, asynchronously.
 	//
-	// This call does not block. The provided completion handler is called when the request is
-	// send and the response is received or when an error occurs.
-	//
-	// Regardless of  whether the asynchronous operation completes immediately or not,
-	// the handler will not be invoked from within this function. Invocation of the handler
-	// will be performed in a manner equivalent to using sonic.Post(...).
-	AsyncAccept(func(error))
+	// This call does not block. The provided completion handler is called when the handshake completes successfully
+	// or with the provided error.
+	AsyncAccept(sonic.Conn, func(error))
 
 	// AsyncClose sends a websocket close control frame asynchronously.
 	//
@@ -325,12 +315,4 @@ type Stream interface {
 	//  - If a message exceeds the limit while writing, the operation is
 	//    cancelled.
 	SetMaxMessageSize(bytes int)
-
-	RemoteAddr() net.Addr
-
-	LocalAddr() net.Addr
-
-	RawFd() int
-
-	CloseNextLayer() error
 }

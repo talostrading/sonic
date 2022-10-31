@@ -3,11 +3,14 @@ package websocket
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha1"
 	"fmt"
 	"github.com/talostrading/sonic/sonicopts"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httputil"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -45,7 +48,7 @@ func (s *MockServer) Accept(addr string) (err error) {
 		return err
 	}
 
-	if !IsUpgradeReq(req) {
+	if !strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
 		reqb, err := httputil.DumpRequest(req, true)
 		if err == nil {
 			err = fmt.Errorf("request is not websocket upgrade: %s", string(reqb))
@@ -57,7 +60,9 @@ func (s *MockServer) Accept(addr string) (err error) {
 	res.Write([]byte("HTTP/1.1 101 Switching Protocols\r\n"))
 	res.Write([]byte("Upgrade: websocket\r\n"))
 	res.Write([]byte("Connection: Upgrade\r\n"))
-	res.Write([]byte(fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n", MakeResponseKey([]byte(req.Header.Get("Sec-WebSocket-Key"))))))
+	res.Write([]byte(
+		fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n",
+			MakeServerResponseKey(sha1.New(), []byte(req.Header.Get("Sec-WebSocket-Key"))))))
 	res.Write([]byte("\r\n"))
 
 	_, err = res.WriteTo(s.conn)
@@ -101,7 +106,7 @@ func (s *MockServer) IsClosed() bool {
 
 var _ sonic.Conn = &MockConn{}
 
-// MockConn is a mock TCP stream that's not attached to any operating system
+// MockConn is a mock TCP connection that's not attached to any operating system
 // IO executor. It is used to test reads and writes for WebSocket servers and
 // clients.
 //
@@ -111,7 +116,7 @@ type MockConn struct {
 	b *sonic.ByteBuffer
 }
 
-func NewMockStream() *MockConn {
+func NewMockConn() *MockConn {
 	s := &MockConn{
 		b: sonic.NewByteBuffer(),
 	}
@@ -119,7 +124,18 @@ func NewMockStream() *MockConn {
 }
 
 func (s *MockConn) Read(b []byte) (n int, err error) {
-	return s.b.Read(b)
+	// The underlying ByteBuffer return io.EOF if there is nothing to be read. Since we mock a blocking conn,
+	// we must wait on any io.EOF, and that's what we emulate here.
+	defer s.b.ConsumeAll()
+
+	for {
+		s.b.CommitAll()
+
+		n, err = s.b.Read(b)
+		if err != io.EOF {
+			return
+		}
+	}
 }
 
 func (s *MockConn) AsyncRead(b []byte, cb sonic.AsyncCallback) {

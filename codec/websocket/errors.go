@@ -5,7 +5,6 @@ import "errors"
 var (
 	ErrPayloadOverMaxSize = errors.New("payload over maximum size")
 	ErrPayloadTooBig      = errors.New("frame payload too big")
-	ErrWrongHandshakeRole = errors.New("wrong role when initiating/accepting the handshake")
 	ErrCannotUpgrade      = errors.New("cannot upgrade connection to WebSocket")
 	ErrMessageTooBig      = errors.New("message too big")
 
