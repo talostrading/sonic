@@ -6,27 +6,20 @@ import (
 	"strconv"
 )
 
-var _ sonic.Codec[*Response, *Response] = &ResponseCodec{}
+var (
+	_ sonic.Encoder[*Response]          = &ResponseEncoder{}
+	_ sonic.Decoder[*Response]          = &ResponseDecoder{}
+	_ sonic.Codec[*Response, *Response] = &ResponseCodec{}
+)
 
-type ResponseCodec struct {
-	decodeState decodeState
-	decodeRes   *Response
+type ResponseEncoder struct{}
+
+func NewResponseEncoder() (*ResponseEncoder, error) {
+	enc := &ResponseEncoder{}
+	return enc, nil
 }
 
-func NewResponseCodec() (*ResponseCodec, error) {
-	res, err := NewResponse()
-	if err != nil {
-		return nil, err
-	}
-
-	c := &ResponseCodec{
-		decodeState: stateFirstLine,
-		decodeRes:   res,
-	}
-	return c, nil
-}
-
-func (c *ResponseCodec) Encode(res *Response, dst *sonic.ByteBuffer) error {
+func (enc *ResponseEncoder) Encode(res *Response, dst *sonic.ByteBuffer) error {
 	if err := ValidateResponse(res); err != nil {
 		return err
 	}
@@ -51,15 +44,33 @@ func (c *ResponseCodec) Encode(res *Response, dst *sonic.ByteBuffer) error {
 	return nil
 }
 
-func (c *ResponseCodec) resetDecode() {
-	if c.decodeState == stateDone {
-		c.decodeRes.Reset()
-		c.decodeState = stateFirstLine
+type ResponseDecoder struct {
+	decodeState decodeState
+	decodeRes   *Response
+}
+
+func NewResponseDecoder() (*ResponseDecoder, error) {
+	res, err := NewResponse()
+	if err != nil {
+		return nil, err
+	}
+
+	dec := &ResponseDecoder{
+		decodeState: stateFirstLine,
+		decodeRes:   res,
+	}
+	return dec, nil
+}
+
+func (dec *ResponseDecoder) resetDecode() {
+	if dec.decodeState == stateDone {
+		dec.decodeRes.Reset()
+		dec.decodeState = stateFirstLine
 	}
 }
 
-func (c *ResponseCodec) Decode(src *sonic.ByteBuffer) (*Response, error) {
-	c.resetDecode()
+func (dec *ResponseDecoder) Decode(src *sonic.ByteBuffer) (*Response, error) {
+	dec.resetDecode()
 
 	var (
 		line []byte
@@ -75,7 +86,7 @@ prepareDecode:
 		goto done
 	}
 
-	switch s := c.decodeState; s {
+	switch s := dec.decodeState; s {
 	case stateFirstLine:
 		goto decodeFirstLine
 	case stateHeader:
@@ -91,13 +102,13 @@ prepareDecode:
 decodeFirstLine:
 	line, err = src.NextLine()
 	if err == nil {
-		err = DecodeResponseLine(line, c.decodeRes)
+		err = DecodeResponseLine(line, dec.decodeRes)
 	}
 
 	if err == nil {
-		c.decodeState = stateHeader
+		dec.decodeState = stateHeader
 	} else {
-		c.decodeState = stateDone
+		dec.decodeState = stateDone
 	}
 	goto prepareDecode
 
@@ -106,31 +117,54 @@ decodeHeader:
 	if err == nil {
 		if len(line) == 0 {
 			// CLRF - end of header
-			if ExpectBody(c.decodeRes.Header) {
-				c.decodeState = stateBody
+			if ExpectBody(dec.decodeRes.Header) {
+				dec.decodeState = stateBody
 			} else {
-				c.decodeState = stateDone
+				dec.decodeState = stateDone
 			}
 		} else {
 			headerKey, headerValue, err = DecodeHeaderLine(line)
 			if err == nil {
-				c.decodeRes.Header.Add(string(headerKey), string(headerValue))
+				dec.decodeRes.Header.Add(string(headerKey), string(headerValue))
 			}
 		}
 	}
 	goto prepareDecode
 
 decodeBody:
-	n, err = strconv.ParseInt(c.decodeRes.Header.Get("Content-Length"), 10, 64)
+	n, err = strconv.ParseInt(dec.decodeRes.Header.Get("Content-Length"), 10, 64)
 	if err == nil {
 		err = src.PrepareRead(int(n))
 		if err == nil {
-			c.decodeRes.Body = src.Data()
-			c.decodeState = stateDone
+			dec.decodeRes.Body = src.Data()
+			dec.decodeState = stateDone
 		}
 	}
 	goto prepareDecode
 
 done:
-	return c.decodeRes, err
+	return dec.decodeRes, err
+}
+
+type ResponseCodec struct {
+	*ResponseEncoder
+	*ResponseDecoder
+}
+
+func NewResponseCodec() (*ResponseCodec, error) {
+	enc, err := NewResponseEncoder()
+	if err != nil {
+		return nil, err
+	}
+
+	dec, err := NewResponseDecoder()
+	if err != nil {
+		return nil, err
+	}
+
+	c := &ResponseCodec{}
+	c.ResponseEncoder = enc
+	c.ResponseDecoder = dec
+
+	return c, nil
 }
