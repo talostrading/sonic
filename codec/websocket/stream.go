@@ -84,6 +84,7 @@ func (s *WebsocketStream) reset() {
 	s.state = StateHandshake
 	s.src.Reset()
 	s.dst.Reset()
+	s.handshake.Reset()
 }
 
 func (s *WebsocketStream) NextLayer() sonic.Conn {
@@ -542,7 +543,7 @@ func (s *WebsocketStream) Handshake(conn sonic.Conn, url *url.URL) (err error) {
 		return err
 	}
 
-	err = s.prepareStream(conn)
+	err = s.prepare(conn)
 	if err == nil {
 		s.state = StateActive
 	} else {
@@ -559,7 +560,7 @@ func (s *WebsocketStream) AsyncHandshake(conn sonic.Conn, url *url.URL, cb func(
 
 	s.handshake.AsyncDo(conn, url, RoleClient, func(err error) {
 		if err == nil {
-			err = s.prepareStream(conn)
+			err = s.prepare(conn)
 		}
 
 		if err == nil {
@@ -572,7 +573,7 @@ func (s *WebsocketStream) AsyncHandshake(conn sonic.Conn, url *url.URL, cb func(
 	})
 }
 
-func (s *WebsocketStream) prepareStream(conn sonic.Conn) (err error) {
+func (s *WebsocketStream) prepare(conn sonic.Conn) (err error) {
 	s.codecConn, err = sonic.NewCodecConn[*Frame, *Frame](s.ioc, conn, s.codec, s.src, s.dst)
 	return err
 }

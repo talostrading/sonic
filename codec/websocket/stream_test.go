@@ -92,7 +92,7 @@ func TestWebsocketStream_ClientReadUnFragmentedMessage(t *testing.T) {
 	// does not need to do any reads.
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{0x81, 2, 0x01, 0x02}) // fin=true type=text payload_len=2
 
@@ -124,7 +124,7 @@ func TestWebsocketStream_ClientAsyncReadUnFragmentedMessage(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{0x81, 2, 0x01, 0x02}) // fin=true type=text payload_len=2
 
@@ -164,7 +164,7 @@ func TestWebsocketStream_ClientReadFragmentedMessage(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		0x01, 2, 0x01, 0x02, // fin=false, type=text, payload_len=2
@@ -199,7 +199,7 @@ func TestWebsocketStream_ClientAsyncReadFragmentedMessage(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		0x01, 2, 0x01, 0x02, // fin=false, type=text, payload_len=2
@@ -242,7 +242,7 @@ func TestWebsocketStream_ClientReadCorruptControlFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		byte(OpcodeClose), 2, 0x01, 0x02, // fin=false, type=close, payload_len=2
@@ -285,7 +285,7 @@ func TestWebsocketStream_ClientAsyncReadCorruptControlFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		byte(OpcodeClose), 2, 0x01, 0x02, // fin=false, type=close, payload_len=2
@@ -335,7 +335,7 @@ func TestWebsocketStream_ClientReadPingFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		byte(OpcodePing) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
@@ -388,7 +388,7 @@ func TestWebsocketStream_ClientAsyncReadPingFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		byte(OpcodePing) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
@@ -448,7 +448,7 @@ func TestWebsocketStream_ClientReadPongFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		byte(OpcodePong) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
@@ -497,7 +497,7 @@ func TestWebsocketStream_ClientAsyncReadPongFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	ws.src.Write([]byte{
 		byte(OpcodePong) | 1<<7, 2, 0x01, 0x02, // fin=true, type=ping, payload_len=2
@@ -547,7 +547,7 @@ func TestWebsocketStream_ClientReadCloseFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	payload := EncodeCloseFramePayload(CloseNormal, "bye")
 	ws.src.Write([]byte{
@@ -610,7 +610,7 @@ func TestWebsocketStream_ClientAsyncReadCloseFrame(t *testing.T) {
 
 	ws.state = StateActive
 	ws.role = RoleClient
-	ws.prepareStream(NewMockConn())
+	ws.prepare(NewMockConn())
 
 	payload := EncodeCloseFramePayload(CloseNormal, "bye")
 	ws.src.Write([]byte{
@@ -676,7 +676,7 @@ func TestWebsocketStream_ClientWriteFrame(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	f := AcquireFrame()
 	defer ReleaseFrame(f)
@@ -724,7 +724,7 @@ func TestWebsocketStream_ClientAsyncWriteFrame(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	f := AcquireFrame()
 	defer ReleaseFrame(f)
@@ -781,7 +781,7 @@ func TestWebsocketStream_ClientWrite(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	err = ws.Write([]byte{1, 2, 3, 4, 5}, TypeText)
 	if err != nil {
@@ -823,7 +823,7 @@ func TestWebsocketStream_ClientAsyncWrite(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	ws.AsyncWrite([]byte{1, 2, 3, 4, 5}, TypeText, func(err error) {
 		if err != nil {
@@ -866,7 +866,7 @@ func TestWebsocketStream_ClientClose(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	err = ws.Close(CloseNormal, "bye")
 	if err != nil {
@@ -911,7 +911,7 @@ func TestWebsocketStream_ClientAsyncClose(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	ran := false
 	ws.AsyncClose(CloseNormal, "bye", func(err error) {
@@ -964,7 +964,7 @@ func TestWebsocketStream_ClientCloseHandshakeWeStart(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	err = ws.Close(CloseNormal, "bye")
 	if err != nil {
@@ -1015,7 +1015,7 @@ func TestWebsocketStream_ClientAsyncCloseHandshakeWeStart(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	ran := false
 	ws.AsyncClose(CloseNormal, "bye", func(err error) {
@@ -1072,7 +1072,7 @@ func TestWebsocketStream_ClientCloseHandshakePeerStarts(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	serverClose := AcquireFrame()
 	defer ReleaseFrame(serverClose)
@@ -1120,7 +1120,7 @@ func TestWebsocketStream_ClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 	ws.state = StateActive
 	ws.role = RoleClient
 	mock := NewMockConn()
-	ws.prepareStream(mock)
+	ws.prepare(mock)
 
 	serverClose := AcquireFrame()
 	defer ReleaseFrame(serverClose)

@@ -10,6 +10,8 @@ import (
 	"net/url"
 )
 
+// TODO expose http headers so the client can request other features
+
 type Handshake struct {
 	// b is the buffer in which we read the handshake response from the peer.
 	// After the handshake completes, b might contain other bytes sent by the peer in the read region.
@@ -33,7 +35,7 @@ func NewHandshake(b *sonic.ByteBuffer) (*Handshake, error) {
 	}
 
 	h := &Handshake{
-		b: sonic.NewByteBuffer(),
+		b: b,
 
 		reqCodec: reqCodec,
 		resCodec: resCodec,
@@ -43,7 +45,7 @@ func NewHandshake(b *sonic.ByteBuffer) (*Handshake, error) {
 	return h, nil
 }
 
-func (h *Handshake) reset() {
+func (h *Handshake) Reset() {
 	h.b.Reset()
 	h.hasher.Reset()
 }
@@ -63,7 +65,7 @@ func (h *Handshake) AsyncDo(conn sonic.Conn, url *url.URL, role Role, cb func(er
 }
 
 func (h *Handshake) asyncDoClient(conn sonic.Conn, url *url.URL, cb func(error)) {
-	h.reset()
+	h.Reset()
 
 	req, expectedKey, err := h.createClientRequest(url)
 	if err != nil {
@@ -131,7 +133,7 @@ func (h *Handshake) Do(conn sonic.Conn, url *url.URL, role Role) error {
 }
 
 func (h *Handshake) doClient(conn sonic.Conn, url *url.URL) error {
-	h.reset()
+	h.Reset()
 
 	req, expectedKey, err := h.createClientRequest(url)
 	if err != nil {
