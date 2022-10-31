@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
+	"net/url"
 	"strconv"
 
 	"github.com/talostrading/sonic"
@@ -52,12 +54,27 @@ func getCaseCount() (n int, err error) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	s, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
+	s, err := websocket.NewWebsocketStream(ioc)
 	if err != nil {
 		return 0, err
 	}
 
-	err = s.Handshake(*addr + "/getCaseCount")
+	uri, err := url.Parse(*addr + "/getCaseCount")
+	if err != nil {
+		return 0, err
+	}
+
+	nc, err := net.Dial("tcp", uri.Host)
+	if err != nil {
+		return 0, err
+	}
+
+	conn, err := sonic.AdaptNetConn(ioc, nc)
+	if err != nil {
+		return 0, err
+	}
+
+	err = s.Handshake(conn, uri)
 	if err != nil {
 		return 0, err
 	}
@@ -79,13 +96,28 @@ func runTest(i int) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	s, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
+	s, err := websocket.NewWebsocketStream(ioc)
+	if err != nil {
+		panic(err)
+	}
+
+	uri, err := url.Parse(fmt.Sprintf("%s/runCase?case=%d&agent=sonic", *addr, i))
+	if err != nil {
+		panic(err)
+	}
+
+	nc, err := net.Dial("tcp", uri.Host)
+	if err != nil {
+		panic(err)
+	}
+
+	conn, err := sonic.AdaptNetConn(ioc, nc)
 	if err != nil {
 		panic(err)
 	}
 
 	done := false
-	s.AsyncHandshake(fmt.Sprintf("%s/runCase?case=%d&agent=sonic", *addr, i), func(err error) {
+	s.AsyncHandshake(conn, uri, func(err error) {
 		if err != nil {
 			panic(err)
 		}
@@ -139,12 +171,26 @@ func updateReports() {
 	fmt.Println("updating reports")
 	ioc := sonic.MustIO()
 
-	s, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
+	s, err := websocket.NewWebsocketStream(ioc)
 	if err != nil {
 		panic("could not update reports")
 	}
+	uri, err := url.Parse(*addr + "/updateReports?agent=sonic")
+	if err != nil {
+		panic(err)
+	}
 
-	s.AsyncHandshake(*addr+"/updateReports?agent=sonic", func(err error) {
+	nc, err := net.Dial("tcp", uri.Host)
+	if err != nil {
+		panic(err)
+	}
+
+	conn, err := sonic.AdaptNetConn(ioc, nc)
+	if err != nil {
+		panic(err)
+	}
+
+	s.AsyncHandshake(conn, uri, func(err error) {
 		if err != nil {
 			panic("could not update reports")
 		} else {
