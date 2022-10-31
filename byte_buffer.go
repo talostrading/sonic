@@ -146,6 +146,11 @@ func (b *ByteBuffer) Consume(n int) {
 	}
 }
 
+func (b *ByteBuffer) ConsumeAll() {
+	n := len(b.data[:b.ri])
+	b.Consume(n)
+}
+
 func (b *ByteBuffer) Reset() {
 	b.ri = 0
 	b.wi = 0
