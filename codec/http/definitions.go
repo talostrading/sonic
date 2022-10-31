@@ -18,6 +18,8 @@ const (
 type Proto string
 
 const (
+	headerDelim = ": "
+
 	ProtoHttp11 = "HTTP/1.1"
 )
 

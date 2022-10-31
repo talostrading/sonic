@@ -74,3 +74,19 @@ func EncodeRequestLine(req *Request, dst *sonic.ByteBuffer) error {
 
 	return nil
 }
+
+func ValidateRequest(req *Request) error {
+	if req.Method == "" {
+		return ErrMissingMethod
+	}
+	if req.URL == nil {
+		return ErrMissingURL
+	}
+	if req.Proto == "" {
+		return ErrMissingProto
+	}
+	if ExpectBody(req.Header) && req.Body == nil {
+		return ErrMissingBody
+	}
+	return nil
+}

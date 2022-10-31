@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 )
 
@@ -33,15 +34,48 @@ func (h mapHeader) Del(key string) {
 }
 
 func (h mapHeader) WriteTo(w io.Writer) (int64, error) {
-	var b []byte
 	for k, v := range h {
-		b = append(b, k...)
-		b = append(b, ": "...)
-		b = append(b, v...)
-		b = append(b, CLRF...)
+		n, err := w.Write([]byte(k))
+		if err != nil {
+			return int64(n), err
+		}
+		if n != len(k) {
+			return int64(n), fmt.Errorf("could not write header key")
+		}
+
+		n, err = w.Write([]byte(headerDelim))
+		if err != nil {
+			return int64(n), err
+		}
+		if n != len(headerDelim) {
+			return int64(n), fmt.Errorf("could not write header delimiter")
+		}
+
+		n, err = w.Write([]byte(v))
+		if err != nil {
+			return int64(n), err
+		}
+		if n != len(v) {
+			return int64(n), fmt.Errorf("could not write header value")
+		}
+
+		n, err = w.Write([]byte(CLRF))
+		if err != nil {
+			return int64(n), err
+		}
+		if n != len(CLRF) {
+			return int64(n), fmt.Errorf("could not write header newline")
+		}
 	}
-	n, err := w.Write(b)
-	return int64(n), err
+	n, err := w.Write([]byte(CLRF))
+	if err != nil {
+		return int64(n), err
+	}
+	if n != len(CLRF) {
+		return int64(n), fmt.Errorf("could not write header newline")
+	}
+
+	return int64(n), nil
 }
 
 func (h mapHeader) Has(key string) bool {
