@@ -236,17 +236,13 @@ func TestHandshake_AsyncDoClient(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	conn, err := net.Dial("tcp", uri.Host)
-	if err != nil {
-		t.Fatal(err)
-	}
-	adapter, err := sonic.AdaptNetConn(ioc, conn)
+	conn, err := makeConn(ioc, uri.Host)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	invoked := false
-	handshake.AsyncDo(adapter, uri, RoleClient, func(err error) {
+	handshake.AsyncDo(conn, uri, RoleClient, func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}

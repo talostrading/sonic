@@ -535,23 +535,39 @@ func (s *WebsocketStream) State() StreamState {
 
 func (s *WebsocketStream) Handshake(conn sonic.Conn, url *url.URL) (err error) {
 	s.reset()
+
 	s.role = RoleClient
 
 	if err := s.handshake.Do(conn, url, RoleClient); err != nil {
 		return err
 	}
 
-	return s.prepareStream(conn)
+	err = s.prepareStream(conn)
+	if err == nil {
+		s.state = StateActive
+	} else {
+		s.state = StateTerminated
+	}
+
+	return err
 }
 
 func (s *WebsocketStream) AsyncHandshake(conn sonic.Conn, url *url.URL, cb func(err error)) {
 	s.reset()
+
 	s.role = RoleClient
 
 	s.handshake.AsyncDo(conn, url, RoleClient, func(err error) {
 		if err == nil {
 			err = s.prepareStream(conn)
 		}
+
+		if err == nil {
+			s.state = StateActive
+		} else {
+			s.state = StateTerminated
+		}
+
 		cb(err)
 	})
 }
@@ -562,10 +578,18 @@ func (s *WebsocketStream) prepareStream(conn sonic.Conn) (err error) {
 }
 
 func (s *WebsocketStream) Accept(conn sonic.Conn) error {
+	s.reset()
+
+	s.role = RoleServer
+
 	panic("implement me")
 }
 
 func (s *WebsocketStream) AsyncAccept(conn sonic.Conn, cb func(error)) {
+	s.reset()
+
+	s.role = RoleServer
+
 	panic("implement me")
 }
 

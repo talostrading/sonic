@@ -1,15 +1,11 @@
 package websocket
 
 import (
-	"bufio"
-	"bytes"
 	"crypto/sha1"
 	"fmt"
+	http2 "github.com/talostrading/sonic/codec/http"
 	"github.com/talostrading/sonic/sonicopts"
-	"io"
 	"net"
-	"net/http"
-	"net/http/httputil"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -17,55 +13,92 @@ import (
 	"github.com/talostrading/sonic"
 )
 
+func makeConn(ioc *sonic.IO, addr string) (sonic.Conn, error) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	adapter, err := sonic.AdaptNetConn(ioc, conn)
+	if err != nil {
+		return nil, err
+	}
+	return adapter, nil
+}
+
 // MockServer is a server which can be used to test the WebSocket client.
 type MockServer struct {
 	ln     net.Listener
 	conn   net.Conn
 	closed int32
+
+	enc *http2.ResponseEncoder
+	dec *http2.RequestDecoder
 }
 
-func (s *MockServer) Accept(addr string) (err error) {
-	s.ln, err = net.Listen("tcp", addr)
+func NewMockServer(addr string) (*MockServer, error) {
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
+	enc, err := http2.NewResponseEncoder()
+	if err != nil {
+		return nil, err
+	}
+	dec, err := http2.NewRequestDecoder()
+	if err != nil {
+		return nil, err
+	}
+
+	return &MockServer{ln: ln, enc: enc, dec: dec}, nil
+}
+
+func (s *MockServer) Accept() (err error) {
 	conn, err := s.ln.Accept()
 	if err != nil {
 		return err
 	}
 	s.conn = conn
 
-	b := make([]byte, 4096)
-	n, err := s.conn.Read(b)
+	b := sonic.NewByteBuffer()
+	_, err = b.ReadFrom(conn)
 	if err != nil {
 		return err
 	}
-	b = b[:n]
 
-	req, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(b)))
+	req, err := s.dec.Decode(b)
 	if err != nil {
 		return err
 	}
 
 	if !strings.EqualFold(req.Header.Get("Upgrade"), "websocket") {
-		reqb, err := httputil.DumpRequest(req, true)
-		if err == nil {
-			err = fmt.Errorf("request is not websocket upgrade: %s", string(reqb))
-		}
+		return fmt.Errorf("malformed request: %s", string(b.Data()))
+	}
+
+	res, err := http2.NewResponse()
+	if err != nil {
 		return err
 	}
 
-	res := bytes.NewBuffer(nil)
-	res.Write([]byte("HTTP/1.1 101 Switching Protocols\r\n"))
-	res.Write([]byte("Upgrade: websocket\r\n"))
-	res.Write([]byte("Connection: Upgrade\r\n"))
-	res.Write([]byte(
-		fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n",
-			MakeServerResponseKey(sha1.New(), []byte(req.Header.Get("Sec-WebSocket-Key"))))))
-	res.Write([]byte("\r\n"))
+	res.Proto = http2.ProtoHttp11
+	res.StatusCode = http2.StatusSwitchingProtocols
+	res.Status = http2.StatusText(http2.StatusSwitchingProtocols)
+	res.Header.Add("Upgrade", "websocket")
+	res.Header.Add("Connection", "Upgrade")
+	res.Header.Add(
+		"Sec-WebSocket-Accept",
+		MakeServerResponseKey(sha1.New(), []byte(req.Header.Get("Sec-WebSocket-Key"))))
 
-	_, err = res.WriteTo(s.conn)
+	b.Reset()
+	err = s.enc.Encode(res, b)
+	if err != nil {
+		return err
+	}
+
+	_, err = b.WriteTo(s.conn)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -124,18 +157,7 @@ func NewMockConn() *MockConn {
 }
 
 func (s *MockConn) Read(b []byte) (n int, err error) {
-	// The underlying ByteBuffer return io.EOF if there is nothing to be read. Since we mock a blocking conn,
-	// we must wait on any io.EOF, and that's what we emulate here.
-	defer s.b.ConsumeAll()
-
-	for {
-		s.b.CommitAll()
-
-		n, err = s.b.Read(b)
-		if err != io.EOF {
-			return
-		}
-	}
+	return s.b.Read(b)
 }
 
 func (s *MockConn) AsyncRead(b []byte, cb sonic.AsyncCallback) {
