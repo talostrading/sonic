@@ -9,7 +9,7 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-func TestUnder125Frame(t *testing.T) {
+func TestFrame_Under125Frame(t *testing.T) {
 	raw := []byte{0x81, 5} // fin=1 opcode=1 (text) payload_len=5
 	raw = append(raw, genRandBytes(5)...)
 
@@ -26,7 +26,7 @@ func TestUnder125Frame(t *testing.T) {
 	checkFrame(t, f, false, true, raw[2:])
 }
 
-func Test126Frame(t *testing.T) {
+func TestFrame_126Frame(t *testing.T) {
 	raw := []byte{0x81, 126, 0, 200}
 	raw = append(raw, genRandBytes(200)...)
 
@@ -43,7 +43,7 @@ func Test126Frame(t *testing.T) {
 	checkFrame(t, f, false, true, raw[4:])
 }
 
-func Test127Frame(t *testing.T) {
+func TestFrame_127Frame(t *testing.T) {
 	raw := []byte{0x81, 127, 0, 0, 0, 0, 0, 0x01, 0xFF, 0xFF}
 	raw = append(raw, genRandBytes(131071)...)
 
@@ -60,7 +60,7 @@ func Test127Frame(t *testing.T) {
 	checkFrame(t, f, false, true, raw[10:])
 }
 
-func TestWriteFrame(t *testing.T) {
+func TestFrame_WriteFrame(t *testing.T) {
 	payload := []byte("heloo")
 
 	f := AcquireFrame()
@@ -91,7 +91,7 @@ func TestWriteFrame(t *testing.T) {
 	}
 }
 
-func TestSameFrameWriteRead(t *testing.T) {
+func TestFrame_SameFrameWriteRead(t *testing.T) {
 	// deserialize
 	f := AcquireFrame()
 	defer ReleaseFrame(f)

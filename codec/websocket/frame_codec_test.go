@@ -9,7 +9,7 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-func TestDecodeShortFrame(t *testing.T) {
+func TestFrameCodec_DecodeShortFrame(t *testing.T) {
 	src := sonic.NewByteBuffer()
 	src.Write([]byte{0x81, 1}) // fin=1 opcode=1 (text) payload_len=1
 
@@ -33,7 +33,7 @@ func TestDecodeShortFrame(t *testing.T) {
 	}
 }
 
-func TestDecodeExactlyOneFrame(t *testing.T) {
+func TestFrameCodec_DecodeExactlyOneFrame(t *testing.T) {
 	src := sonic.NewByteBuffer()
 	src.Write([]byte{0x81, 1, 0xFF}) // fin=1 opcode=1 (text) payload_len=1
 
@@ -62,7 +62,7 @@ func TestDecodeExactlyOneFrame(t *testing.T) {
 	}
 }
 
-func TestDecodeOneAndShortFrame(t *testing.T) {
+func TestFrameCodec_DecodeOneAndShortFrame(t *testing.T) {
 	src := sonic.NewByteBuffer()
 	src.Write([]byte{0x81, 1, 0xFF, 0xFF, 0xFF, 0xFF}) // fin=1 opcode=1 (text) payload_len=1
 
@@ -92,7 +92,7 @@ func TestDecodeOneAndShortFrame(t *testing.T) {
 	}
 }
 
-func TestDecodeTwoFrames(t *testing.T) {
+func TestFrameCodec_DecodeTwoFrames(t *testing.T) {
 	src := sonic.NewByteBuffer()
 	src.Write([]byte{
 		0x81, 1, 0xFF, // first complete frame
