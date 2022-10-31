@@ -27,23 +27,26 @@ func NewResponseCodec() (*ResponseCodec, error) {
 }
 
 func (c *ResponseCodec) Encode(res *Response, dst *sonic.ByteBuffer) error {
-	// encode request-line
-	dst.WriteString(res.Proto.String())
-	dst.WriteString(" ")
+	if err := ValidateResponse(res); err != nil {
+		return err
+	}
 
-	dst.WriteString(strconv.FormatInt(int64(res.StatusCode), 10))
-	dst.WriteString(" ")
+	// status-line
+	if err := EncodeResponseLine(res, dst); err != nil {
+		return err
+	}
 
-	dst.WriteString(res.Status)
-	dst.WriteString(" ")
+	// header
+	if _, err := res.Header.WriteTo(dst); err != nil {
+		return err
+	}
 
-	dst.WriteString(CLRF)
-
-	// encode headers
-	res.Header.WriteTo(dst)
-
-	// encode body
-	dst.Write(res.Body)
+	// body
+	if ExpectBody(res.Header) {
+		if n, err := dst.Write(res.Body); err != nil || n != len(res.Body) {
+			return err
+		}
+	}
 
 	return nil
 }
