@@ -3,6 +3,7 @@ package http
 import (
 	"bytes"
 	"fmt"
+	"github.com/talostrading/sonic"
 	"net/url"
 )
 
@@ -55,6 +56,21 @@ func DecodeRequestLine(line []byte, into *Request) (err error) {
 	if err != nil {
 		return &RequestError{reason: fmt.Sprintf("invalid http protocol err=%v", err), raw: line}
 	}
+
+	return nil
+}
+
+func EncodeRequestLine(req *Request, dst *sonic.ByteBuffer) error {
+	dst.WriteString(req.Method.String())
+	dst.WriteString(" ")
+
+	dst.WriteString(req.URL.String())
+	dst.WriteString(" ")
+
+	dst.WriteString(req.Proto.String())
+	dst.WriteString(" ")
+
+	dst.WriteString(CLRF)
 
 	return nil
 }

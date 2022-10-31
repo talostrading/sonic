@@ -29,22 +29,34 @@ func NewRequestCodec() (*RequestCodec, error) {
 
 func (c *RequestCodec) Encode(req *Request, dst *sonic.ByteBuffer) error {
 	// encode request-line
-	dst.WriteString(req.Method.String())
-	dst.WriteString(" ")
+	if req.Method == "" {
+		return ErrMissingMethod
+	}
+	if req.URL == nil {
+		return ErrMissingURL
+	}
+	if req.Proto == "" {
+		return ErrMissingProto
+	}
+	if ExpectBody(req.Header) && req.Body == nil {
+		return ErrMissingBody
+	}
 
-	dst.WriteString(req.URL.String())
-	dst.WriteString(" ")
+	if err := EncodeRequestLine(req, dst); err != nil {
+		return err
+	}
 
-	dst.WriteString(req.Proto.String())
-	dst.WriteString(" ")
+	// encode headers
+	if _, err := req.Header.WriteTo(dst); err != nil {
+		return err
+	}
 
 	dst.WriteString(CLRF)
 
-	// encode headers
-	req.Header.WriteTo(dst)
-
 	// encode body
-	dst.Write(req.Body)
+	if n, err := dst.Write(req.Body); err != nil || n != len(req.Body) {
+		return err
+	}
 
 	return nil
 }

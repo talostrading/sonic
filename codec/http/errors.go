@@ -7,6 +7,10 @@ import (
 
 var (
 	ErrInvalidHeader = errors.New("invalid header")
+	ErrMissingMethod = errors.New("missing http method")
+	ErrMissingURL    = errors.New("missing http url")
+	ErrMissingProto  = errors.New("missing http protocol")
+	ErrMissingBody   = errors.New("missing http body")
 )
 
 type RequestError struct {
