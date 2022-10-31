@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/websocket"
@@ -11,12 +13,27 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	client, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
+	client, err := websocket.NewWebsocketStream(ioc)
 	if err != nil {
 		panic(err)
 	}
 
-	client.AsyncHandshake("ws://localhost:8080", func(err error) {
+	uri, err := url.Parse("ws://localhost:8080")
+	if err != nil {
+		panic(err)
+	}
+
+	nc, err := net.Dial("tcp", uri.Host)
+	if err != nil {
+		panic(err)
+	}
+
+	conn, err := sonic.AdaptNetConn(ioc, nc)
+	if err != nil {
+		panic(err)
+	}
+
+	client.AsyncHandshake(conn, uri, func(err error) {
 		if err != nil {
 			panic(err)
 		} else {
