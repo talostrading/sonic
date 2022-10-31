@@ -2,8 +2,9 @@ package websocket
 
 import (
 	"crypto/rand"
-	"crypto/sha1"
 	"encoding/base64"
+	"github.com/talostrading/sonic/util"
+	"hash"
 )
 
 func Mask(mask, b []byte) {
@@ -16,18 +17,18 @@ func GenMask(b []byte) {
 	rand.Read(b)
 }
 
-func MakeRequestKey() string {
-	b := make([]byte, 16)
+func MakeClientRequestKey(b []byte) string {
+	b = util.ExtendSlice(b, 16)
 	rand.Read(b)
 	return base64.StdEncoding.EncodeToString(b)
 }
 
-func MakeResponseKey(reqKey []byte) string {
+func MakeServerResponseKey(hasher hash.Hash, reqKey []byte) string {
 	var resKey []byte
 	resKey = append(resKey, reqKey...)
 	resKey = append(resKey, GUID...)
 
-	hasher := sha1.New()
+	hasher.Reset()
 	hasher.Write(resKey)
 	return base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 }
