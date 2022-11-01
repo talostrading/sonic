@@ -102,12 +102,16 @@ type File interface {
 type Conn interface {
 	FileDescriptor
 	net.Conn
+
+	// TODO Layered[Socket]
 }
 
 // PacketConn is a generic packet-oriented network connection.
 type PacketConn interface {
 	FileDescriptor
 	net.PacketConn
+
+	// TODO Layered[Socket]
 }
 
 type AcceptCallback func(error, Conn)
@@ -128,6 +132,8 @@ type Listener interface {
 
 	// Addr returns the listener's network address.
 	Addr() net.Addr
+
+	// TODO Layered[Socket]
 }
 
 type Encoder[Item any] interface {
@@ -164,5 +170,13 @@ type CodecConn[Enc, Dec any] interface {
 	WriteNext(Enc) error
 	AsyncWriteNext(Enc, func(error))
 
-	NextLayer() Conn
+	Layered[Conn]
+
+	io.Closer
+	Closed() bool
+}
+
+// Layered represents any type of network or file entity that sits on top of another entity which we call a layer.
+type Layered[T any] interface {
+	NextLayer() T
 }

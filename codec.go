@@ -2,9 +2,8 @@ package sonic
 
 import (
 	"errors"
-	"github.com/talostrading/sonic/sonicopts"
-
 	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
 )
 
 func NewCodecConn[Enc, Dec any](
@@ -117,4 +116,12 @@ func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb func(error))
 
 func (s *BlockingCodecStream[Enc, Dec]) NextLayer() Conn {
 	return s.conn
+}
+
+func (s *BlockingCodecStream[Enc, Dec]) Close() error {
+	return s.conn.Close()
+}
+
+func (s *BlockingCodecStream[Enc, Dec]) Closed() bool {
+	return s.conn.Closed()
 }

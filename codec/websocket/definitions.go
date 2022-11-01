@@ -121,10 +121,7 @@ type ControlCallback = func(mt MessageType, payload []byte)
 // it is important to call Flush or AsyncFlush in order to write any pending
 // control frame replies to the underlying stream.
 type Stream interface {
-	// NextLayer returns the underlying Stream layer.
-	//
-	// The returned layer is provided to the Stream and owned by it throughout its entire lifetime.
-	NextLayer() sonic.Conn
+	sonic.Layered[sonic.CodecConn[*Frame, *Frame]]
 
 	// SupportsDeflate returns true if Deflate compression is supported.
 	//
