@@ -23,7 +23,7 @@ func TestGetLowestLayer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	lowest := GetLowestLayer[Conn](codecConn)
+	lowest := GetLayer[Conn](codecConn)
 	if fmt.Sprintf("%p", lowest) != fmt.Sprintf("%p", conn) {
 		t.Fatal("wrong lowest layer")
 	}
