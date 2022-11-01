@@ -85,6 +85,9 @@ func ValidateRequest(req *Request) error {
 	if req.Proto == "" {
 		return ErrMissingProto
 	}
+	if !req.Header.Has("Host") {
+		return ErrMissingHost
+	}
 	if ExpectBody(req.Header) && req.Body == nil {
 		return ErrMissingBody
 	}

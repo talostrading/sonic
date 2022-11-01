@@ -12,6 +12,7 @@ var (
 	ErrMissingProto  = errors.New("missing http protocol")
 	ErrMissingBody   = errors.New("missing http body")
 	ErrMissingStatus = errors.New("missing http status")
+	ErrMissingHost   = errors.New("missing http host")
 )
 
 type RequestError struct {

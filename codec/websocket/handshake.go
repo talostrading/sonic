@@ -3,6 +3,7 @@ package websocket
 import (
 	"crypto/sha1"
 	"errors"
+	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/http"
 	"github.com/talostrading/sonic/sonicerrors"
@@ -146,7 +147,7 @@ func (h *Handshake) doClient(conn sonic.Conn, url *url.URL) error {
 
 	h.b.CommitAll()
 
-	// No need to check n - the ByteBuffer writes everything.
+	// No need to check n as the ByteBuffer writes everything.
 	if _, err := h.b.WriteTo(conn); err != nil {
 		return err
 	}
@@ -193,6 +194,7 @@ func (h *Handshake) createClientRequest(url *url.URL) (req *http.Request, expect
 	req.URL = url
 	req.Proto = http.ProtoHttp11
 
+	req.Header.Add("Host", url.Host)
 	req.Header.Add("Upgrade", "websocket")
 	req.Header.Add("Connection", "upgrade")
 	req.Header.Add("Sec-WebSocket-Key", sentKey)
@@ -202,6 +204,7 @@ func (h *Handshake) createClientRequest(url *url.URL) (req *http.Request, expect
 }
 
 func (h *Handshake) checkServerResponse(res *http.Response, expectedKey string) error {
+	fmt.Println("checking response", res)
 	if !IsUpgradeRes(res) {
 		return ErrCannotUpgrade
 	}
