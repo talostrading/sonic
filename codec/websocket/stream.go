@@ -87,10 +87,8 @@ func (s *WebsocketStream) reset() {
 	s.handshake.Reset()
 }
 
-func (s *WebsocketStream) NextLayer() sonic.Conn {
-	// TODO This next layer thing should be generic
-	// after that we can do: return s.codecConn
-	return s.codecConn.NextLayer()
+func (s *WebsocketStream) NextLayer() sonic.CodecConn[*Frame, *Frame] {
+	return s.codecConn
 }
 
 func (s *WebsocketStream) SupportsUTF8() bool {
