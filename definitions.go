@@ -180,3 +180,14 @@ type CodecConn[Enc, Dec any] interface {
 type Layered[T any] interface {
 	NextLayer() T
 }
+
+// ReconnectingConn maintains a persistent connection to an endpoint, by always reconnecting to the peer in case of
+// a disconnect.
+//
+// In case reads/writes are done while reconnecting, an ErrReconnecting is returned to the caller.
+type ReconnectingConn interface {
+	Conn
+	Layered[Conn]
+
+	Reconnect() error
+}

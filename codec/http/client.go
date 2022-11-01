@@ -8,6 +8,7 @@ import (
 
 var _ Client = &client{}
 
+// TODO
 type client struct {
 	ioc *sonic.IO
 	url *url.URL
