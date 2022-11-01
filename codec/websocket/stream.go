@@ -143,7 +143,7 @@ func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 	// async read.
 	//
 	// I think we can just flush asynchronously while reading asynchronously at
-	// the same time. I'm pretty sure this will work with a BlockingCodecStream.
+	// the same time. I'm pretty sure this will work with a BlockingCodecConn.
 	//
 	// Not entirely sure about a NonblockingCodecStream.
 	s.AsyncFlush(func(err error) {
