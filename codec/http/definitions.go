@@ -3,7 +3,9 @@ package http
 import (
 	"bytes"
 	"fmt"
+	"github.com/talostrading/sonic"
 	"io"
+	"net/http"
 )
 
 type decodeState uint8
@@ -79,4 +81,42 @@ type Header interface {
 	Has(key string) bool
 	Len() int
 	Reset()
+}
+
+type State int8
+
+const (
+	// StateInactive Start state. A client is in StateInactive while it is trying to dial the server's endpoint.
+	// If the dial fails, it goes into StateTerminated. If the dial succeeds, it goes into StateActive.
+	StateInactive State = iota
+
+	// StateActive Intermediate state. The client has a persistent connection to the server and can issue requests.
+	StateActive
+
+	// StateClosedByServer Terminal state. The server has sent a `Connection: close` header in the response. The client
+	// cannot send any more requests. The client processes the final response. The underlying transport connection is
+	//	// closed by both peers.
+	StateClosedByServer
+
+	// StateClosedByClient Terminal state. The client has sent a `Connection: close` header in the request. The client
+	// cannot send any more requests. The client processes the final response. The underlying transport connection is
+	// closed by both peers.
+	StateClosedByClient
+
+	// StateTerminated Terminal state. An error occurred and the underlying transport connection has been closed
+	// ungracefully (i.e. without signaling the close with `Connection: Close`.
+	StateTerminated
+)
+
+// Client makes requests to a server over a persistent connection.
+type Client interface {
+	Do(*http.Request) (*http.Response, error)
+	AsyncDo(*http.Request, func(error, *http.Response))
+
+	State() State
+
+	io.Closer
+	Closed() bool
+
+	sonic.Layered[sonic.Conn]
 }
