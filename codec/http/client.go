@@ -1,6 +1,7 @@
 package http
 
 import (
+	"crypto/tls"
 	"github.com/talostrading/sonic"
 	"net/http"
 	"net/url"
@@ -8,19 +9,26 @@ import (
 
 var _ Client = &client{}
 
-// TODO
 type client struct {
 	ioc *sonic.IO
 	url *url.URL
+	tls *tls.Config
+
+	src *sonic.ByteBuffer
+	dst *sonic.ByteBuffer
 
 	state State
 	conn  sonic.Conn // TODO this should be a reconnecting conn
 }
 
-func NewClient(ioc *sonic.IO, url *url.URL) (*client, error) {
+func NewClient(ioc *sonic.IO, url *url.URL, tls *tls.Config) (*client, error) {
 	c := &client{
 		ioc: ioc,
 		url: url,
+		tls: tls,
+
+		src: sonic.NewByteBuffer(),
+		dst: sonic.NewByteBuffer(),
 
 		state: StateInactive,
 	}
