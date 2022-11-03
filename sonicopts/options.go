@@ -1,6 +1,9 @@
 package sonicopts
 
-import "time"
+import (
+	"crypto/tls"
+	"time"
+)
 
 func Get(opts []Option, t OptionType) Option {
 	for _, opt := range opts {
@@ -19,6 +22,8 @@ const (
 	TypeReuseAddr
 	TypeNoDelay
 	TypeTimeout
+	TypeUseNetConn
+	TypeTLSConfig
 	MaxOption
 )
 
@@ -34,6 +39,10 @@ func (t OptionType) String() string {
 		return "no_delay"
 	case TypeTimeout:
 		return "timeout"
+	case TypeUseNetConn:
+		return "use_net_conn"
+	case TypeTLSConfig:
+		return "tls_config"
 	default:
 		return "option_unknown"
 	}
@@ -130,6 +139,42 @@ func (o *optionTimeout) Value() interface{} {
 
 func Timeout(v time.Duration) Option {
 	return &optionTimeout{
+		v: v,
+	}
+}
+
+type optionUseNetConn struct {
+	v bool
+}
+
+func (o *optionUseNetConn) Type() OptionType {
+	return TypeUseNetConn
+}
+
+func (o *optionUseNetConn) Value() interface{} {
+	return o.v
+}
+
+func UseNetConn(v bool) Option {
+	return &optionUseNetConn{
+		v: v,
+	}
+}
+
+type optionTLSConfig struct {
+	v *tls.Config
+}
+
+func (o *optionTLSConfig) Type() OptionType {
+	return TypeUseNetConn
+}
+
+func (o *optionTLSConfig) Value() interface{} {
+	return o.v
+}
+
+func TLSConfig(v *tls.Config) Option {
+	return &optionTLSConfig{
 		v: v,
 	}
 }

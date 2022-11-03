@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"crypto/tls"
 	"github.com/talostrading/sonic/sonicopts"
 	"net"
 	"time"
@@ -22,22 +23,44 @@ func Dial(
 	addr string,
 	opts ...sonicopts.Option,
 ) (Conn, error) {
-	sock, err := internal.NewSocket(opts...)
-	if err != nil {
-		return nil, err
-	}
+	if opt := sonicopts.Get(opts, sonicopts.TypeUseNetConn); opt != nil {
+		if opt := sonicopts.Get(opts, sonicopts.TypeTLSConfig); opt != nil {
+			tlsConn, err := tls.Dial(network, addr, opt.Value().(*tls.Config))
+			if err != nil {
+				return nil, err
+			}
+			conn, err := AdaptNetConn(ioc, tlsConn, opts...)
+			return conn, err
+		} else {
+			netConn, err := net.Dial(network, addr)
+			if err != nil {
+				return nil, err
+			}
+			conn, err := AdaptNetConn(ioc, netConn, opts...)
+			return conn, err
+		}
+	} else {
+		if opt := sonicopts.Get(opts, sonicopts.TypeTLSConfig); opt != nil {
+			panic("TLS not supported on native sonic.Conn")
+		} else {
+			sock, err := internal.NewSocket(opts...)
+			if err != nil {
+				return nil, err
+			}
 
-	var timeout time.Duration
-	if opt := sonicopts.Get(opts, sonicopts.TypeTimeout); opt != nil {
-		timeout = opt.Value().(time.Duration)
-	}
+			var timeout time.Duration
+			if opt := sonicopts.Get(opts, sonicopts.TypeTimeout); opt != nil {
+				timeout = opt.Value().(time.Duration)
+			}
 
-	err = sock.ConnectTimeout(network, addr, timeout)
-	if err != nil {
-		return nil, err
-	}
+			err = sock.ConnectTimeout(network, addr, timeout)
+			if err != nil {
+				return nil, err
+			}
 
-	return newSonicConn(ioc, sock, opts...)
+			return newSonicConn(ioc, sock, opts...)
+		}
+	}
 }
 
 func AsyncDial(
