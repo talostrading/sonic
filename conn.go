@@ -15,35 +15,21 @@ var (
 
 type AsyncDialCallback func(error, Conn)
 
+// Dial establishes a sonic.Conn to the remote peer. A connection timeout can be passed into opts.
 func Dial(
 	ioc *IO,
 	network string,
 	addr string,
 	opts ...sonicopts.Option,
 ) (Conn, error) {
-	return DialTimeout(ioc, network, addr, 0, opts...)
-}
-
-func AsyncDial(
-	ioc *IO,
-	network string,
-	addr string,
-	cb AsyncDialCallback,
-	opts ...sonicopts.Option,
-) {
-	AsyncDialTimeout(ioc, network, addr, 0, cb)
-}
-
-func DialTimeout(
-	ioc *IO,
-	network string,
-	addr string,
-	timeout time.Duration,
-	opts ...sonicopts.Option,
-) (Conn, error) {
 	sock, err := internal.NewSocket(opts...)
 	if err != nil {
 		return nil, err
+	}
+
+	var timeout time.Duration
+	if opt := sonicopts.Get(opts, sonicopts.TypeTimeout); opt != nil {
+		timeout = opt.Value().(time.Duration)
 	}
 
 	err = sock.ConnectTimeout(network, addr, timeout)
@@ -52,14 +38,12 @@ func DialTimeout(
 	}
 
 	return newSonicConn(ioc, sock, opts...)
-
 }
 
-func AsyncDialTimeout(
+func AsyncDial(
 	ioc *IO,
 	network string,
 	addr string,
-	timeout time.Duration,
 	cb AsyncDialCallback,
 	opts ...sonicopts.Option,
 ) {

@@ -1,6 +1,15 @@
 package sonicopts
 
-// TODO make sonicopts.Opts type
+import "time"
+
+func Get(opts []Option, t OptionType) Option {
+	for _, opt := range opts {
+		if opt.Type() == t {
+			return opt
+		}
+	}
+	return nil
+}
 
 type OptionType uint8
 
@@ -9,6 +18,7 @@ const (
 	TypeReusePort
 	TypeReuseAddr
 	TypeNoDelay
+	TypeTimeout
 	MaxOption
 )
 
@@ -20,6 +30,10 @@ func (t OptionType) String() string {
 		return "reuse_port"
 	case TypeReuseAddr:
 		return "reuse_addr"
+	case TypeNoDelay:
+		return "no_delay"
+	case TypeTimeout:
+		return "timeout"
 	default:
 		return "option_unknown"
 	}
@@ -98,6 +112,24 @@ func (o *optionNoDelay) Value() interface{} {
 
 func NoDelay(v bool) Option {
 	return &optionNoDelay{
+		v: v,
+	}
+}
+
+type optionTimeout struct {
+	v time.Duration
+}
+
+func (o *optionTimeout) Type() OptionType {
+	return TypeTimeout
+}
+
+func (o *optionTimeout) Value() interface{} {
+	return o.v
+}
+
+func Timeout(v time.Duration) Option {
+	return &optionTimeout{
 		v: v,
 	}
 }
