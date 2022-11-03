@@ -115,8 +115,51 @@ func (h *Handshake) asyncDoClient(conn sonic.Conn, url *url.URL, cb func(error))
 }
 
 func (h *Handshake) asyncDoServer(conn sonic.Conn, url *url.URL, cb func(error)) {
-	// TODO
-	panic("not yet supported")
+	h.Reset()
+
+	var (
+		onReadFromClient sonic.AsyncCallback
+		req              *http.Request
+
+		asyncWriteToClient = func(cb func(err error)) {
+			res, err := h.createServerResponse(req)
+			if err != nil {
+				cb(err)
+				return
+			}
+
+			if err := h.resCodec.Encode(res, h.b); err != nil {
+				cb(err)
+				return
+			}
+
+			h.b.CommitAll()
+
+			h.b.AsyncWriteTo(conn, func(err error, _ int) {
+				cb(err)
+			})
+		}
+	)
+
+	onReadFromClient = func(err error, _ int) {
+		if err != nil {
+			cb(err)
+		} else {
+			req, err = h.reqCodec.Decode(h.b)
+			if err == nil {
+				err = h.checkClientRequest(req)
+			}
+
+			if errors.Is(err, sonicerrors.ErrNeedMore) {
+				h.b.AsyncReadFrom(conn, onReadFromClient)
+			} else if err != nil {
+				cb(err)
+			} else {
+				asyncWriteToClient(cb)
+			}
+		}
+	}
+	h.b.AsyncReadFrom(conn, onReadFromClient)
 }
 
 // Do performs the WebSocket handshake, using the provided connection.
@@ -174,9 +217,46 @@ func (h *Handshake) doClient(conn sonic.Conn, url *url.URL) error {
 	return h.checkServerResponse(res, expectedKey)
 }
 
-func (h *Handshake) doServer(conn sonic.Conn, url *url.URL) error {
-	// TODO
-	panic("not yet supported")
+func (h *Handshake) doServer(conn sonic.Conn, url *url.URL) (err error) {
+	h.Reset()
+
+	var req *http.Request
+	for {
+		_, err = h.b.ReadFrom(conn)
+		if err != nil {
+			return err
+		}
+
+		req, err = h.reqCodec.Decode(h.b)
+		if err == nil {
+			break
+		}
+
+		if !errors.Is(err, sonicerrors.ErrNeedMore) {
+			return err
+		}
+	}
+
+	if err := h.checkClientRequest(req); err != nil {
+		return err
+	}
+
+	res, err := h.createServerResponse(req)
+	if err != nil {
+		return err
+	}
+
+	if err := h.resCodec.Encode(res, h.b); err != nil {
+		return err
+	}
+
+	h.b.CommitAll()
+
+	if _, err := h.b.WriteTo(conn); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (h *Handshake) createClientRequest(url *url.URL) (req *http.Request, expectedKey string, err error) {
@@ -196,15 +276,38 @@ func (h *Handshake) createClientRequest(url *url.URL) (req *http.Request, expect
 
 	req.Header.Add("Host", url.Host)
 	req.Header.Add("Upgrade", "websocket")
-	req.Header.Add("Connection", "upgrade")
-	req.Header.Add("Sec-WebSocket-Key", sentKey)
-	req.Header.Add("Sec-Websocket-Version", "13")
+	req.Header.Add("Connection", "Upgrade")
+	req.Header.Add(HeaderKey, sentKey)
+	req.Header.Add(HeaderVersion, DefaultVersion)
 
 	return
 }
 
+func (h *Handshake) createServerResponse(req *http.Request) (res *http.Response, err error) {
+	res, err = http.NewResponse()
+	if err != nil {
+		return nil, err
+	}
+
+	res.Proto = http.ProtoHttp11
+	res.StatusCode = http.StatusSwitchingProtocols
+	res.Status = http.StatusText(res.StatusCode)
+
+	res.Header.Add("Upgrade", "websocket")
+	res.Header.Add("Connection", "Upgrade")
+	res.Header.Add(HeaderAccept, MakeServerResponseKey(h.hasher, []byte(req.Header.Get(HeaderKey))))
+
+	return
+}
+
+func (h *Handshake) checkClientRequest(req *http.Request) error {
+	if !req.Header.Has(HeaderKey) {
+		return fmt.Errorf("handshake failed - client must provide Sec-WebSocket-Key")
+	}
+	return nil
+}
+
 func (h *Handshake) checkServerResponse(res *http.Response, expectedKey string) error {
-	fmt.Println("checking response", res)
 	if !IsUpgradeRes(res) {
 		return ErrCannotUpgrade
 	}

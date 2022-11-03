@@ -576,20 +576,43 @@ func (s *WebsocketStream) prepare(conn sonic.Conn) (err error) {
 	return err
 }
 
-func (s *WebsocketStream) Accept(conn sonic.Conn) error {
+func (s *WebsocketStream) Accept(conn sonic.Conn, url *url.URL) (err error) {
 	s.reset()
 
 	s.role = RoleServer
 
-	panic("implement me")
+	if err := s.handshake.Do(conn, url, RoleServer); err != nil {
+		return err
+	}
+
+	err = s.prepare(conn)
+	if err == nil {
+		s.state = StateActive
+	} else {
+		s.state = StateTerminated
+	}
+
+	return err
 }
 
-func (s *WebsocketStream) AsyncAccept(conn sonic.Conn, cb func(error)) {
+func (s *WebsocketStream) AsyncAccept(conn sonic.Conn, url *url.URL, cb func(error)) {
 	s.reset()
 
 	s.role = RoleServer
 
-	panic("implement me")
+	s.handshake.AsyncDo(conn, url, RoleServer, func(err error) {
+		if err == nil {
+			err = s.prepare(conn)
+		}
+
+		if err == nil {
+			s.state = StateActive
+		} else {
+			s.state = StateTerminated
+		}
+
+		cb(err)
+	})
 }
 
 func (s *WebsocketStream) SetControlCallback(ccb ControlCallback) {

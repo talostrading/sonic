@@ -36,26 +36,28 @@ func main() {
 	client.AsyncHandshake(conn, uri, func(err error) {
 		if err != nil {
 			panic(err)
-		} else {
-			client.AsyncWrite([]byte("hello"), websocket.TypeText, func(err error) {
+		}
+
+		b := make([]byte, 2048)
+		var onWrite func(error)
+		onWrite = func(err error) {
+			if err != nil {
+				panic(err)
+			}
+
+			b = b[:cap(b)]
+			client.AsyncNextMessage(b, func(err error, n int, mt websocket.MessageType) {
 				if err != nil {
 					panic(err)
-				} else {
-					b := make([]byte, 128)
-					client.AsyncNextMessage(b, func(err error, n int, mt websocket.MessageType) {
-						if err != nil {
-							panic(err)
-						} else {
-							b = b[:n]
-							fmt.Println("read", n, "bytes", string(b), err)
-						}
-					})
 				}
+
+				b = b[:n]
+				fmt.Println("client read", n, "bytes", string(b), err)
+				client.AsyncWrite([]byte("hello"), websocket.TypeText, onWrite)
 			})
 		}
+		client.AsyncWrite([]byte("hello"), websocket.TypeText, onWrite)
 	})
 
-	for {
-		ioc.RunOneFor(0) // poll
-	}
+	ioc.Run()
 }

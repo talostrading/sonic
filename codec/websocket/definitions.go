@@ -7,6 +7,13 @@ import (
 	"github.com/talostrading/sonic"
 )
 
+const (
+	HeaderKey      = "Sec-WebSocket-Key"
+	HeaderAccept   = "Sec-WebSocket-Accept"
+	HeaderVersion  = "Sec-WebSocket-Version"
+	DefaultVersion = "13"
+)
+
 var (
 	MaxMessageSize = 1024 * 512 // the maximum size of a message
 	CloseTimeout   = 5 * time.Second
@@ -258,13 +265,13 @@ type Stream interface {
 	// Accept performs the handshake in the server role.
 	//
 	// The call blocks until the handshake completes successfully or with and error.
-	Accept(sonic.Conn) error
+	Accept(sonic.Conn, *url.URL) error
 
 	// AsyncAccept performs the handshake in the server role, asynchronously.
 	//
 	// This call does not block. The provided completion handler is called when the handshake completes successfully
 	// or with the provided error.
-	AsyncAccept(sonic.Conn, func(error))
+	AsyncAccept(sonic.Conn, *url.URL, func(error))
 
 	// AsyncClose sends a websocket close control frame asynchronously.
 	//
