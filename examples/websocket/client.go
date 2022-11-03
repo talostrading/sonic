@@ -2,11 +2,14 @@ package main
 
 import (
 	"fmt"
-	"net"
-	"net/url"
-
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/websocket"
+	"net"
+	"net/url"
+)
+
+var (
+	msg = []byte("hello")
 )
 
 func main() {
@@ -33,12 +36,14 @@ func main() {
 		panic(err)
 	}
 
+	fmt.Println("client writing", string(msg))
+
 	client.AsyncHandshake(conn, uri, func(err error) {
 		if err != nil {
 			panic(err)
 		}
 
-		b := make([]byte, 2048)
+		b := make([]byte, 32)
 		var onWrite func(error)
 		onWrite = func(err error) {
 			if err != nil {
@@ -52,12 +57,13 @@ func main() {
 				}
 
 				b = b[:n]
-				fmt.Println("client read", n, "bytes", string(b), err)
-				client.AsyncWrite([]byte("hello"), websocket.TypeText, onWrite)
+				client.AsyncWrite(msg, websocket.TypeText, onWrite)
 			})
 		}
-		client.AsyncWrite([]byte("hello"), websocket.TypeText, onWrite)
+		client.AsyncWrite(msg, websocket.TypeText, onWrite)
 	})
 
-	ioc.Run()
+	for {
+		ioc.PollOne()
+	}
 }

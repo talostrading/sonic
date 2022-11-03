@@ -297,6 +297,11 @@ func (s *WebsocketStream) asyncNextMessage(
 func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 	err = s.verifyFrame(f)
 
+	if s.role == RoleServer {
+		// WebSocket enforces client-to-server frame masking.
+		f.Unmask()
+	}
+
 	if err == nil {
 		if f.IsControl() {
 			err = s.handleControlFrame(f)

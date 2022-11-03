@@ -1,15 +1,33 @@
 package main
 
 import (
+	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/websocket"
 	"github.com/talostrading/sonic/sonicopts"
 	"net/url"
+	"time"
+)
+
+var (
+	reportDur = 5 * time.Second
+	count     = 0
 )
 
 func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
+
+	ticker, err := sonic.NewTimer(ioc)
+	err = ticker.ScheduleRepeating(reportDur, func() {
+		fmt.Println("received", count, "in", reportDur)
+		rate := reportDur / time.Duration(count)
+		fmt.Println("rate", rate)
+		count = 0
+	})
+	if err != nil {
+		panic(err)
+	}
 
 	url, err := url.Parse("ws://localhost:8080")
 	if err != nil {
@@ -36,12 +54,14 @@ func main() {
 				panic(err)
 			}
 
-			b := make([]byte, 2048)
+			b := make([]byte, 32)
 			var onMessage websocket.AsyncMessageHandler
 			onMessage = func(err error, n int, _ websocket.MessageType) {
 				if err != nil {
 					panic(err)
 				}
+
+				count++
 
 				b = b[:n]
 				ws.AsyncWrite(b, websocket.TypeText, func(err error) {
@@ -57,5 +77,7 @@ func main() {
 		})
 	})
 
-	ioc.Run()
+	for {
+		ioc.PollOne()
+	}
 }
