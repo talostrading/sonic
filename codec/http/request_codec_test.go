@@ -26,6 +26,7 @@ func TestRequestCodec_EncodeValidRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	req.Header.Add("Content-Length", "10")
+	req.Header.Add("Host", "localhost:8080")
 	req.Body = []byte("0123456789")
 	req.Proto = ProtoHttp11
 
@@ -52,6 +53,14 @@ func TestRequestCodec_EncodeValidRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(bytes.TrimSpace(line), []byte("Content-Length: 10")) {
+		t.Fatal("wrong header")
+	}
+
+	line, _, err = rd.ReadLine()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(line), []byte("Host: localhost:8080")) {
 		t.Fatal("wrong header")
 	}
 
