@@ -125,8 +125,6 @@ func ApplyOpts(fd int, opts ...sonicopts.Option) error {
 			); err != nil {
 				return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
 			}
-		default:
-			return fmt.Errorf("unsupported socket option %s", t)
 		}
 	}
 
