@@ -23,8 +23,8 @@ func Dial(
 	addr string,
 	opts ...sonicopts.Option,
 ) (Conn, error) {
-	if opt := sonicopts.Get(opts, sonicopts.TypeUseNetConn); opt != nil {
-		if opt := sonicopts.Get(opts, sonicopts.TypeTLSConfig); opt != nil {
+	if opt := sonicopts.Get(opts, sonicopts.TypeUseNetConn); opt != nil && opt.Value().(bool) {
+		if opt := sonicopts.Get(opts, sonicopts.TypeTLSConfig); opt != nil && opt.Value().(bool) {
 			tlsConn, err := tls.Dial(network, addr, opt.Value().(*tls.Config))
 			if err != nil {
 				return nil, err
@@ -40,7 +40,7 @@ func Dial(
 			return conn, err
 		}
 	} else {
-		if opt := sonicopts.Get(opts, sonicopts.TypeTLSConfig); opt != nil {
+		if opt := sonicopts.Get(opts, sonicopts.TypeTLSConfig); opt != nil && opt.Value().(bool) {
 			panic("TLS not supported on native sonic.Conn")
 		} else {
 			sock, err := internal.NewSocket(opts...)
