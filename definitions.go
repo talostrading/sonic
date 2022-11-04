@@ -190,4 +190,5 @@ type ReconnectingConn interface {
 	Layered[Conn]
 
 	Reconnect() error
+	AsyncReconnect(func(error))
 }

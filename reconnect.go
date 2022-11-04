@@ -2,22 +2,20 @@ package sonic
 
 import (
 	"fmt"
+	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/sonicopts"
-	"net"
 	"time"
 )
 
 var _ ReconnectingConn = &reconnectingConn{}
 
 type reconnectingConn struct {
+	Conn
+
 	ioc     *IO
 	network string
 	addr    string
 	opts    []sonicopts.Option
-
-	conn Conn
-
-	reconnecting bool
 
 	MaxTimeout     time.Duration
 	MinTimeout     time.Duration
@@ -27,10 +25,13 @@ type reconnectingConn struct {
 	reconnectTimer *Timer
 	timeout        time.Duration
 	retries        int
+
+	reconnecting bool
+	OnReconnect  func()
 }
 
-func NewReconnectingConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (ReconnectingConn, error) {
-	conn := &reconnectingConn{
+func DialReconnecting(ioc *IO, network, addr string, opts ...sonicopts.Option) (ReconnectingConn, error) {
+	c := &reconnectingConn{
 		ioc:     ioc,
 		network: network,
 		addr:    addr,
@@ -38,21 +39,52 @@ func NewReconnectingConn(ioc *IO, network, addr string, opts ...sonicopts.Option
 	}
 
 	var err error
-	conn.reconnectTimer, err = NewTimer(ioc)
+	c.reconnectTimer, err = NewTimer(ioc)
 	if err != nil {
 		return nil, err
 	}
 
-	return conn, nil
+	err = c.Reconnect()
+	if err != nil {
+		return nil, err
+	}
+
+	return c, nil
+}
+
+func AsyncDialReconnecting(ioc *IO, network, addr string, cb func(ReconnectingConn, error), opts ...sonicopts.Option) {
+	// TODO
+}
+
+func (c *reconnectingConn) AsyncReconnect(cb func(error)) {
+	if c.Conn != nil {
+		c.Conn.Close()
+	}
+	// TODO
+}
+
+func (c *reconnectingConn) scheduleAsyncReconnect(cb func(error)) {
+	// TODO
 }
 
 func (c *reconnectingConn) Reconnect() (err error) {
-	c.conn, err = Dial(c.ioc, c.network, c.addr, c.opts...)
+	if c.Conn != nil {
+		c.Conn.Close()
+	}
+	c.Conn, err = Dial(c.ioc, c.network, c.addr, c.opts...)
+	if err == nil {
+		c.reconnecting = false
+		if c.OnReconnect != nil {
+			c.OnReconnect()
+		}
+	}
 	return
 }
 
 func (c *reconnectingConn) scheduleReconnect() error {
-	if c.retries >= c.MaxRetries {
+	c.reconnecting = true
+
+	if c.MaxRetries > 0 && c.retries >= c.MaxRetries {
 		return fmt.Errorf("reconnect failed")
 	}
 
@@ -81,93 +113,97 @@ func (c *reconnectingConn) increaseTimeout() {
 }
 
 func (c *reconnectingConn) Read(b []byte) (n int, err error) {
-	n, err = c.conn.Read(b)
+	if c.reconnecting {
+		return 0, sonicerrors.ErrReconnecting
+	}
+
+	n, err = c.Conn.Read(b)
 	if err != nil {
-		c.scheduleReconnect()
+		err = c.scheduleReconnect()
 	}
 	return
 }
 
-func (c *reconnectingConn) Write(p []byte) (n int, err error) {
-	//TODO implement me
-	panic("implement me")
+func (c *reconnectingConn) Write(b []byte) (n int, err error) {
+	if c.reconnecting {
+		return 0, sonicerrors.ErrReconnecting
+	}
+
+	n, err = c.Conn.Read(b)
+	if err != nil {
+		err = c.scheduleReconnect()
+	}
+	return
 }
 
 func (c *reconnectingConn) AsyncRead(b []byte, cb AsyncCallback) {
-	//TODO implement me
-	panic("implement me")
+	if c.reconnecting {
+		cb(sonicerrors.ErrReconnecting, 0)
+		return
+	}
+
+	c.Conn.AsyncRead(b, func(err error, n int) {
+		if err != nil {
+			c.scheduleAsyncReconnect(func(err error) {
+				cb(err, 0)
+			})
+		} else {
+			cb(err, n)
+		}
+	})
 }
 
 func (c *reconnectingConn) AsyncReadAll(b []byte, cb AsyncCallback) {
-	//TODO implement me
-	panic("implement me")
-}
+	if c.reconnecting {
+		cb(sonicerrors.ErrReconnecting, 0)
+		return
+	}
 
-func (c *reconnectingConn) CancelReads() {
-	//TODO implement me
-	panic("implement me")
+	c.Conn.AsyncReadAll(b, func(err error, n int) {
+		if err != nil {
+			c.scheduleAsyncReconnect(func(err error) {
+				cb(err, 0)
+			})
+		} else {
+			cb(err, n)
+		}
+	})
 }
 
 func (c *reconnectingConn) AsyncWrite(b []byte, cb AsyncCallback) {
-	//TODO implement me
-	panic("implement me")
+	if c.reconnecting {
+		cb(sonicerrors.ErrReconnecting, 0)
+		return
+	}
+
+	c.Conn.AsyncWrite(b, func(err error, n int) {
+		if err != nil {
+			c.scheduleAsyncReconnect(func(err error) {
+				cb(err, 0)
+			})
+		} else {
+			cb(err, n)
+		}
+	})
 }
 
 func (c *reconnectingConn) AsyncWriteAll(b []byte, cb AsyncCallback) {
-	//TODO implement me
-	panic("implement me")
-}
+	if c.reconnecting {
+		cb(sonicerrors.ErrReconnecting, 0)
+		return
+	}
 
-func (c *reconnectingConn) CancelWrites() {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) Close() error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) Closed() bool {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) RawFd() int { // TODO this should be obtained through multiple NextLayer calls.
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) Opts() []sonicopts.Option {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) LocalAddr() net.Addr {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) RemoteAddr() net.Addr {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) SetDeadline(t time.Time) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) SetReadDeadline(t time.Time) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (c *reconnectingConn) SetWriteDeadline(t time.Time) error {
-	//TODO implement me
-	panic("implement me")
+	c.Conn.AsyncWriteAll(b, func(err error, n int) {
+		if err != nil {
+			c.scheduleAsyncReconnect(func(err error) {
+				cb(err, 0)
+			})
+		} else {
+			cb(err, n)
+		}
+	})
 }
 
 func (c *reconnectingConn) NextLayer() Conn {
-	return c.conn
+	return c.Conn
 }
