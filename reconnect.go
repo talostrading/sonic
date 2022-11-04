@@ -36,6 +36,12 @@ func DialReconnecting(ioc *IO, network, addr string, opts ...sonicopts.Option) (
 		network: network,
 		addr:    addr,
 		opts:    opts,
+
+		MaxTimeout:     time.Second,
+		MinTimeout:     time.Second,
+		timeout:        time.Second,
+		TimeoutScaling: 1,
+		MaxRetries:     0,
 	}
 
 	var err error
@@ -81,26 +87,33 @@ func (c *reconnectingConn) Reconnect() (err error) {
 	return
 }
 
-func (c *reconnectingConn) scheduleReconnect() error {
+func (c *reconnectingConn) scheduleReconnect(aerr error) error {
 	c.reconnecting = true
 
 	if c.MaxRetries > 0 && c.retries >= c.MaxRetries {
-		return fmt.Errorf("reconnect failed")
+		return &sonicerrors.ErrReconnectingFailed{
+			Actual:    aerr,
+			Reconnect: fmt.Errorf("retries too many times retries=%d", c.retries),
+		}
+	} else if c.MaxRetries > 0 {
+		c.retries++
 	}
 
-	c.retries++
 	err := c.reconnectTimer.ScheduleOnce(c.timeout, func() {
 		err := c.Reconnect()
-		if err != nil {
+		if err == nil {
 			// and call some callback
 			c.timeout = c.MinTimeout
 		} else {
 			c.increaseTimeout()
-			c.scheduleReconnect()
+			c.scheduleReconnect(aerr)
 		}
 	})
 	if err != nil {
-		return err
+		return &sonicerrors.ErrReconnectingFailed{
+			Actual:    aerr,
+			Reconnect: err,
+		}
 	}
 	return nil
 }
@@ -119,7 +132,9 @@ func (c *reconnectingConn) Read(b []byte) (n int, err error) {
 
 	n, err = c.Conn.Read(b)
 	if err != nil {
-		err = c.scheduleReconnect()
+		if wrapper := c.scheduleReconnect(err); wrapper != nil {
+			err = wrapper
+		}
 	}
 	return
 }
@@ -131,7 +146,9 @@ func (c *reconnectingConn) Write(b []byte) (n int, err error) {
 
 	n, err = c.Conn.Read(b)
 	if err != nil {
-		err = c.scheduleReconnect()
+		if wrapper := c.scheduleReconnect(err); wrapper != nil {
+			err = wrapper
+		}
 	}
 	return
 }
