@@ -271,6 +271,8 @@ func (fd *nonblockingFd) Read(b []byte) (int, error) {
 			return 0, sonicerrors.ErrWouldBlock
 		}
 
+		// TODO maybe not 0 here cause that means the half-read part of the conn was closed? (check how it is on a raw syscall)
+		// above applies to writes as well
 		return 0, err
 	}
 

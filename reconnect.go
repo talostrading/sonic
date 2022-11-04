@@ -70,6 +70,7 @@ func (c *reconnectingConn) scheduleReconnect() error {
 	if err != nil {
 		return err
 	}
+	return nil
 }
 
 func (c *reconnectingConn) increaseTimeout() {

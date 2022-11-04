@@ -77,6 +77,7 @@ func NewPoller() (Poller, error) {
 		return nil, err
 	}
 
+	// TODO get rid of this
 	_, err = syscall.Kevent(kqueueFd, []syscall.Kevent_t{{
 		Ident:  uint64(kqueueFd),
 		Filter: syscall.EVFILT_USER,
