@@ -2,12 +2,13 @@ package websocket
 
 import (
 	"crypto/sha1"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/codec/http"
 	"net"
 	"net/url"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/codec/http"
 )
 
 func TestHandshake_DoClient(t *testing.T) {

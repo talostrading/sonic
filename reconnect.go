@@ -87,12 +87,12 @@ func (c *reconnectingConn) Reconnect() (err error) {
 	return
 }
 
-func (c *reconnectingConn) scheduleReconnect(aerr error) error {
+func (c *reconnectingConn) scheduleReconnect(actualErr error) error {
 	c.reconnecting = true
 
 	if c.MaxRetries > 0 && c.retries >= c.MaxRetries {
 		return &sonicerrors.ErrReconnectingFailed{
-			Actual:    aerr,
+			Actual:    actualErr,
 			Reconnect: fmt.Errorf("retries too many times retries=%d", c.retries),
 		}
 	} else if c.MaxRetries > 0 {
@@ -106,12 +106,12 @@ func (c *reconnectingConn) scheduleReconnect(aerr error) error {
 			c.timeout = c.MinTimeout
 		} else {
 			c.increaseTimeout()
-			c.scheduleReconnect(aerr)
+			c.scheduleReconnect(actualErr)
 		}
 	})
 	if err != nil {
 		return &sonicerrors.ErrReconnectingFailed{
-			Actual:    aerr,
+			Actual:    actualErr,
 			Reconnect: err,
 		}
 	}

@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/url"
+
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/websocket"
 	"github.com/talostrading/sonic/sonicopts"
-	"net/url"
 )
 
 func main() {
