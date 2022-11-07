@@ -191,4 +191,6 @@ type ReconnectingConn interface {
 
 	Reconnect() error
 	AsyncReconnect(func(error))
+
+	SetOnReconnect(func())
 }

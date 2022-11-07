@@ -27,7 +27,7 @@ type reconnectingConn struct {
 	retries        int
 
 	reconnecting bool
-	OnReconnect  func()
+	onReconnect  func()
 }
 
 func DialReconnecting(ioc *IO, network, addr string, opts ...sonicopts.Option) (ReconnectingConn, error) {
@@ -80,8 +80,8 @@ func (c *reconnectingConn) Reconnect() (err error) {
 	c.Conn, err = Dial(c.ioc, c.network, c.addr, c.opts...)
 	if err == nil {
 		c.reconnecting = false
-		if c.OnReconnect != nil {
-			c.OnReconnect()
+		if c.onReconnect != nil {
+			c.onReconnect()
 		}
 	}
 	return
@@ -223,4 +223,8 @@ func (c *reconnectingConn) AsyncWriteAll(b []byte, cb AsyncCallback) {
 
 func (c *reconnectingConn) NextLayer() Conn {
 	return c.Conn
+}
+
+func (c *reconnectingConn) SetOnReconnect(cb func()) {
+	c.onReconnect = cb
 }
