@@ -43,7 +43,8 @@ func Dial(
 		if opt := sonicopts.Get(opts, sonicopts.TypeTLSConfig); opt != nil && opt.Value().(bool) {
 			panic("TLS not supported on native sonic.Conn")
 		} else {
-			sock, err := internal.NewSocket(opts...)
+			// TODO use sonic.Socket
+			sock, err := internal.NewSocket(ioc.poller, opts...)
 			if err != nil {
 				return nil, err
 			}

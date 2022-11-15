@@ -16,27 +16,34 @@ import (
 )
 
 type Socket struct {
-	Fd int
+	poller Poller
+	opts   []sonicopts.Option
 
+	Fd         int
+	pd         PollData
 	LocalAddr  net.Addr
 	RemoteAddr net.Addr
-
-	opts []sonicopts.Option
 }
 
-func NewSocket(opts ...sonicopts.Option) (*Socket, error) {
-	s := &Socket{opts: opts}
+func NewSocket(poller Poller, opts ...sonicopts.Option) (*Socket, error) {
+	s := &Socket{
+		poller: poller,
+		opts:   opts,
+
+		Fd: -1,
+	}
 
 	return s, nil
 }
 
-// TODO AsyncConnect
-// steps: (requires non blocking socket)
-// 1. res := connect()
-// 2. if res <  res != EINPROGRESS, fail and close socket
-// 3. if res == 0 then we connected
-// 3. otherwise you have to wait for the socket to be writable
-//https://stackoverflow.com/questions/10187347/async-connect-and-disconnect-with-epoll-linux
+func (s *Socket) cleanup() (err error) {
+	if s.Fd > -1 {
+		s.Fd = -1
+		err = syscall.Close(s.Fd)
+	}
+	s.pd.Clear()
+	return
+}
 
 func (s *Socket) ConnectTimeout(
 	network,
@@ -44,7 +51,7 @@ func (s *Socket) ConnectTimeout(
 	timeout time.Duration,
 ) error {
 	if timeout == 0 {
-		timeout = time.Minute
+		timeout = time.Minute // TODO this should be in the wrapper
 	}
 
 	switch network[:3] {
@@ -70,75 +77,16 @@ func (s *Socket) Listen(network, addr string) error {
 	}
 }
 
-func ApplyOpts(fd int, opts ...sonicopts.Option) error {
-	for _, opt := range opts {
-		switch t := opt.Type(); t {
-		case sonicopts.TypeNonblocking:
-			v := opt.Value().(bool)
-			if err := syscall.SetNonblock(fd, v); err != nil {
-				return os.NewSyscallError(fmt.Sprintf("set_nonblock(%v)", v), err)
-			}
-		case sonicopts.TypeReusePort:
-			v := opt.Value().(bool)
-
-			iv := 0
-			if v {
-				iv = 1
-			}
-
-			if err := syscall.SetsockoptInt(
-				fd,
-				syscall.SOL_SOCKET,
-				unix.SO_REUSEPORT,
-				iv,
-			); err != nil {
-				return os.NewSyscallError(fmt.Sprintf("reuse_port(%v)", v), err)
-			}
-		case sonicopts.TypeReuseAddr:
-			v := opt.Value().(bool)
-
-			iv := 0
-			if v {
-				iv = 1
-			}
-
-			if err := syscall.SetsockoptInt(
-				fd,
-				syscall.SOL_SOCKET,
-				unix.SO_REUSEADDR,
-				iv,
-			); err != nil {
-				return os.NewSyscallError(fmt.Sprintf("reuse_address(%v)", v), err)
-			}
-		case sonicopts.TypeNoDelay:
-			v := opt.Value().(bool)
-			iv := 0
-			if v {
-				iv = 1
-			}
-
-			if err := syscall.SetsockoptInt(
-				fd,
-				syscall.IPPROTO_TCP,
-				syscall.TCP_NODELAY,
-				iv,
-			); err != nil {
-				return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
-			}
-		}
-	}
-
-	return nil
-}
-
 func (s *Socket) listenTCP(network, addr string) error {
 	localAddr, err := net.ResolveTCPAddr(network, addr)
 	if err != nil {
+		s.cleanup()
 		return err
 	}
 
 	fd, err := createSocket(localAddr)
 	if err != nil {
+		s.cleanup()
 		return err
 	}
 
@@ -146,17 +94,18 @@ func (s *Socket) listenTCP(network, addr string) error {
 	s.LocalAddr = localAddr
 
 	if err := ApplyOpts(s.Fd, s.opts...); err != nil {
+		s.cleanup()
 		return err
 	}
 
 	sockAddr := ToSockaddr(localAddr)
 	if err := syscall.Bind(fd, sockAddr); err != nil {
-		syscall.Close(fd)
+		s.cleanup()
 		return os.NewSyscallError("bind", err)
 	}
 
 	if err := syscall.Listen(fd, 2048); err != nil {
-		syscall.Close(fd)
+		s.cleanup()
 		return os.NewSyscallError("listen", err)
 	}
 
@@ -167,63 +116,117 @@ func (s *Socket) listenUnix(network, addr string) error {
 	panic("cannot listen on unix sockets atm")
 }
 
-func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
+func (s *Socket) prepareTCP(network, addr string) error {
 	remoteAddr, err := net.ResolveTCPAddr(network, addr)
 	if err != nil {
+		s.cleanup()
 		return err
 	}
 
 	fd, err := createSocket(remoteAddr)
 	if err != nil {
+		s.cleanup()
 		return err
 	}
 	s.Fd = fd
-
-	// TODO get rid of this once you also support blocking sockets
-	// this means having two implementations of file: blocking and nonblocking
-	if err := setDefaultOpts(fd); err != nil {
-		return err
-	}
+	s.pd.Fd = fd
+	s.RemoteAddr = remoteAddr
 
 	if err := ApplyOpts(s.Fd, s.opts...); err != nil {
+		s.cleanup()
 		return err
 	}
 
-	err = syscall.Connect(fd, ToSockaddr(remoteAddr))
+	return nil
+}
+
+// TODO test this
+func (s *Socket) asyncConnectTCP(network, addr string, cb func(error)) {
+	s.opts = sonicopts.Add(s.opts, sonicopts.Nonblocking(true))
+
+	if err := s.prepareTCP(network, addr); err != nil {
+		cb(err)
+		s.cleanup()
+		return
+	}
+
+	err := syscall.Connect(s.Fd, ToSockaddr(s.RemoteAddr))
 	if err != nil {
-		// this can happen if the socket is nonblocking, so we fix it with a select
-		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
 		if err != syscall.EINPROGRESS && err != syscall.EAGAIN {
-			syscall.Close(fd)
+			s.cleanup()
+			cb(os.NewSyscallError("connect", err))
+			return
+		}
+
+		// If the socket is non-blocking and the connection cannot be made immediately, connect fails with EINPROGRESS
+		// or EAGAIN. We poll for connect readiness with the poller.
+		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
+
+		s.pd.Set(WriteEvent, func(err error) {
+			if err == nil {
+				_, err = syscall.GetsockoptInt(s.Fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+			}
+
+			if err != nil {
+				s.cleanup()
+			} else {
+				var localAddr syscall.Sockaddr
+				localAddr, err = syscall.Getsockname(s.Fd)
+				s.LocalAddr = FromSockaddr(localAddr)
+			}
+			cb(err)
+		})
+
+		err = s.poller.SetWrite(s.Fd, &s.pd)
+		if err != nil {
+			s.cleanup()
+			cb(err)
+			return
+		}
+	}
+}
+
+func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
+	if err := s.prepareTCP(network, addr); err != nil {
+		return err
+	}
+
+	err := syscall.Connect(s.Fd, ToSockaddr(s.RemoteAddr))
+	if err != nil {
+		if err != syscall.EINPROGRESS && err != syscall.EAGAIN {
+			s.cleanup()
 			return os.NewSyscallError("connect", err)
 		}
 
+		// If the socket is non-blocking and the connection cannot be made immediately, connect fails with EINPROGRESS
+		// or EAGAIN. We poll for connect readiness with the specified timeout and wait.
+		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
+
 		var fds unix.FdSet
-		fds.Set(fd)
+		fds.Set(s.Fd)
 
 		t := unix.NsecToTimeval(timeout.Nanoseconds())
 
-		n, err := unix.Select(fd+1, nil, &fds, nil, &t)
+		n, err := unix.Select(s.Fd+1, nil, &fds, nil, &t)
 		if err != nil {
-			syscall.Close(fd)
+			s.cleanup()
 			return os.NewSyscallError("select", err)
 		}
 
 		if n == 0 {
+			s.cleanup()
 			return sonicerrors.ErrTimeout
 		}
 
-		_, err = syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+		_, err = syscall.GetsockoptInt(s.Fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
 		if err != nil {
-			syscall.Close(fd)
+			s.cleanup()
 			return os.NewSyscallError("getsockopt", err)
 		}
 	}
 
-	sockAddr, err := syscall.Getsockname(fd)
-
+	sockAddr, err := syscall.Getsockname(s.Fd)
 	s.LocalAddr = FromSockaddr(sockAddr)
-	s.RemoteAddr = remoteAddr
 
 	return nil
 }
@@ -267,16 +270,4 @@ func createSocket(resolvedAddr net.Addr) (int, error) {
 	}
 
 	return fd, nil
-}
-
-func setDefaultOpts(fd int) error {
-	if err := syscall.SetNonblock(fd, true); err != nil {
-		return os.NewSyscallError("set_nonblock(true)", err)
-	}
-
-	if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, 1); err != nil {
-		return os.NewSyscallError("tcp_no_delay", err)
-	}
-
-	return nil
 }

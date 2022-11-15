@@ -14,6 +14,18 @@ func Get(opts []Option, t OptionType) Option {
 	return nil
 }
 
+func Add(opts []Option, toAdd ...Option) []Option {
+	for _, existing := range opts {
+		for _, opt := range toAdd {
+			if existing.Type() == opt.Type() {
+				return opts
+			}
+		}
+	}
+	opts = append(opts, toAdd...)
+	return opts
+}
+
 type OptionType uint8
 
 const (

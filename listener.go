@@ -39,7 +39,7 @@ func Listen(
 	address string,
 	opts ...sonicopts.Option,
 ) (Listener, error) {
-	sock, err := internal.NewSocket(opts...)
+	sock, err := internal.NewSocket(ioc.poller, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +113,7 @@ func (l *listener) accept() (Conn, error) {
 
 	// TODO remove non blocking here once you split nonblockingFd
 	sock, err := internal.NewSocket(
+		l.ioc.poller,
 		sonicopts.Nonblocking(true),
 		sonicopts.NoDelay(true),
 	)

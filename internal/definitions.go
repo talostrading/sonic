@@ -23,6 +23,16 @@ func (pd *PollData) Set(et EventType, h Handler) {
 	pd.Cbs[et] = h
 }
 
+func (pd *PollData) Unset(et EventType) {
+	pd.Cbs[et] = nil
+}
+
+func (pd *PollData) Clear() {
+	for i := 0; i < int(MaxEvent); i++ {
+		pd.Cbs[EventType(i)] = nil
+	}
+}
+
 type ITimer interface {
 	Set(time.Duration, func()) error
 	Unset() error

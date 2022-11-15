@@ -98,6 +98,20 @@ type File interface {
 	io.Seeker
 }
 
+type Socket interface {
+	FileDescriptor
+
+	Opts() []sonicopts.Option
+	SetOpts(...sonicopts.Option)
+
+	RecvMsg() ([]byte, error)
+
+	RawFd() int // TODO move this to FileDescriptor
+
+	RemoteAddr() net.Addr
+	LocalAddr() net.Addr
+}
+
 // Conn is a generic stream-oriented network connection.
 type Conn interface {
 	FileDescriptor
