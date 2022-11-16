@@ -6,6 +6,10 @@ import (
 	"net"
 )
 
+// TODO callbacks: OnSocketCreate, OnSocketBound, OnSocketConnect, OnSocketError
+// TODO for a timeout on an async connect, just have a timer
+// TODO is the socket IP then set the number of TCP SYN retransmits we send before aborting the connect
+
 var _ Socket = &socket{}
 
 type socket struct {
