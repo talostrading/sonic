@@ -2,6 +2,7 @@ package sonic
 
 import (
 	"errors"
+	"log"
 	"runtime"
 	"testing"
 	"time"
@@ -188,6 +189,35 @@ func TestPollNothing(t *testing.T) {
 	if n != 0 && !errors.Is(err, sonicerrors.ErrTimeout) {
 		t.Fatalf("wrong n=%d and err=%v", n, err)
 	}
+}
+
+func TestSleep(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		panic(err)
+	}
+
+	scheduled := time.Now()
+	err = timer.ScheduleOnce(10*time.Millisecond, func() {
+		time.Sleep(10 * time.Millisecond)
+		err = timer.ScheduleOnce(10*time.Millisecond, func() {
+			time.Sleep(10 * time.Millisecond)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ioc.RunPending()
+
+	dur := time.Since(scheduled)
+	log.Printf("slept for a total of %s, went over by %s", dur, dur-time.Duration(40)*time.Millisecond)
 }
 
 func BenchmarkPollOne(b *testing.B) {
