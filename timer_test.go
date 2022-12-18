@@ -2,6 +2,7 @@ package sonic
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -552,6 +553,57 @@ func TestTimerScheduleOnceConsecutively(t *testing.T) {
 	if dur <= 29*time.Millisecond { // 1ms error margin
 		t.Fatal("slept for the wrong period of time")
 	}
+}
+
+func TestTimerScheduleOnceConsecutivelySleepInBetween(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	var start, end time.Time
+	start = time.Now()
+	err = timer.ScheduleOnce(10*time.Millisecond, func() {
+		time.Sleep(10 * time.Millisecond)
+		err = timer.ScheduleOnce(10*time.Millisecond, func() {
+			time.Sleep(10 * time.Millisecond)
+			err = timer.ScheduleOnce(10*time.Millisecond, func() {
+				time.Sleep(10 * time.Millisecond)
+				end = time.Now()
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = timer.ScheduleOnce(-1, func() {})
+	if !errors.Is(err, sonicerrors.ErrCancelled) {
+		t.Fatalf("should not be able to schedule an already scheduled clock, expected=%s", sonicerrors.ErrCancelled)
+	}
+
+	for i := 0; i < 3; i++ {
+		ioc.RunOne()
+	}
+	dur := end.Sub(start)
+	if dur <= 59*time.Millisecond { // 1ms error margin
+		t.Fatal("slept for the wrong period of time")
+	}
+	fmt.Println("here", dur)
 }
 
 func TestTimerScheduleRepeatingConsecutively(t *testing.T) {
