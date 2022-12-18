@@ -18,6 +18,11 @@ func TestTimerScheduleOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if timer.Scheduled() {
 		t.Fatal("timer should not be scheduled")
@@ -65,6 +70,11 @@ func TestTimerScheduleOnceAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if timer.Scheduled() {
 		t.Fatal("timer should not be scheduled")
@@ -113,6 +123,11 @@ func TestTimerScheduleRepeating(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if timer.Scheduled() {
 		t.Fatal("timer should not be scheduled")
@@ -159,6 +174,11 @@ func TestTimerScheduleRepeatingAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	if timer.Scheduled() {
 		t.Fatal("timer should not be scheduled")
@@ -208,6 +228,11 @@ func TestTimerCloseAfterScheduleOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	shouldNotBeTrue := false
 
@@ -251,6 +276,11 @@ func TestTimerCloseAfterScheduleRepeating(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	shouldNotBeTrue := false
 
@@ -294,6 +324,11 @@ func TestTimerScheduleOnceWhileAlreadyScheduled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = timer.ScheduleOnce(TimerTestDuration, func() {})
 	if err != nil {
@@ -314,6 +349,11 @@ func TestTimerScheduleRepeatingWhileAlreadyScheduled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	err = timer.ScheduleRepeating(TimerTestDuration, func() {})
 	if err != nil {
@@ -334,6 +374,11 @@ func TestTimerCloseAfterClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	for i := 0; i < 10; i++ {
 		err = timer.Close()
@@ -351,6 +396,11 @@ func TestTimerZeroTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	done := false
 	err = timer.ScheduleOnce(0, func() {
@@ -379,6 +429,11 @@ func TestTimerCancel(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer func() {
+		if err := timer.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
 	_, err = ioc.PollOne()
 	if !errors.Is(err, sonicerrors.ErrTimeout) {
