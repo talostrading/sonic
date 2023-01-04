@@ -29,8 +29,14 @@ jobs:
     steps:
       - checkout
       - run:
-          name: Build examples
-          command: make && make test && make bench
+          name: Build
+          command: make
+      - run:
+          name: Run tests
+          command: make test
+      - run:
+          name: Run benchmarks
+          command: make bench
       - slack/notify:
           event: fail
           template: basic_fail_1
@@ -38,19 +44,3 @@ jobs:
       - slack/notify:
           event: pass
           template: success_tagged_deploy_1
-  test:
-    docker:
-      - image: cimg/go:1.19
-    steps:
-      - checkout
-      - run:
-          name: Running tests
-          command: make test
-  bench:
-    docker:
-      - image: cimg/go:1.19
-    steps:
-      - checkout
-      - run:
-          name: Running benchmarks
-          command: make bench
