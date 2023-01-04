@@ -2,7 +2,6 @@ package sonic
 
 import (
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -603,7 +602,6 @@ func TestTimerScheduleOnceConsecutivelySleepInBetween(t *testing.T) {
 	if dur <= 59*time.Millisecond { // 1ms error margin
 		t.Fatal("slept for the wrong period of time")
 	}
-	fmt.Println("here", dur)
 }
 
 func TestTimerScheduleRepeatingConsecutively(t *testing.T) {
