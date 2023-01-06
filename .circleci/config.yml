@@ -1,27 +1,5 @@
 version: 2.1
 
-orbs:
-  slack: circleci/slack@4.10.1
-
-commands:
-  post_slack:
-    steps:
-      - slack/notify:
-          event: pass
-          custom: |
-            {
-              "blocks": [
-                {
-                  "type": "section",
-                  "text": {
-                    "type": "mrkdwn",
-                    "text": "build succeeded $CIRCLE_BUILD_URL"
-                  }
-                }
-              ]
-            }
-
-
 jobs:
   build:
     docker:
@@ -37,10 +15,3 @@ jobs:
       - run:
           name: Run benchmarks
           command: make bench
-      - slack/notify:
-          event: fail
-          template: basic_fail_1
-          mentions: "@sergiu128"
-      - slack/notify:
-          event: pass
-          template: success_tagged_deploy_1
