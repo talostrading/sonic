@@ -4,3 +4,4 @@ bin/
 tests/autobahn/reports/
 .idea/
 temp/
+.vscode/
