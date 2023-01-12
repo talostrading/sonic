@@ -8,10 +8,7 @@ import (
 	"github.com/talostrading/sonic/internal"
 )
 
-var (
-	_ Conn     = &conn{}
-	_ net.Conn = &conn{}
-)
+var _ Conn = &conn{}
 
 type conn struct {
 	*file
@@ -21,7 +18,7 @@ type conn struct {
 	remoteAddr net.Addr
 }
 
-func createConn(ioc *IO, fd int, localAddr, remoteAddr net.Addr) *conn {
+func newConn(ioc *IO, fd int, localAddr, remoteAddr net.Addr) *conn {
 	return &conn{
 		file:       &file{ioc: ioc, fd: fd},
 		fd:         fd,
@@ -40,7 +37,7 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 		return nil, err
 	}
 
-	return createConn(ioc, fd, localAddr, remoteAddr), nil
+	return newConn(ioc, fd, localAddr, remoteAddr), nil
 }
 
 func (c *conn) LocalAddr() net.Addr {

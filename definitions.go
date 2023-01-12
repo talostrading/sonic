@@ -131,8 +131,11 @@ type Conn interface {
 	net.Conn
 }
 
-// TODO
+// PacketConn is a generic packet-oriented connection.
 type PacketConn interface {
+	AsyncReadFrom([]byte, func(err error, n int, addr net.Addr))
+	AsyncWriteTo([]byte, func(err error, n int, addr net.Addr))
+	net.PacketConn
 }
 
 // Listener is a generic network listener for stream-oriented protocols.

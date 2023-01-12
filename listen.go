@@ -106,7 +106,7 @@ func (l *listener) accept() (Conn, error) {
 
 	remoteAddr := internal.FromSockaddr(addr)
 
-	return createConn(l.ioc, fd, localAddr, remoteAddr), nil
+	return newConn(l.ioc, fd, localAddr, remoteAddr), nil
 }
 
 func (l *listener) Close() error {
