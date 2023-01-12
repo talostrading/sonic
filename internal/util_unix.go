@@ -9,8 +9,8 @@ import (
 	"syscall"
 )
 
-func ToSockaddr(sockAddr net.Addr) syscall.Sockaddr {
-	switch addr := sockAddr.(type) {
+func ToSockaddr(addr net.Addr) syscall.Sockaddr {
+	switch addr := addr.(type) {
 	case *net.TCPAddr:
 		return &syscall.SockaddrInet4{
 			Port: addr.Port,
@@ -24,7 +24,7 @@ func ToSockaddr(sockAddr net.Addr) syscall.Sockaddr {
 	case *net.UnixAddr:
 		return nil
 	default:
-		panic(fmt.Sprintf("unsupported address type: %s", reflect.TypeOf(sockAddr)))
+		panic(fmt.Sprintf("unsupported address type: %s", reflect.TypeOf(addr)))
 	}
 }
 

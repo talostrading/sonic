@@ -13,7 +13,6 @@ var _ Listener = &listener{}
 
 type listener struct {
 	ioc            *IO
-	sock           *internal.Socket
 	pd             internal.PollData
 	fd             int
 	acceptDispatch int
@@ -31,25 +30,18 @@ type listener struct {
 func Listen(
 	ioc *IO,
 	network,
-	address string,
+	addr string,
 	opts ...sonicopts.Option,
 ) (Listener, error) {
-	sock, err := internal.NewSocket(opts...)
+	fd, err := internal.Listen(network, addr, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := sock.Listen(network, address); err != nil {
-		return nil, err
-	}
-
 	l := &listener{
-		ioc:  ioc,
-		sock: sock,
-		pd: internal.PollData{
-			Fd: sock.Fd,
-		},
-		fd: sock.Fd,
+		ioc: ioc,
+		pd:  internal.PollData{Fd: fd},
+		fd:  fd,
 	}
 	return l, nil
 }
@@ -97,28 +89,24 @@ func (l *listener) handleAsyncAccept(cb AcceptCallback) internal.Handler {
 }
 
 func (l *listener) accept() (Conn, error) {
-	nfd, remoteAddr, err := syscall.Accept(l.sock.Fd)
+	fd, addr, err := syscall.Accept(l.fd)
 
 	if err != nil {
+		syscall.Close(fd)
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
 			return nil, sonicerrors.ErrWouldBlock
 		}
 		return nil, os.NewSyscallError("accept", err)
 	}
 
-	// TODO remove non blocking here once you split file
-	sock, err := internal.NewSocket(
-		sonicopts.Nonblocking(true),
-		sonicopts.NoDelay(true),
-	)
+	localAddr, err := internal.SocketAddress(fd)
 	if err != nil {
 		return nil, err
 	}
-	sock.Fd = nfd
-	sock.LocalAddr = l.sock.LocalAddr
-	sock.LocalAddr = internal.FromSockaddr(remoteAddr)
 
-	return createConn(l.ioc, sock), nil
+	remoteAddr := internal.FromSockaddr(addr)
+
+	return createConn(l.ioc, fd, localAddr, remoteAddr), nil
 }
 
 func (l *listener) Close() error {

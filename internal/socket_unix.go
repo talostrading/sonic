@@ -1,65 +1,167 @@
-//go:build darwin || netbsd || freebsd || openbsd || dragonfly || linux
-
 package internal
 
 import (
+	"errors"
 	"fmt"
+	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
+	"golang.org/x/sys/unix"
 	"net"
 	"os"
 	"reflect"
 	"syscall"
 	"time"
-
-	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/sonicopts"
-	"golang.org/x/sys/unix"
 )
 
-type Socket struct {
-	Fd int
+var (
+	ListenBacklog int = 2048
 
-	LocalAddr  net.Addr
-	RemoteAddr net.Addr
+	errUnknownNetwork = errors.New("unknown network argument")
+)
 
-	opts []sonicopts.Option
-}
+func CreateSocket(addr net.Addr) (int, error) {
+	var (
+		domain int
+		typ    int
+	)
 
-func NewSocket(opts ...sonicopts.Option) (*Socket, error) {
-	s := &Socket{opts: opts}
-
-	return s, nil
-}
-
-func (s *Socket) ConnectTimeout(
-	network,
-	addr string,
-	timeout time.Duration,
-) error {
-	if timeout == 0 {
-		timeout = time.Minute
+	switch addr := addr.(type) {
+	case *net.TCPAddr:
+		domain, typ = syscall.AF_INET, syscall.SOCK_STREAM
+		if len(addr.Zone) != 0 {
+			domain = syscall.AF_INET6
+		}
+	case *net.UDPAddr:
+		domain, typ = syscall.AF_INET, syscall.SOCK_DGRAM
+		if len(addr.Zone) != 0 {
+			domain = syscall.AF_INET6
+		}
+	case *net.UnixAddr:
+		domain, typ = syscall.AF_UNIX, syscall.SOCK_STREAM
+	default:
+		return -1, fmt.Errorf("unknown address type: %s", reflect.TypeOf(addr))
 	}
 
+	fd, err := syscall.Socket(domain, typ, 0)
+	if err != nil {
+		return 0, os.NewSyscallError("socket", err)
+	}
+
+	return fd, nil
+}
+
+func Connect(network, addr string) (fd int, localAddr, remoteAddr net.Addr, err error) {
+	return ConnectTimeout(network, addr, 10*time.Second)
+}
+
+func ConnectTimeout(network, addr string, timeout time.Duration) (fd int, localAddr, remoteAddr net.Addr, err error) {
 	switch network[:3] {
 	case "tcp":
-		return s.connectTCP(network, addr, timeout)
+		return ConnectTCP(network, addr, timeout)
 	case "udp":
-		return s.connectUDP(network, addr, timeout)
+		return -1, nil, nil, fmt.Errorf("udp not supported")
 	case "uni":
-		return s.connectUnix(network, addr, timeout)
+		return -1, nil, nil, fmt.Errorf("unix domain not supported")
 	default:
-		return fmt.Errorf("unsupported protocol: %s", network)
+		return -1, nil, nil, errUnknownNetwork
 	}
 }
 
-func (s *Socket) Listen(network, addr string) error {
+func ConnectTCP(network, addr string, timeout time.Duration) (fd int, localAddr, remoteAddr net.Addr, err error) {
+	remoteAddr, err = net.ResolveTCPAddr(network, addr)
+	if err != nil {
+		return -1, nil, nil, err
+	}
+
+	fd, err = CreateSocket(remoteAddr)
+	if err != nil {
+		return -1, nil, nil, err
+	}
+
+	// TODO make nodelay optional
+	err = ApplyOpts(fd, sonicopts.Nonblocking(true), sonicopts.NoDelay(true))
+	if err != nil {
+		syscall.Close(fd)
+		return -1, nil, nil, err
+	}
+
+	err = syscall.Connect(fd, ToSockaddr(remoteAddr))
+	if err != nil {
+		// this can happen if the socket is nonblocking, so we fix it with a select
+		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
+		if err != syscall.EINPROGRESS && err != syscall.EAGAIN {
+			syscall.Close(fd)
+			return -1, nil, nil, os.NewSyscallError("connect", err)
+		}
+
+		var fds unix.FdSet
+		fds.Set(fd)
+
+		t := unix.NsecToTimeval(timeout.Nanoseconds())
+
+		n, err := unix.Select(fd+1, nil, &fds, nil, &t)
+		if err != nil {
+			syscall.Close(fd)
+			return -1, nil, nil, os.NewSyscallError("select", err)
+		}
+
+		if n == 0 {
+			syscall.Close(fd)
+			return -1, nil, nil, sonicerrors.ErrTimeout
+		}
+
+		_, err = syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+		if err != nil {
+			syscall.Close(fd)
+			return -1, nil, nil, os.NewSyscallError("getsockopt", err)
+		}
+	}
+
+	localAddr, err = SocketAddress(fd)
+
+	return
+}
+
+func Listen(network, addr string, opts ...sonicopts.Option) (fd int, err error) {
 	switch network[:3] {
 	case "tcp":
-		return s.listenTCP(network, addr)
+		return ListenTCP(network, addr, opts...)
+	case "udp":
+		return -1, fmt.Errorf("udp not supported")
 	case "uni":
-		return s.listenUnix(network, addr)
+		return -1, fmt.Errorf("unix domain not supported")
 	default:
-		return fmt.Errorf("unsupported protocol: %s", network)
+		return -1, errUnknownNetwork
 	}
+}
+
+func ListenTCP(network, addr string, opts ...sonicopts.Option) (fd int, err error) {
+	localAddr, err := net.ResolveTCPAddr(network, addr)
+	if err != nil {
+		return -1, err
+	}
+
+	fd, err = CreateSocket(localAddr)
+	if err != nil {
+		return -1, err
+	}
+
+	if err := ApplyOpts(fd, opts...); err != nil {
+		syscall.Close(fd)
+		return -1, err
+	}
+
+	if err := syscall.Bind(fd, ToSockaddr(localAddr)); err != nil {
+		syscall.Close(fd)
+		return -1, os.NewSyscallError("bind", err)
+	}
+
+	if err := syscall.Listen(fd, ListenBacklog); err != nil {
+		syscall.Close(fd)
+		return -1, os.NewSyscallError("listen", err)
+	}
+
+	return fd, nil
 }
 
 func ApplyOpts(fd int, opts ...sonicopts.Option) error {
@@ -125,152 +227,10 @@ func ApplyOpts(fd int, opts ...sonicopts.Option) error {
 	return nil
 }
 
-func (s *Socket) listenTCP(network, addr string) error {
-	localAddr, err := net.ResolveTCPAddr(network, addr)
+func SocketAddress(fd int) (net.Addr, error) {
+	addr, err := syscall.Getsockname(fd)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	fd, err := createSocket(localAddr)
-	if err != nil {
-		return err
-	}
-
-	s.Fd = fd
-	s.LocalAddr = localAddr
-
-	if err := ApplyOpts(s.Fd, s.opts...); err != nil {
-		return err
-	}
-
-	sockAddr := ToSockaddr(localAddr)
-	if err := syscall.Bind(fd, sockAddr); err != nil {
-		syscall.Close(fd)
-		return os.NewSyscallError("bind", err)
-	}
-
-	if err := syscall.Listen(fd, 2048); err != nil {
-		syscall.Close(fd)
-		return os.NewSyscallError("listen", err)
-	}
-
-	return nil
-}
-
-func (s *Socket) listenUnix(network, addr string) error {
-	panic("cannot listen on unix sockets atm")
-}
-
-func (s *Socket) connectTCP(network, addr string, timeout time.Duration) error {
-	remoteAddr, err := net.ResolveTCPAddr(network, addr)
-	if err != nil {
-		return err
-	}
-
-	fd, err := createSocket(remoteAddr)
-	if err != nil {
-		return err
-	}
-	s.Fd = fd
-
-	// TODO get rid of this once you also support blocking sockets
-	// this means having two implementations of file: blocking and nonblocking
-	if err := setDefaultOpts(fd); err != nil {
-		return err
-	}
-
-	if err := ApplyOpts(s.Fd, s.opts...); err != nil {
-		return err
-	}
-
-	err = syscall.Connect(fd, ToSockaddr(remoteAddr))
-	if err != nil {
-		// this can happen if the socket is nonblocking, so we fix it with a select
-		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
-		if err != syscall.EINPROGRESS && err != syscall.EAGAIN {
-			syscall.Close(fd)
-			return os.NewSyscallError("connect", err)
-		}
-
-		var fds unix.FdSet
-		fds.Set(fd)
-
-		t := unix.NsecToTimeval(timeout.Nanoseconds())
-
-		n, err := unix.Select(fd+1, nil, &fds, nil, &t)
-		if err != nil {
-			syscall.Close(fd)
-			return os.NewSyscallError("select", err)
-		}
-
-		if n == 0 {
-			return sonicerrors.ErrTimeout
-		}
-
-		_, err = syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
-		if err != nil {
-			syscall.Close(fd)
-			return os.NewSyscallError("getsockopt", err)
-		}
-	}
-
-	sockAddr, err := syscall.Getsockname(fd)
-
-	s.LocalAddr = FromSockaddr(sockAddr)
-	s.RemoteAddr = remoteAddr
-
-	return nil
-}
-
-func (s *Socket) connectUDP(network, addr string, timeout time.Duration) error {
-	// TODO
-	return nil
-}
-
-func (s *Socket) connectUnix(network, addr string, timeout time.Duration) error {
-	// TODO
-	return nil
-}
-
-func createSocket(resolvedAddr net.Addr) (int, error) {
-	var (
-		domain int
-		typ    int
-	)
-
-	switch addr := resolvedAddr.(type) {
-	case *net.TCPAddr:
-		domain, typ = syscall.AF_INET, syscall.SOCK_STREAM
-		if len(addr.Zone) != 0 {
-			domain = syscall.AF_INET6
-		}
-	case *net.UDPAddr:
-		domain, typ = syscall.AF_INET, syscall.SOCK_DGRAM
-		if len(addr.Zone) != 0 {
-			domain = syscall.AF_INET6
-		}
-	case *net.UnixAddr:
-		domain, typ = syscall.AF_UNIX, syscall.SOCK_STREAM
-	default:
-		panic(fmt.Sprintf("unknown address type: %s", reflect.TypeOf(addr)))
-	}
-
-	fd, err := syscall.Socket(domain, typ, 0)
-	if err != nil {
-		return 0, os.NewSyscallError("socket", err)
-	}
-
-	return fd, nil
-}
-
-func setDefaultOpts(fd int) error {
-	if err := syscall.SetNonblock(fd, true); err != nil {
-		return os.NewSyscallError("set_nonblock(true)", err)
-	}
-
-	if err := syscall.SetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, 1); err != nil {
-		return os.NewSyscallError("tcp_no_delay", err)
-	}
-
-	return nil
+	return FromSockaddr(addr), nil
 }

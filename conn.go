@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"fmt"
 	"net"
 	"time"
 
@@ -14,53 +15,47 @@ var (
 
 type conn struct {
 	*file
-	sock *internal.Socket
+	fd int
+
+	localAddr  net.Addr
+	remoteAddr net.Addr
 }
 
-func createConn(ioc *IO, sock *internal.Socket) *conn {
-	c := &conn{
-		file: &file{
-			ioc: ioc,
-			fd:  sock.Fd,
-		},
-		sock: sock,
+func createConn(ioc *IO, fd int, localAddr, remoteAddr net.Addr) *conn {
+	return &conn{
+		file:       &file{ioc: ioc, fd: fd},
+		fd:         fd,
+		localAddr:  localAddr,
+		remoteAddr: remoteAddr,
 	}
-	c.pd.Fd = c.fd
-
-	return c
 }
 
 func Dial(ioc *IO, network, addr string) (Conn, error) {
-	return DialTimeout(ioc, network, addr, 0)
+	return DialTimeout(ioc, network, addr, 10*time.Second)
 }
 
 func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, error) {
-	sock, err := internal.NewSocket()
+	fd, localAddr, remoteAddr, err := internal.ConnectTimeout(network, addr, timeout)
 	if err != nil {
 		return nil, err
 	}
 
-	err = sock.ConnectTimeout(network, addr, timeout)
-	if err != nil {
-		return nil, err
-	}
-
-	return createConn(ioc, sock), nil
+	return createConn(ioc, fd, localAddr, remoteAddr), nil
 }
 
 func (c *conn) LocalAddr() net.Addr {
-	return c.sock.LocalAddr
+	return c.localAddr
 }
 func (c *conn) RemoteAddr() net.Addr {
-	return c.sock.RemoteAddr
+	return c.remoteAddr
 }
 
 func (c *conn) SetDeadline(t time.Time) error {
-	panic("not supported")
+	return fmt.Errorf("not supported")
 }
 func (c *conn) SetReadDeadline(t time.Time) error {
-	panic("not supported")
+	return fmt.Errorf("not supported")
 }
 func (c *conn) SetWriteDeadline(t time.Time) error {
-	panic("not supported")
+	return fmt.Errorf("not supported")
 }
