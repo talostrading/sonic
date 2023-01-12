@@ -108,18 +108,25 @@ func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	n, err := f.Read(b[readBytes:])
 	readBytes += n
 
+	// f is a nonblocking fd so if err == ErrWouldBlock
+	// then we need to schedule an async read.
+
 	if err == nil && !(readAll && readBytes != len(b)) {
-		// fully read
+		// If readAll == true then read fully without errors.
+		// If readAll == false then read some without errors.
+		// We are done.
 		cb(nil, readBytes)
 		return
 	}
 
-	if err != nil && err != sonicerrors.ErrWouldBlock {
-		cb(err, 0)
-		return
+	// handles (readAll == false) and (readAll == true && readBytes != len(b)).
+	if err == sonicerrors.ErrWouldBlock {
+		// If readAll == true then read some without errors.
+		// We schedule an asynchronous read.
+		f.scheduleRead(b, readBytes, readAll, cb)
+	} else {
+		cb(err, readBytes)
 	}
-
-	f.scheduleRead(b, readBytes, readAll, cb)
 }
 
 func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
@@ -177,18 +184,25 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 	n, err := f.Write(b[writtenBytes:])
 	writtenBytes += n
 
+	// f is a nonblocking fd so if err == ErrWouldBlock
+	// then we need to schedule an async write.
+
 	if err == nil && !(writeAll && writtenBytes != len(b)) {
-		// fully written
+		// If writeAll == true then wrote fully without errors.
+		// If writeAll == false then wrote some without errors.
+		// We are done.
 		cb(nil, writtenBytes)
 		return
 	}
 
-	if err != nil && err != sonicerrors.ErrWouldBlock {
-		cb(err, 0)
-		return
+	// handles (writeAll == false) and (writeAll == true && writtenBytes != len(b)).
+	if err == sonicerrors.ErrWouldBlock {
+		// If writeAll == true then wrote some without errors.
+		// We schedule an asynchronous write.
+		f.scheduleWrite(b, writtenBytes, writeAll, cb)
+	} else {
+		cb(err, writtenBytes)
 	}
-
-	f.scheduleWrite(b, writtenBytes, writeAll, cb)
 }
 
 func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
