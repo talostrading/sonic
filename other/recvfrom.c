@@ -33,6 +33,10 @@ int main(void) {
       continue;
     }
 
+    char buf[128];
+    const char* local_addr = addr_to_str(buf, sizeof(buf), addr->ai_addr);
+    printf("socket bound to %s\n", local_addr);
+
     break;  // we have bound a socket
   }
   if (sockfd < 0) {

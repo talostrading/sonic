@@ -17,7 +17,7 @@ int main(int argc, char* argv[]) {
     strcpy(server_node, argv[1]);
   } else {
     panic(
-        "usage: udp_sendto <address_to_sendto>; arg is optional, localhost by "
+        "usage: sendto <address_to_sendto>; arg is optional, localhost by "
         "default.");
   }
 
@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
   }
 
   for (int i = 0; i < 10; ++i) {
-    int n = sendall(sockfd, kSend, sizeof(kSend), 0, peer_addr->ai_addr,
+    int n = sendall(sockfd, kSend, strlen(kSend), 0, peer_addr->ai_addr,
                     peer_addr->ai_addrlen);
     if (n < 0) {
       panic("sendto err=%d", n);

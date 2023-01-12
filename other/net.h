@@ -16,10 +16,18 @@
 const char* kUdpPort = "8080";  // port we sendto and recvfrom
 const int kBufLen = 128;        // max number of bytes we can recv of send
 
+const char* kPanicStr = "panic: \0";
+
 void panic(const char* format, ...) {
+  char buf[1024];  // sad
+  memset(buf, 0, 1024);
+  strcat(buf, kPanicStr);
+  strcat(buf, format);
+  strcat(buf, "\n");
+
   va_list arglist;
   va_start(arglist, format);
-  vfprintf(stderr, strcat("panic: ", format), arglist);
+  vfprintf(stderr, buf, arglist);
   va_end(arglist);
   exit(EXIT_FAILURE);
 }
@@ -46,6 +54,7 @@ int sendall(
   int left = len;
   while (left > 0) {
     int n = sendto(sockfd, buf, left, flags, dest_addr, addr_len);
+    printf("sending %d\n", n);
     if (n < 0) return n;
     left -= n;
     buf += n;
