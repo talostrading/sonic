@@ -27,6 +27,8 @@ int main(int argc, char* argv[]) {
   int broadcast_addr_len = sizeof(struct sockaddr_in);
   memset((void*)&broadcast_addr, 0, broadcast_addr_len);
   broadcast_addr.sin_family = AF_INET;
+  // INADDR_BROADCAST trickles down to the ethernet layer. If an ethernet card
+  // sees some packets destined to 0xff..ff then it starts parsing them
   broadcast_addr.sin_addr.s_addr = htonl(INADDR_BROADCAST);
   broadcast_addr.sin_port = htons(atoi(kUdpPort));
 
