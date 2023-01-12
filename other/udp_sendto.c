@@ -51,8 +51,8 @@ int main(int argc, char* argv[]) {
   }
 
   for (int i = 0; i < 10; ++i) {
-    int n = sendto(sockfd, kSend, sizeof(kSend), 0, peer_addr->ai_addr,
-                   peer_addr->ai_addrlen);
+    int n = sendall(sockfd, kSend, sizeof(kSend), 0, peer_addr->ai_addr,
+                    peer_addr->ai_addrlen);
     if (n < 0) {
       panic("sendto err=%d", n);
     } else {

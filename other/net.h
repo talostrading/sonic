@@ -24,4 +24,21 @@ void panic(const char* format, ...) {
   exit(EXIT_FAILURE);
 }
 
+// sendall wraps sendto to ensure all data is send to the other peer.
+int sendall(
+    int sockfd,
+    const char*
+        buf /* assume is char*, otherwise pointer arithmetic won't work */,
+    size_t len, int flags, const struct sockaddr* dest_addr,
+    socklen_t addr_len) {
+  int left = len;
+  while (left > 0) {
+    int n = sendto(sockfd, buf, left, flags, dest_addr, addr_len);
+    if (n < 0) return n;
+    left -= n;
+    buf += n;
+  }
+  return len;
+}
+
 #endif
