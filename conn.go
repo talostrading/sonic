@@ -20,7 +20,7 @@ type conn struct {
 
 func newConn(ioc *IO, fd int, localAddr, remoteAddr net.Addr) *conn {
 	return &conn{
-		file:       &file{ioc: ioc, fd: fd},
+		file:       &file{ioc: ioc, fd: fd, pd: internal.PollData{Fd: fd}},
 		fd:         fd,
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
