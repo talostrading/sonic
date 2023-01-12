@@ -1,5 +1,4 @@
-/* udp_sendto.c
- *
+/*
  * Binds a socket to port 8080 and invokes recvfrom in a loop.
  * The peer address is filled in automatically based on the sender.
  * So there can be multiple senders.
@@ -50,13 +49,20 @@ int main(int argc, char* argv[]) {
     panic("socket err=%d", sockfd);
   }
 
+  char str_peer_addr_buf[128];
+  const char* str_peer_addr = addr_to_str(
+      str_peer_addr_buf, sizeof(str_peer_addr_buf), peer_addr->ai_addr);
+  if (str_peer_addr == NULL) {
+    panic("addr_to_str");
+  }
+
   for (int i = 0; i < 10; ++i) {
     int n = sendall(sockfd, kSend, sizeof(kSend), 0, peer_addr->ai_addr,
                     peer_addr->ai_addrlen);
     if (n < 0) {
       panic("sendto err=%d", n);
     } else {
-      printf("sent %s successfully\n", kSend);
+      printf("sent %s successfully to %s\n", kSend, str_peer_addr);
     }
   }
 

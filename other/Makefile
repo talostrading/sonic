@@ -1,3 +1,3 @@
 all:
-	clang udp_recvfrom.c -o udp_recvfrom
-	clang udp_sendto.c -o udp_sendto
+	clang -std=c99 -o recvfrom recvfrom.c
+	clang -std=c99 -o sendto sendto.c

@@ -24,6 +24,18 @@ void panic(const char* format, ...) {
   exit(EXIT_FAILURE);
 }
 
+const char* addr_to_str(char* buf, int buf_len, struct sockaddr* addr) {
+  void* raw = NULL;
+  if (addr->sa_family == AF_INET) {
+    raw = &((struct sockaddr_in*)addr)->sin_addr;
+  } else if (addr->sa_family == AF_INET6) {
+    raw = &((struct sockaddr_in6*)addr)->sin6_addr;
+  } else {
+    panic("invalid sa_family=%d", addr->sa_family);
+  }
+  return inet_ntop(addr->sa_family, raw, buf, buf_len);
+}
+
 // sendall wraps sendto to ensure all data is send to the other peer.
 int sendall(
     int sockfd,

@@ -1,2 +1,2 @@
-udp_recvfrom
-udp_sendto
+recvfrom
+sendto

@@ -1,5 +1,4 @@
-/* udp_recvfrom.c
- *
+/*
  * Binds a socket to port 8080 and invokes recvfrom in a loop.
  * The peer address is filled in automatically based on the sender.
  * So there can be multiple senders.
@@ -42,8 +41,10 @@ int main(void) {
 
   freeaddrinfo(addrs);
 
-  char buf[kBufLen];
-  char peer_addr_text[128];
+  char buf[kBufLen];  // buffer to read what we receive
+
+  char str_peer_addr_buf[128];
+
   struct sockaddr_storage
       peer_addr;  // filled in by recvfrom, so we need to allocate
   socklen_t peer_addr_len = sizeof(peer_addr);
@@ -62,14 +63,14 @@ int main(void) {
         raw_peer_addr = &(((struct sockaddr_in6*)&peer_addr)->sin6_addr);
       }
 
-      const char* ret =
-          inet_ntop(peer_addr.ss_family, raw_peer_addr, peer_addr_text,
-                    sizeof(peer_addr_text));  // ret is NULL or peer_addr_text
-      if (ret == NULL) {
+      const char* str_peer_addr =
+          addr_to_str(str_peer_addr_buf, sizeof(str_peer_addr_buf),
+                      (struct sockaddr*)&peer_addr);
+      if (str_peer_addr == NULL) {
         panic("could not parse peer address");
       } else {
         buf[n] = '\0';
-        printf("recv packet from %s of size %d bytes data=%s\n", peer_addr_text,
+        printf("recv packet from %s of size %d bytes data=%s\n", str_peer_addr,
                n, buf);
       }
     }
