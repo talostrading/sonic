@@ -18,7 +18,12 @@ type file struct {
 	pd     internal.PollData
 	closed uint32
 
-	readDispatch, writeDispatch int
+	// dispatched tracks how callback are currently on the stack.
+	// If the fd has a lot of data to read/write and the caller nests
+	// read/write calls then we might overflow the stack. In order to not do that
+	// we limit the number of dispatched reads to MaxCallbackDispatch.
+	// If we hit that limit, we schedule an async read/write which results in clearing the stack.
+	dispatched int
 }
 
 func Open(ioc *IO, path string, flags int, mode os.FileMode) (File, error) {
@@ -88,11 +93,11 @@ func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
-	if f.readDispatch < MaxCallbackDispatch {
+	if f.dispatched < MaxCallbackDispatch {
 		f.asyncReadNow(b, 0, readAll, func(err error, n int) {
-			f.readDispatch++
+			f.dispatched++
 			cb(err, n)
-			f.readDispatch--
+			f.dispatched--
 		})
 	} else {
 		f.scheduleRead(b, 0, readAll, cb)
@@ -157,11 +162,11 @@ func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
-	if f.writeDispatch < MaxCallbackDispatch {
+	if f.dispatched < MaxCallbackDispatch {
 		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
-			f.writeDispatch++
+			f.dispatched++
 			cb(err, n)
-			f.writeDispatch--
+			f.dispatched--
 		})
 	} else {
 		f.scheduleWrite(b, 0, writeAll, cb)
