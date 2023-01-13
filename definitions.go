@@ -11,6 +11,7 @@ import (
 
 type AsyncCallback func(error, int)
 type AcceptCallback func(error, Conn)
+type AcceptPacketCallback func(error, PacketConn)
 
 // AsyncReader is the interface that wraps the AsyncRead and AsyncReadAll methods.
 type AsyncReader interface {
@@ -37,7 +38,7 @@ type AsyncReader interface {
 	AsyncReadAll(b []byte, cb AsyncCallback)
 }
 
-// AsyncReader is the interface that wraps the AsyncRead and AsyncReadAll methods.
+// AsyncWriter is the interface that wraps the AsyncRead and AsyncReadAll methods.
 type AsyncWriter interface {
 	// AsyncWrite writes up to len(b) bytes into the underlying data stream asynchronously.
 	//
@@ -52,7 +53,7 @@ type AsyncWriter interface {
 	// AsyncWrite must not modify b, even temporarily.
 	AsyncWrite(b []byte, cb AsyncCallback)
 
-	// AsyncReadAll writes len(b) bytes into the underlying data stream asynchronously.
+	// AsyncWriteAll writes len(b) bytes into the underlying data stream asynchronously.
 	AsyncWriteAll(b []byte, cb AsyncCallback)
 }
 
@@ -131,11 +132,22 @@ type Conn interface {
 	net.Conn
 }
 
+type AsyncReadCallbackPacket func(error, int, net.Addr)
+type AsyncWriteCallbackPacket func(error)
+
 // PacketConn is a generic packet-oriented connection.
 type PacketConn interface {
-	AsyncReadFrom([]byte, func(err error, n int, addr net.Addr))
-	AsyncWriteTo([]byte, func(err error, n int, addr net.Addr))
-	net.PacketConn
+	ReadFrom([]byte) (n int, addr net.Addr, err error)
+	AsyncReadFrom([]byte, AsyncReadCallbackPacket)
+	AsyncReadAllFrom([]byte, AsyncReadCallbackPacket)
+
+	WriteTo([]byte, net.Addr) error
+	AsyncWriteTo([]byte, net.Addr, AsyncWriteCallbackPacket)
+
+	Close() error
+	Closed() bool
+
+	LocalAddr() net.Addr
 }
 
 // Listener is a generic network listener for stream-oriented protocols.
@@ -150,7 +162,7 @@ type Listener interface {
 	Close() error
 
 	// Addr returns the listener's network address.
-	Addr() error
+	Addr() net.Addr
 }
 
 const (

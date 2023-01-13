@@ -1,6 +1,8 @@
 package sonic
 
 import (
+	"fmt"
+	"net"
 	"os"
 	"syscall"
 
@@ -12,10 +14,12 @@ import (
 var _ Listener = &listener{}
 
 type listener struct {
-	ioc            *IO
-	pd             internal.PollData
-	fd             int
-	acceptDispatch int
+	ioc  *IO
+	pd   internal.PollData
+	fd   int
+	addr net.Addr
+
+	dispatched int
 }
 
 // Listen creates a Listener that listens for new connections on the local address.
@@ -33,15 +37,20 @@ func Listen(
 	addr string,
 	opts ...sonicopts.Option,
 ) (Listener, error) {
-	fd, err := internal.Listen(network, addr, opts...)
+	if network[:3] != "tcp" {
+		return nil, fmt.Errorf("listen only work for tcp")
+	}
+
+	fd, listenAddr, err := internal.Listen(network, addr, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	l := &listener{
-		ioc: ioc,
-		pd:  internal.PollData{Fd: fd},
-		fd:  fd,
+		ioc:  ioc,
+		pd:   internal.PollData{Fd: fd},
+		fd:   fd,
+		addr: listenAddr,
 	}
 	return l, nil
 }
@@ -51,16 +60,16 @@ func (l *listener) Accept() (Conn, error) {
 }
 
 func (l *listener) AsyncAccept(cb AcceptCallback) {
-	if l.acceptDispatch >= MaxCallbackDispatch {
+	if l.dispatched >= MaxCallbackDispatch {
 		l.asyncAccept(cb)
 	} else {
 		conn, err := l.accept()
 		if err != nil && (err == sonicerrors.ErrWouldBlock) {
 			l.asyncAccept(cb)
 		} else {
-			l.acceptDispatch++
+			l.dispatched++
 			cb(err, conn)
-			l.acceptDispatch--
+			l.dispatched--
 		}
 	}
 }
@@ -114,11 +123,6 @@ func (l *listener) Close() error {
 	return syscall.Close(l.fd)
 }
 
-func (l *listener) Addr() error {
-	// TODO
-	return nil
-}
-
-func ListenPacket(ioc *IO, network, address string) (PacketConn, error) {
-	return nil, nil
+func (l *listener) Addr() net.Addr {
+	return l.addr
 }

@@ -18,16 +18,10 @@ type conn struct {
 	remoteAddr net.Addr
 }
 
-func newConn(ioc *IO, fd int, localAddr, remoteAddr net.Addr) *conn {
-	return &conn{
-		file:       &file{ioc: ioc, fd: fd, pd: internal.PollData{Fd: fd}},
-		fd:         fd,
-		localAddr:  localAddr,
-		remoteAddr: remoteAddr,
-	}
-}
-
 func Dial(ioc *IO, network, addr string) (Conn, error) {
+	if network[:3] != "tcp" {
+		return nil, fmt.Errorf("network must start with tcp for Dial")
+	}
 	return DialTimeout(ioc, network, addr, 10*time.Second)
 }
 
@@ -38,6 +32,15 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 	}
 
 	return newConn(ioc, fd, localAddr, remoteAddr), nil
+}
+
+func newConn(ioc *IO, fd int, localAddr, remoteAddr net.Addr) *conn {
+	return &conn{
+		file:       &file{ioc: ioc, fd: fd, pd: internal.PollData{Fd: fd}},
+		fd:         fd,
+		localAddr:  localAddr,
+		remoteAddr: remoteAddr,
+	}
 }
 
 func (c *conn) LocalAddr() net.Addr {

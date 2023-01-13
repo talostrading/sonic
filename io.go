@@ -21,7 +21,8 @@ type IO struct {
 	// pending* prevents the PollData owned by an object to be garbage
 	// collected while an async operation is in-flight on the object's file descriptor,
 	// in case the object goes out of scope.
-	// TODO get rid of map here. Only after subscription mechanism
+	// TODO get rid of map here. Only after subscription mechanism.
+	// Per fd you can have a list of PollData
 	pendingReads, pendingWrites map[*internal.PollData]struct{}
 	pendingTimers               map[*Timer]struct{}
 }

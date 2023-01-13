@@ -9,18 +9,34 @@ import (
 	"syscall"
 )
 
+// TODO Handle IPv6
+
 func ToSockaddr(addr net.Addr) syscall.Sockaddr {
 	switch addr := addr.(type) {
 	case *net.TCPAddr:
-		return &syscall.SockaddrInet4{
-			Port: addr.Port,
-			Addr: func() (b [4]byte) {
-				copy(b[:], addr.IP.To4())
-				return
-			}(),
+		if len(addr.IP) == 0 {
+			return &syscall.SockaddrInet4{}
+		} else {
+			return &syscall.SockaddrInet4{
+				Port: addr.Port,
+				Addr: func() (b [4]byte) {
+					copy(b[:], addr.IP.To4())
+					return
+				}(),
+			}
 		}
 	case *net.UDPAddr:
-		return nil
+		if len(addr.IP) == 0 {
+			return &syscall.SockaddrInet4{}
+		} else {
+			return &syscall.SockaddrInet4{
+				Port: addr.Port,
+				Addr: func() (b [4]byte) {
+					copy(b[:], addr.IP.To4())
+					return
+				}(),
+			}
+		}
 	case *net.UnixAddr:
 		return nil
 	default:
