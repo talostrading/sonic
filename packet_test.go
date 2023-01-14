@@ -52,8 +52,6 @@ func recvFrom(b []byte, addr string) (int, net.Addr, error) {
 }
 
 func TestPacketReadFrom(t *testing.T) {
-	time.Sleep(500 * time.Millisecond)
-
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker
@@ -111,13 +109,11 @@ func TestPacketReadFrom(t *testing.T) {
 }
 
 func TestPacketAsyncReadFrom(t *testing.T) {
-	time.Sleep(500 * time.Millisecond)
-
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker
 		for i := 0; i < 100; i++ {
-			sendTo([]byte("hello"), "localhost:8080")
+			sendTo([]byte("hello"), "localhost:8081")
 			time.Sleep(time.Millisecond)
 		}
 	}()
@@ -125,7 +121,7 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := NewPacketConn(ioc, "udp", "localhost:8080")
+	conn, err := NewPacketConn(ioc, "udp", "localhost:8081")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +136,7 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 		t.Fatal("PacketConn socket should be bound to a local address")
 	}
 
-	if strings.Split(conn.LocalAddr().String(), ":")[1] != "8080" {
+	if strings.Split(conn.LocalAddr().String(), ":")[1] != "8081" {
 		t.Fatalf("invalid port for local UDP address %v", conn.LocalAddr())
 	}
 
@@ -169,13 +165,11 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 }
 
 func TestPacketWriteTo(t *testing.T) {
-	time.Sleep(500 * time.Millisecond)
-
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker
 		b := make([]byte, 128)
-		n, addr, err := recvFrom(b, "localhost:8080")
+		n, addr, err := recvFrom(b, "localhost:8082")
 		if err != nil {
 			panic(err)
 		}
@@ -190,7 +184,7 @@ func TestPacketWriteTo(t *testing.T) {
 		marker <- struct{}{}
 	}()
 
-	toAddr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+	toAddr, err := net.ResolveUDPAddr("udp", "localhost:8082")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,13 +220,11 @@ outer:
 }
 
 func TestPacketAsyncWriteTo(t *testing.T) {
-	time.Sleep(500 * time.Millisecond)
-
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker
 		b := make([]byte, 128)
-		n, addr, err := recvFrom(b, "localhost:8080")
+		n, addr, err := recvFrom(b, "localhost:8083")
 		if err != nil {
 			panic(err)
 		}
@@ -247,7 +239,7 @@ func TestPacketAsyncWriteTo(t *testing.T) {
 		marker <- struct{}{}
 	}()
 
-	toAddr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+	toAddr, err := net.ResolveUDPAddr("udp", "localhost:8083")
 	if err != nil {
 		t.Fatal(err)
 	}

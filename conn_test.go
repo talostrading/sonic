@@ -8,16 +8,13 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
-	"time"
 )
 
 func TestConnUDPAsyncWrite(t *testing.T) {
-	time.Sleep(500 * time.Millisecond)
-
 	var nread uint32 = 0
 	marker := make(chan struct{}, 1)
 	go func() {
-		udpAddr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+		udpAddr, err := net.ResolveUDPAddr("udp", "localhost:8084")
 		if err != nil {
 			panic(err)
 		}
@@ -47,7 +44,7 @@ func TestConnUDPAsyncWrite(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := Dial(ioc, "udp", "localhost:8080")
+	conn, err := Dial(ioc, "udp", "localhost:8084")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,11 +79,9 @@ outer:
 }
 
 func TestConnUDPAsyncRead(t *testing.T) {
-	time.Sleep(500 * time.Millisecond)
-
 	marker := make(chan struct{}, 1)
 	go func() {
-		udpAddr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+		udpAddr, err := net.ResolveUDPAddr("udp", "localhost:8085")
 		if err != nil {
 			panic(err)
 		}
@@ -108,7 +103,7 @@ func TestConnUDPAsyncRead(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := ListenPacket(ioc, "udp", "localhost:8080")
+	conn, err := ListenPacket(ioc, "udp", "localhost:8085")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +147,7 @@ func TestConnAsyncTCPEchoClient(t *testing.T) {
 	marker := make(chan struct{}, 1)
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8080")
+		ln, err := net.Listen("tcp", "localhost:8086")
 		if err != nil {
 			panic(err)
 		}
@@ -193,7 +188,7 @@ func TestConnAsyncTCPEchoClient(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := Dial(ioc, "tcp", "localhost:8080")
+	conn, err := Dial(ioc, "tcp", "localhost:8086")
 	if err != nil {
 		panic(err)
 	}
@@ -237,7 +232,7 @@ func TestConnAsyncTCPEchoClient(t *testing.T) {
 func TestConnReadHandlesError(t *testing.T) {
 	marker := make(chan struct{}, 1)
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8082")
+		ln, err := net.Listen("tcp", "localhost:8087")
 		if err != nil {
 			panic(err)
 		}
@@ -261,7 +256,7 @@ func TestConnReadHandlesError(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := Dial(ioc, "tcp", "localhost:8082")
+	conn, err := Dial(ioc, "tcp", "localhost:8087")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,7 +290,7 @@ func TestConnWriteHandlesError(t *testing.T) {
 	marker := make(chan struct{}, 1)
 
 	go func() {
-		ln, err := net.Listen("tcp", "localhost:8083")
+		ln, err := net.Listen("tcp", "localhost:8088")
 		if err != nil {
 			panic(err)
 		}
@@ -320,7 +315,7 @@ func TestConnWriteHandlesError(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := Dial(ioc, "tcp", "localhost:8083")
+	conn, err := Dial(ioc, "tcp", "localhost:8088")
 	if err != nil {
 		t.Fatal(err)
 	}
