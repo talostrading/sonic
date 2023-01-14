@@ -1,14 +1,16 @@
 package sonic
 
 import (
+	"errors"
 	"fmt"
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
 	"net"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 func sendTo(b []byte, addr string) error {
@@ -49,6 +51,32 @@ func recvFrom(b []byte, addr string) (int, net.Addr, error) {
 
 	n, peerAddr, err := syscall.Recvfrom(fd, b, 0)
 	return n, internal.FromSockaddr(peerAddr), err
+}
+
+func TestPacketError(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	conn, err := NewPacketConn(ioc, "udp", "localhost:9080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	b := make([]byte, 1)
+	_, _, err = conn.ReadFrom(b)
+	if !errors.Is(err, sonicerrors.ErrWouldBlock) {
+		t.Fatal("should return ErrWouldBlock")
+	}
+
+	addr, err := net.ResolveUDPAddr("udp", "localhost:8181")
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = conn.WriteTo([]byte("hello"), addr)
+	if err != nil {
+		t.Fatal("should not return error")
+	}
 }
 
 func TestPacketReadFrom(t *testing.T) {
@@ -140,11 +168,11 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 		t.Fatalf("invalid port for local UDP address %v", conn.LocalAddr())
 	}
 
+	nread := 0
 	marker <- struct{}{}
-	done := false
 	b := make([]byte, 128)
 	conn.AsyncReadFrom(b, func(err error, n int, addr net.Addr) {
-		done = true
+		nread++
 		if err != nil {
 			t.Fatal(err)
 		} else {
@@ -159,8 +187,12 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 	})
 
 	now := time.Now()
-	for !done || time.Now().Sub(now) < time.Second {
+	for nread < 5 || time.Now().Sub(now) < time.Second {
 		ioc.RunOneFor(time.Millisecond)
+	}
+
+	if nread == 0 {
+		t.Fatal("did not read anything")
 	}
 }
 

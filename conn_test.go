@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/talostrading/sonic/sonicopts"
 )
@@ -95,6 +96,7 @@ func TestConnUDPAsyncRead(t *testing.T) {
 
 		for i := 0; i < 100; i++ {
 			udp.Write([]byte("hello"))
+			time.Sleep(time.Millisecond)
 		}
 
 		marker <- struct{}{}
@@ -137,7 +139,10 @@ func TestConnUDPAsyncRead(t *testing.T) {
 	conn.AsyncReadFrom(b, onRead)
 	marker <- struct{}{}
 
-	ioc.RunPending()
+	now := time.Now()
+	for nread < 5 || time.Now().Sub(now) < time.Second {
+		ioc.PollOne()
+	}
 	if nread == 0 {
 		t.Fatal("did not read anything")
 	}
@@ -181,6 +186,8 @@ func TestConnAsyncTCPEchoClient(t *testing.T) {
 			if string(b[:n]) != "hello" {
 				panic(fmt.Errorf("did not read %v", string(b)))
 			}
+
+			time.Sleep(time.Millisecond)
 		}
 	}()
 	<-marker
