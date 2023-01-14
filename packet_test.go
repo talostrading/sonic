@@ -52,6 +52,8 @@ func recvFrom(b []byte, addr string) (int, net.Addr, error) {
 }
 
 func TestPacketReadFrom(t *testing.T) {
+	time.Sleep(500 * time.Millisecond)
+
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker
@@ -76,7 +78,7 @@ func TestPacketReadFrom(t *testing.T) {
 	}()
 
 	if conn.LocalAddr() == nil {
-		t.Fatal("ListenPacket socket should be bound to a local address")
+		t.Fatal("PacketConn socket should be bound to a local address")
 	}
 
 	if strings.Split(conn.LocalAddr().String(), ":")[1] != "8080" {
@@ -109,6 +111,8 @@ func TestPacketReadFrom(t *testing.T) {
 }
 
 func TestPacketAsyncReadFrom(t *testing.T) {
+	time.Sleep(500 * time.Millisecond)
+
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker
@@ -133,7 +137,7 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 	}()
 
 	if conn.LocalAddr() == nil {
-		t.Fatal("ListenPacket socket should be bound to a local address")
+		t.Fatal("PacketConn socket should be bound to a local address")
 	}
 
 	if strings.Split(conn.LocalAddr().String(), ":")[1] != "8080" {
@@ -165,6 +169,8 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 }
 
 func TestPacketWriteTo(t *testing.T) {
+	time.Sleep(500 * time.Millisecond)
+
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker
@@ -220,6 +226,8 @@ outer:
 }
 
 func TestPacketAsyncWriteTo(t *testing.T) {
+	time.Sleep(500 * time.Millisecond)
+
 	marker := make(chan struct{}, 1)
 	go func() {
 		<-marker

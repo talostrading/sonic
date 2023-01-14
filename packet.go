@@ -32,14 +32,13 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 		return nil, fmt.Errorf("network must start with udp for DialPacket")
 	}
 
-	fd, localAddr, remoteAddr, err := internal.Connect(network, addr, opts...)
+	fd, localAddr, err := internal.CreateSocketUDP(network, addr)
 	if err != nil {
 		return nil, err
 	}
 
-	if remoteAddr != nil {
-		// logic error
-		panic("DialPacket remote address should be nil")
+	if err := syscall.Bind(fd, internal.ToSockaddr(localAddr)); err != nil {
+		return nil, err
 	}
 
 	return &packetConn{

@@ -5,13 +5,151 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 )
 
-func TestAsyncTCPEchoClient(t *testing.T) {
-	closer := make(chan struct{}, 1)
+func TestConnUDPAsyncWrite(t *testing.T) {
+	time.Sleep(500 * time.Millisecond)
+
+	var nread uint32 = 0
+	marker := make(chan struct{}, 1)
+	go func() {
+		udpAddr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		udp, err := net.ListenUDP("udp", udpAddr)
+		if err != nil {
+			panic(err)
+		}
+		defer udp.Close()
+
+		<-marker
+
+		b := make([]byte, 128)
+		for i := 0; i < 1000; i++ {
+			n, err := udp.Read(b)
+			if err == nil {
+				b = b[:n]
+				if string(b) != "hello" {
+					panic("invalid message")
+				}
+				atomic.AddUint32(&nread, 1)
+			}
+		}
+
+		marker <- struct{}{}
+	}()
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	conn, err := Dial(ioc, "udp", "localhost:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	var onWrite AsyncCallback
+	onWrite = func(err error, _ int) {
+		if err != nil {
+			if err != io.EOF {
+				t.Fatal(err)
+			}
+		} else {
+			conn.AsyncWriteAll([]byte("hello"), onWrite)
+		}
+	}
+
+	marker <- struct{}{} // server can start
+	conn.AsyncWriteAll([]byte("hello"), onWrite)
+
+outer:
+	for {
+		select {
+		case <-marker: // server is done
+			if atomic.LoadUint32(&nread) == 0 {
+				t.Fatal("did not read anything")
+			}
+			break outer
+		default:
+			ioc.PollOne()
+		}
+	}
+}
+
+func TestConnUDPAsyncRead(t *testing.T) {
+	time.Sleep(500 * time.Millisecond)
+
+	marker := make(chan struct{}, 1)
+	go func() {
+		udpAddr, err := net.ResolveUDPAddr("udp", "localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+		udp, err := net.DialUDP("udp", nil, udpAddr)
+		if err != nil {
+			panic(err)
+		}
+		defer udp.Close()
+
+		<-marker
+
+		for i := 0; i < 100; i++ {
+			udp.Write([]byte("hello"))
+		}
+
+		marker <- struct{}{}
+	}()
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	conn, err := ListenPacket(ioc, "udp", "localhost:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	nread := 0
+	b := make([]byte, 128)
+	var onRead AsyncReadCallbackPacket
+	onRead = func(err error, n int, fromAddr net.Addr) {
+		if err != nil {
+			if err != io.EOF {
+				t.Fatal(err)
+			}
+		} else {
+			b = b[:n]
+			if string(b) != "hello" {
+				t.Fatal("wrong message")
+			}
+
+			nread++
+
+			b = b[:cap(b)]
+			conn.AsyncReadFrom(b, onRead)
+		}
+	}
+
+	conn.AsyncReadFrom(b, onRead)
+	marker <- struct{}{}
+
+	for {
+		if nread > 0 {
+			break
+		}
+		ioc.PollOne()
+	}
+
+	<-marker
+}
+
+func TestConnAsyncTCPEchoClient(t *testing.T) {
+	marker := make(chan struct{}, 1)
 
 	go func() {
 		ln, err := net.Listen("tcp", "localhost:8080")
@@ -20,16 +158,19 @@ func TestAsyncTCPEchoClient(t *testing.T) {
 		}
 		defer ln.Close()
 
+		marker <- struct{}{}
+
 		conn, err := ln.Accept()
 		if err != nil {
 			panic(err)
 		}
+		defer conn.Close()
 
 		b := make([]byte, 128)
 	outer:
 		for {
 			select {
-			case <-closer:
+			case <-marker:
 				break outer
 			default:
 			}
@@ -47,8 +188,7 @@ func TestAsyncTCPEchoClient(t *testing.T) {
 			}
 		}
 	}()
-
-	time.Sleep(500 * time.Millisecond)
+	<-marker
 
 	ioc := MustIO()
 	defer ioc.Close()
@@ -57,6 +197,7 @@ func TestAsyncTCPEchoClient(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
+	defer conn.Close()
 
 	b := make([]byte, 5)
 	var onAsyncRead AsyncCallback
@@ -90,30 +231,32 @@ func TestAsyncTCPEchoClient(t *testing.T) {
 		ioc.RunOne()
 	}
 
-	closer <- struct{}{}
+	marker <- struct{}{}
 }
 
-func TestReadHandlesError(t *testing.T) {
+func TestConnReadHandlesError(t *testing.T) {
+	marker := make(chan struct{}, 1)
 	go func() {
 		ln, err := net.Listen("tcp", "localhost:8082")
 		if err != nil {
 			panic(err)
 		}
 
+		marker <- struct{}{}
+
 		conn, err := ln.Accept()
 		if err != nil {
 			panic(err)
 		}
+		defer conn.Close()
 
 		_, err = conn.Write([]byte("hello"))
 		if err != nil {
 			panic(err)
 		}
 
-		conn.Close()
 	}()
-
-	time.Sleep(500 * time.Millisecond)
+	<-marker
 
 	ioc := MustIO()
 	defer ioc.Close()
@@ -122,6 +265,7 @@ func TestReadHandlesError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	done := false
 	b := make([]byte, 128)
@@ -147,7 +291,9 @@ func TestReadHandlesError(t *testing.T) {
 	}
 }
 
-func TestWriteHandlesError(t *testing.T) {
+func TestConnWriteHandlesError(t *testing.T) {
+	marker := make(chan struct{}, 1)
+
 	go func() {
 		ln, err := net.Listen("tcp", "localhost:8083")
 		if err != nil {
@@ -155,24 +301,21 @@ func TestWriteHandlesError(t *testing.T) {
 		}
 		defer ln.Close()
 
+		marker <- struct{}{}
+
 		conn, err := ln.Accept()
 		if err != nil {
 			panic(err)
 		}
+		defer conn.Close()
 
 		b := make([]byte, 128)
 		_, err = conn.Read(b)
 		if err != nil {
 			panic(err)
 		}
-
-		err = conn.Close()
-		if err != nil {
-			panic(err)
-		}
 	}()
-
-	time.Sleep(500 * time.Millisecond)
+	<-marker
 
 	ioc := MustIO()
 	defer ioc.Close()
@@ -181,6 +324,7 @@ func TestWriteHandlesError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	done := false
 	var onAsyncWrite AsyncCallback

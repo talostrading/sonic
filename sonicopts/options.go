@@ -1,5 +1,7 @@
 package sonicopts
 
+import "net"
+
 type OptionType uint8
 
 const (
@@ -7,6 +9,7 @@ const (
 	TypeReusePort
 	TypeReuseAddr
 	TypeNoDelay
+	TypeBindBeforeConnect
 	MaxOption
 )
 
@@ -18,6 +21,10 @@ func (t OptionType) String() string {
 		return "reuse_port"
 	case TypeReuseAddr:
 		return "reuse_addr"
+	case TypeNoDelay:
+		return "no_delay"
+	case TypeBindBeforeConnect:
+		return "bind_before_connect"
 	default:
 		return "option_unknown"
 	}
@@ -97,5 +104,23 @@ func (o *optionNoDelay) Value() interface{} {
 func NoDelay(v bool) Option {
 	return &optionNoDelay{
 		v: v,
+	}
+}
+
+type optionBindBeforeConnect struct {
+	addr net.Addr
+}
+
+func (o *optionBindBeforeConnect) Type() OptionType {
+	return TypeBindBeforeConnect
+}
+
+func (o *optionBindBeforeConnect) Value() interface{} {
+	return o.addr
+}
+
+func BindBeforeConnect(addr net.Addr) Option {
+	return &optionBindBeforeConnect{
+		addr: addr,
 	}
 }

@@ -2,6 +2,7 @@ package sonic
 
 import (
 	"fmt"
+	"github.com/talostrading/sonic/sonicopts"
 	"net"
 	"time"
 
@@ -12,21 +13,28 @@ var _ Conn = &conn{}
 
 type conn struct {
 	*file
-	fd int
-
+	fd         int
 	localAddr  net.Addr
 	remoteAddr net.Addr
 }
 
-func Dial(ioc *IO, network, addr string) (Conn, error) {
-	if network[:3] != "tcp" {
-		return nil, fmt.Errorf("network must start with tcp for Dial")
-	}
-	return DialTimeout(ioc, network, addr, 10*time.Second)
+// Dial establishes a stream based connection to the specified address.
+//
+// Data can be sent or received only from the specified address for all networks: tcp, udp and unix domain sockets.
+func Dial(
+	ioc *IO,
+	network, addr string,
+	opts ...sonicopts.Option,
+) (Conn, error) {
+	return DialTimeout(ioc, network, addr, 10*time.Second, opts...)
 }
 
-func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, error) {
-	fd, localAddr, remoteAddr, err := internal.ConnectTimeout(network, addr, timeout)
+func DialTimeout(
+	ioc *IO, network, addr string,
+	timeout time.Duration,
+	opts ...sonicopts.Option,
+) (Conn, error) {
+	fd, localAddr, remoteAddr, err := internal.ConnectTimeout(network, addr, timeout, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -34,7 +42,11 @@ func DialTimeout(ioc *IO, network, addr string, timeout time.Duration) (Conn, er
 	return newConn(ioc, fd, localAddr, remoteAddr), nil
 }
 
-func newConn(ioc *IO, fd int, localAddr, remoteAddr net.Addr) *conn {
+func newConn(
+	ioc *IO,
+	fd int,
+	localAddr, remoteAddr net.Addr,
+) *conn {
 	return &conn{
 		file:       &file{ioc: ioc, fd: fd, pd: internal.PollData{Fd: fd}},
 		fd:         fd,

@@ -595,12 +595,10 @@ func TestTimerScheduleOnceConsecutivelySleepInBetween(t *testing.T) {
 		t.Fatalf("should not be able to schedule an already scheduled clock, expected=%s", sonicerrors.ErrCancelled)
 	}
 
-	for i := 0; i < 3; i++ {
-		ioc.RunOne()
-	}
+	ioc.RunPending()
 	dur := end.Sub(start)
 	if dur <= 59*time.Millisecond { // 1ms error margin
-		t.Fatal("slept for the wrong period of time")
+		t.Fatalf("slept for the wrong period of time %s", dur)
 	}
 }
 

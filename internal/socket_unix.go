@@ -8,7 +8,6 @@ import (
 	"golang.org/x/sys/unix"
 	"net"
 	"os"
-	"reflect"
 	"syscall"
 	"time"
 )
@@ -19,72 +18,97 @@ var (
 	errUnknownNetwork = errors.New("unknown network argument")
 )
 
-func CreateSocket(addr net.Addr) (int, error) {
-	var (
-		domain int
-		typ    int
-	)
-
-	switch addr := addr.(type) {
-	case *net.TCPAddr:
-		domain, typ = syscall.AF_INET, syscall.SOCK_STREAM
-		if len(addr.Zone) != 0 {
-			domain = syscall.AF_INET6
+func maybeBindBeforeConnect(fd int, opts ...sonicopts.Option) error {
+	for _, opt := range opts {
+		if opt.Type() == sonicopts.TypeBindBeforeConnect {
+			addr := opt.Value().(net.Addr)
+			return syscall.Bind(fd, ToSockaddr(addr))
 		}
-	case *net.UDPAddr:
-		domain, typ = syscall.AF_INET, syscall.SOCK_DGRAM
-		if len(addr.Zone) != 0 {
-			domain = syscall.AF_INET6
-		}
-	case *net.UnixAddr:
-		domain, typ = syscall.AF_UNIX, syscall.SOCK_STREAM
-	default:
-		return -1, fmt.Errorf("unknown address type: %s", reflect.TypeOf(addr))
 	}
-
-	fd, err := syscall.Socket(domain, typ, 0)
-	if err != nil {
-		return 0, os.NewSyscallError("socket", err)
-	}
-
-	return fd, nil
+	return nil
 }
 
-// Connect creates a socket capable of talking to the specified address.
+func socket(domain, socketType, proto int, nonblock bool) (fd int, err error) {
+	fd, err = syscall.Socket(domain, socketType, proto)
+	if err != nil {
+		return -1, os.NewSyscallError("socket", err)
+	}
+
+	return fd, syscall.SetNonblock(fd, nonblock)
+}
+
+func CreateSocketTCP(network, addr string) (fd int, tcpAddr *net.TCPAddr, err error) {
+	if addr == "" {
+		// when listening
+		tcpAddr = &net.TCPAddr{}
+	} else {
+		// when connecting
+		tcpAddr, err = net.ResolveTCPAddr(network, addr)
+		if err != nil {
+			return -1, nil, err
+		}
+	}
+
+	domain, socketType := syscall.AF_INET, syscall.SOCK_STREAM
+	if len(tcpAddr.Zone) > 0 {
+		domain = syscall.AF_INET6
+	}
+	if tcpAddr.IP.IsUnspecified() {
+		domain = syscall.AF_UNSPEC
+	}
+
+	fd, err = socket(domain, socketType, 0, true)
+
+	return
+}
+
+func CreateSocketUDP(network, addr string) (fd int, udpAddr *net.UDPAddr, err error) {
+	if addr == "" {
+		// when sending
+		udpAddr = &net.UDPAddr{}
+	} else {
+		// when receiving
+		udpAddr, err = net.ResolveUDPAddr(network, addr)
+		if err != nil {
+			return -1, nil, err
+		}
+	}
+
+	domain, socketType := syscall.AF_INET, syscall.SOCK_DGRAM
+	if len(udpAddr.Zone) > 0 {
+		domain = syscall.AF_INET6
+	}
+	if udpAddr.IP.IsUnspecified() {
+		domain = syscall.AF_UNSPEC
+	}
+
+	fd, err = socket(domain, socketType, 0, true)
+
+	return
+}
+
+// Connect connects to the specified endpoint. The created connection can be optionally bound to a local address
+// by passing the option sonicopts.BindBeforeConnect(to net.Addr)
 //
-// If network is:
-// - tcp: Connect establishes a stream connection to the specified addr
-// - udp: Connect creates a UDP socket and binds it to the specified address. If addr is empty, the socket is bound to a
-//        random address by the kernel. The bound address will be returned as localAddr. remoteAddr will be nil.
-// - unix: Connect establishes a stream connection to the specified addr
+// If network is of type UDP, then addr is the address to which datagrams are sent by default, and the only address from
+// which datagrams are received.
 func Connect(
 	network, addr string,
 	opts ...sonicopts.Option,
 ) (fd int, localAddr, remoteAddr net.Addr, err error) {
-	// TODO should provide
-	if len(opts) > 0 {
-		panic("cannot provide opts")
-	}
-
 	return ConnectTimeout(network, addr, 10*time.Second, opts...)
 }
 
-// ConnectTimeout connects with a timeout for all but UDP networks.
 func ConnectTimeout(
 	network, addr string,
 	timeout time.Duration,
 	opts ...sonicopts.Option,
 ) (fd int, localAddr, remoteAddr net.Addr, err error) {
-	// TODO should provide
-	if len(opts) > 0 {
-		panic("cannot provide opts")
-	}
-
 	switch network[:3] {
 	case "tcp":
 		return ConnectTCP(network, addr, timeout, opts...)
 	case "udp":
-		return ConnectUDP(network, addr, opts...)
+		return ConnectUDP(network, addr, timeout, opts...)
 	case "uni":
 		return -1, nil, nil, fmt.Errorf("unix domain not supported")
 	default:
@@ -92,40 +116,20 @@ func ConnectTimeout(
 	}
 }
 
-func ConnectTCP(
-	network, addr string,
-	timeout time.Duration,
-	opts ...sonicopts.Option,
-) (fd int, localAddr, remoteAddr net.Addr, err error) {
-	// TODO should provide
-	if len(opts) > 0 {
-		panic("cannot provide opts")
+func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicopts.Option) error {
+	if err := ApplyOpts(fd, opts...); err != nil {
+		return err
 	}
 
-	remoteAddr, err = net.ResolveTCPAddr(network, addr)
-	if err != nil {
-		return -1, nil, nil, err
+	if err := maybeBindBeforeConnect(fd, opts...); err != nil {
+		return err
 	}
 
-	fd, err = CreateSocket(remoteAddr)
-	if err != nil {
-		return -1, nil, nil, err
-	}
-
-	// TODO make nodelay optional
-	err = ApplyOpts(fd, sonicopts.Nonblocking(true), sonicopts.NoDelay(true))
-	if err != nil {
-		syscall.Close(fd)
-		return -1, nil, nil, err
-	}
-
-	err = syscall.Connect(fd, ToSockaddr(remoteAddr))
-	if err != nil {
+	if err := syscall.Connect(fd, ToSockaddr(remoteAddr)); err != nil {
 		// this can happen if the socket is nonblocking, so we fix it with a select
 		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
 		if err != syscall.EINPROGRESS && err != syscall.EAGAIN {
-			syscall.Close(fd)
-			return -1, nil, nil, os.NewSyscallError("connect", err)
+			return os.NewSyscallError("connect", err)
 		}
 
 		var fds unix.FdSet
@@ -135,93 +139,65 @@ func ConnectTCP(
 
 		n, err := unix.Select(fd+1, nil, &fds, nil, &t)
 		if err != nil {
-			syscall.Close(fd)
-			return -1, nil, nil, os.NewSyscallError("select", err)
+			return os.NewSyscallError("select", err)
 		}
 
 		if n == 0 {
-			syscall.Close(fd)
-			return -1, nil, nil, sonicerrors.ErrTimeout
+			return sonicerrors.ErrTimeout
 		}
 
 		_, err = syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
 		if err != nil {
-			syscall.Close(fd)
-			return -1, nil, nil, os.NewSyscallError("getsockopt", err)
+			return os.NewSyscallError("getsockopt", err)
 		}
 	}
 
-	localAddr, err = SocketAddress(fd)
+	return nil
+}
 
+func ConnectTCP(
+	network, addr string,
+	timeout time.Duration,
+	opts ...sonicopts.Option,
+) (fd int, localAddr, remoteAddr net.Addr, err error) {
+	fd, remoteAddr, err = CreateSocketTCP(network, addr)
+	if err != nil {
+		return -1, nil, nil, err
+	}
+
+	if err := connect(fd, remoteAddr, timeout, opts...); err != nil {
+		return -1, nil, nil, err
+	}
+
+	localAddr, err = SocketAddress(fd)
 	return
 }
 
 func ConnectUDP(
 	network, addr string,
+	timeout time.Duration,
 	opts ...sonicopts.Option,
 ) (fd int, localAddr, remoteAddr net.Addr, err error) {
-	// TODO should provide
-	if len(opts) > 0 {
-		panic("cannot provide opts")
-	}
-
-	randomAddr := false
-	if addr == "" {
-		randomAddr = true
-		localAddr = &net.UDPAddr{} // TODO handle ipv4 and ipv6 probably also need to modify CreateSocket with AF_UNSPEC
-	} else {
-		localAddr, err = net.ResolveUDPAddr(network, addr)
-		if err != nil {
-			return -1, nil, nil, err
-		}
-	}
-
-	fd, err = CreateSocket(localAddr)
+	fd, remoteAddr, err = CreateSocketUDP(network, addr)
 	if err != nil {
 		return -1, nil, nil, err
 	}
 
-	if err := ApplyOpts(fd, sonicopts.Nonblocking(true)); err != nil {
-		syscall.Close(fd)
+	if err := connect(fd, remoteAddr, timeout, opts...); err != nil {
 		return -1, nil, nil, err
 	}
 
-	if err := syscall.Bind(fd, ToSockaddr(localAddr)); err != nil {
-		syscall.Close(fd)
-		return -1, nil, nil, err
-	}
-
-	if randomAddr {
-		sockAddr, err := syscall.Getsockname(fd)
-		if err != nil {
-			return -1, nil, nil, err
-		}
-		localAddr = FromSockaddr(sockAddr)
-	}
-
-	return fd, localAddr, nil, nil
+	localAddr, err = SocketAddress(fd)
+	return
 }
 
-func Listen(network, addr string, opts ...sonicopts.Option) (fd int, listenAddr net.Addr, err error) {
-	switch network[:3] {
-	case "tcp":
-		return ListenTCP(network, addr, opts...)
-	case "udp":
-		return ListenUDP(network, addr, opts...)
-	case "uni":
-		return -1, nil, fmt.Errorf("unix domain not supported")
-	default:
-		return -1, nil, errUnknownNetwork
-	}
-}
-
-func ListenTCP(network, addr string, opts ...sonicopts.Option) (int, net.Addr, error) {
-	localAddr, err := net.ResolveTCPAddr(network, addr)
-	if err != nil {
-		return -1, nil, err
+func Listen(network, addr string, opts ...sonicopts.Option) (int, net.Addr, error) {
+	if network[:3] != "tcp" && network[:3] != "uni" {
+		return -1, nil, fmt.Errorf("network %s not supported", network[:3])
 	}
 
-	fd, err := CreateSocket(localAddr)
+	// TODO unix datagram as well, not only TCP
+	fd, localAddr, err := CreateSocketTCP(network, addr)
 	if err != nil {
 		return -1, nil, err
 	}
@@ -245,12 +221,11 @@ func ListenTCP(network, addr string, opts ...sonicopts.Option) (int, net.Addr, e
 }
 
 func ListenUDP(network, addr string, opts ...sonicopts.Option) (int, net.Addr, error) {
-	localAddr, err := net.ResolveUDPAddr(network, addr)
-	if err != nil {
-		return -1, nil, err
+	if network[:3] != "udp" {
+		return -1, nil, fmt.Errorf("network %s not supported", network[:3])
 	}
 
-	fd, err := CreateSocket(localAddr)
+	fd, localAddr, err := CreateSocketUDP(network, addr)
 	if err != nil {
 		return -1, nil, err
 	}

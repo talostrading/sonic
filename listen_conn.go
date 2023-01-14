@@ -1,7 +1,6 @@
 package sonic
 
 import (
-	"fmt"
 	"net"
 	"os"
 	"syscall"
@@ -37,10 +36,6 @@ func Listen(
 	addr string,
 	opts ...sonicopts.Option,
 ) (Listener, error) {
-	if network[:3] != "tcp" {
-		return nil, fmt.Errorf("listen only work for tcp")
-	}
-
 	fd, listenAddr, err := internal.Listen(network, addr, opts...)
 	if err != nil {
 		return nil, err
