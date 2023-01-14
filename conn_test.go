@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+
+	"github.com/talostrading/sonic/sonicopts"
 )
 
 func TestConnUDPAsyncWrite(t *testing.T) {
@@ -24,6 +26,7 @@ func TestConnUDPAsyncWrite(t *testing.T) {
 		}
 		defer udp.Close()
 
+		marker <- struct{}{}
 		<-marker
 
 		b := make([]byte, 128)
@@ -38,8 +41,9 @@ func TestConnUDPAsyncWrite(t *testing.T) {
 			}
 		}
 
-		marker <- struct{}{}
+		marker <- struct{}{} // done reading
 	}()
+	<-marker
 
 	ioc := MustIO()
 	defer ioc.Close()
@@ -57,24 +61,20 @@ func TestConnUDPAsyncWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 		} else {
-			conn.AsyncWriteAll([]byte("hello"), onWrite)
+			select {
+			case <-marker:
+			default:
+				conn.AsyncWriteAll([]byte("hello"), onWrite)
+			}
 		}
 	}
 
 	marker <- struct{}{} // server can start
 	conn.AsyncWriteAll([]byte("hello"), onWrite)
 
-outer:
-	for {
-		select {
-		case <-marker: // server is done
-			if atomic.LoadUint32(&nread) == 0 {
-				t.Fatal("did not read anything")
-			}
-			break outer
-		default:
-			ioc.PollOne()
-		}
+	ioc.RunPending()
+	if atomic.LoadUint32(&nread) == 0 {
+		t.Fatal("did not read anything")
 	}
 }
 
@@ -103,7 +103,7 @@ func TestConnUDPAsyncRead(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	conn, err := ListenPacket(ioc, "udp", "localhost:8085")
+	conn, err := ListenPacket(ioc, "udp", "localhost:8085", sonicopts.ReuseAddr(true))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,22 +125,22 @@ func TestConnUDPAsyncRead(t *testing.T) {
 
 			nread++
 
-			b = b[:cap(b)]
-			conn.AsyncReadFrom(b, onRead)
+			select {
+			case <-marker:
+			default:
+				b = b[:cap(b)]
+				conn.AsyncReadFrom(b, onRead)
+			}
 		}
 	}
 
 	conn.AsyncReadFrom(b, onRead)
 	marker <- struct{}{}
 
-	for {
-		if nread > 0 {
-			break
-		}
-		ioc.PollOne()
+	ioc.RunPending()
+	if nread == 0 {
+		t.Fatal("did not read anything")
 	}
-
-	<-marker
 }
 
 func TestConnAsyncTCPEchoClient(t *testing.T) {
@@ -175,7 +175,7 @@ func TestConnAsyncTCPEchoClient(t *testing.T) {
 			b = b[:cap(b)]
 			n, err := conn.Read(b)
 			if err != nil {
-				panic(err)
+				break outer
 			}
 
 			if string(b[:n]) != "hello" {

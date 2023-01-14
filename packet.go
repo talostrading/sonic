@@ -2,13 +2,14 @@ package sonic
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/sonicopts"
 	"io"
 	"net"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
 )
 
 var _ PacketConn = &packetConn{}
