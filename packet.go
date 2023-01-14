@@ -45,6 +45,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 	return &packetConn{
 		ioc:       ioc,
 		fd:        fd,
+		pd:        internal.PollData{Fd: fd},
 		localAddr: localAddr,
 		closed:    0,
 	}, nil

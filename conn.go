@@ -2,9 +2,10 @@ package sonic
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic/sonicopts"
 	"net"
 	"time"
+
+	"github.com/talostrading/sonic/sonicopts"
 
 	"github.com/talostrading/sonic/internal"
 )
