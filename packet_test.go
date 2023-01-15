@@ -169,9 +169,9 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 	}
 
 	nread := 0
-	marker <- struct{}{}
 	b := make([]byte, 128)
-	conn.AsyncReadFrom(b, func(err error, n int, addr net.Addr) {
+	var onRead AsyncReadCallbackPacket
+	onRead = func(err error, n int, addr net.Addr) {
 		nread++
 		if err != nil {
 			t.Fatal(err)
@@ -183,11 +183,15 @@ func TestPacketAsyncReadFrom(t *testing.T) {
 			if addr == nil {
 				t.Fatal("address should not be empty")
 			}
+			conn.AsyncReadFrom(b, onRead)
 		}
-	})
+	}
+	conn.AsyncReadFrom(b, onRead)
 
-	now := time.Now()
-	for nread < 5 || time.Now().Sub(now) < time.Second {
+	marker <- struct{}{}
+
+	start := time.Now()
+	for nread < 5 || time.Now().Sub(start) < time.Second {
 		ioc.RunOneFor(time.Millisecond)
 	}
 
