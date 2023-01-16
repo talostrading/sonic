@@ -17,6 +17,7 @@ const (
 	TypeReuseAddr
 	TypeNoDelay
 	TypeBindSocket
+	TypeMulticast
 	MaxOption
 )
 
@@ -32,6 +33,8 @@ func (t OptionType) String() string {
 		return "no_delay"
 	case TypeBindSocket:
 		return "bind_socket"
+	case TypeMulticast:
+		return "multicast"
 	default:
 		panic(fmt.Errorf("invalid option %d", t))
 	}

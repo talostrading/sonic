@@ -1,19 +1,19 @@
 package sonicopts
 
-type optionReuseAddr struct {
+type reuseAddr struct {
 	v bool
 }
 
 func ReuseAddr(v bool) Option {
-	return &optionReuseAddr{
+	return &reuseAddr{
 		v: v,
 	}
 }
 
-func (o *optionReuseAddr) Type() OptionType {
+func (o *reuseAddr) Type() OptionType {
 	return TypeReuseAddr
 }
 
-func (o *optionReuseAddr) Value() interface{} {
+func (o *reuseAddr) Value() interface{} {
 	return o.v
 }
