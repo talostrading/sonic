@@ -169,7 +169,7 @@ func ConnectTCP(
 		return -1, nil, nil, err
 	}
 
-	localAddr, err = SocketAddress(fd)
+	localAddr, err = SocketAddressTCP(fd)
 	return
 }
 
@@ -187,7 +187,7 @@ func ConnectUDP(
 		return -1, nil, nil, err
 	}
 
-	localAddr, err = SocketAddress(fd)
+	localAddr, err = SocketAddressUDP(fd)
 	return
 }
 
@@ -306,10 +306,18 @@ func ApplyOpts(fd int, opts ...sonicopts.Option) error {
 	return nil
 }
 
-func SocketAddress(fd int) (net.Addr, error) {
+func SocketAddressTCP(fd int) (net.Addr, error) {
 	addr, err := syscall.Getsockname(fd)
 	if err != nil {
 		return nil, err
 	}
-	return FromSockaddr(addr), nil
+	return FromSockaddrTCP(addr), nil
+}
+
+func SocketAddressUDP(fd int) (net.Addr, error) {
+	addr, err := syscall.Getsockname(fd)
+	if err != nil {
+		return nil, err
+	}
+	return FromSockaddrUDP(addr), nil
 }

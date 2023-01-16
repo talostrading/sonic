@@ -50,7 +50,7 @@ func recvFrom(b []byte, addr string) (int, net.Addr, error) {
 	}
 
 	n, peerAddr, err := syscall.Recvfrom(fd, b, 0)
-	return n, internal.FromSockaddr(peerAddr), err
+	return n, internal.FromSockaddrUDP(peerAddr), err
 }
 
 func TestPacketError(t *testing.T) {
@@ -232,6 +232,7 @@ func TestPacketWriteTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer func() {
 		conn.Close()
 		if !conn.Closed() {
@@ -239,6 +240,7 @@ func TestPacketWriteTo(t *testing.T) {
 		}
 	}()
 
+	first := true
 	marker <- struct{}{}
 outer:
 	for {
@@ -250,6 +252,12 @@ outer:
 			err = conn.WriteTo([]byte("hello"), toAddr)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if first {
+				if addr := conn.LocalAddr().(*net.UDPAddr); addr.Port <= 0 {
+					t.Fatal("did not set local address on unbound socket after WriteTo")
+				}
+				first = false
 			}
 		}
 	}

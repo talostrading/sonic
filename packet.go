@@ -18,7 +18,7 @@ type packetConn struct {
 	ioc        *IO
 	fd         int
 	pd         internal.PollData
-	localAddr  net.Addr
+	localAddr  *net.UDPAddr
 	remoteAddr net.Addr
 	closed     uint32
 
@@ -28,6 +28,9 @@ type packetConn struct {
 // NewPacketConn establishes a packet based stream-less connection which is optionally bound to the specified addr.
 //
 // If addr is empty, the connection is bound to a random address which can be obtained by calling LocalAddr().
+// An unbound connection cannot receive messages through AsyncReadFrom/ReadFrom.
+// An unbound connection can send messages through AsyncWriteTo/WriteTo. The binding is done automatically by the kernel
+// on the first call to AsyncWriteTo/WriteTo.
 func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (PacketConn, error) {
 	if network[:3] != "udp" {
 		return nil, fmt.Errorf("network must start with udp for DialPacket")
@@ -54,7 +57,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 func (c *packetConn) ReadFrom(b []byte) (n int, from net.Addr, err error) {
 	var addr syscall.Sockaddr
 	n, addr, err = syscall.Recvfrom(c.fd, b, 0)
-	from = internal.FromSockaddr(addr)
+	from = internal.FromSockaddrUDP(addr)
 
 	if err != nil {
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
@@ -213,5 +216,9 @@ func (c *packetConn) Closed() bool {
 }
 
 func (c *packetConn) LocalAddr() net.Addr {
+	if c.localAddr.Port == 0 {
+		localAddr, _ := internal.SocketAddressUDP(c.fd)
+		c.localAddr = localAddr.(*net.UDPAddr)
+	}
 	return c.localAddr
 }

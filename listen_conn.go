@@ -103,12 +103,12 @@ func (l *listener) accept() (Conn, error) {
 		return nil, os.NewSyscallError("accept", err)
 	}
 
-	localAddr, err := internal.SocketAddress(fd)
+	localAddr, err := internal.SocketAddressTCP(fd)
 	if err != nil {
 		return nil, err
 	}
 
-	remoteAddr := internal.FromSockaddr(addr)
+	remoteAddr := internal.FromSockaddrTCP(addr)
 
 	return newConn(l.ioc, fd, localAddr, remoteAddr), nil
 }

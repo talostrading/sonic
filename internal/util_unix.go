@@ -37,7 +37,7 @@ func ToSockaddr(addr net.Addr) syscall.Sockaddr {
 	}
 }
 
-func FromSockaddr(sockAddr syscall.Sockaddr) net.Addr {
+func FromSockaddrTCP(sockAddr syscall.Sockaddr) net.Addr {
 	switch addr := sockAddr.(type) {
 	case *syscall.SockaddrInet4:
 		return &net.TCPAddr{
@@ -45,13 +45,26 @@ func FromSockaddr(sockAddr syscall.Sockaddr) net.Addr {
 			Port: addr.Port,
 		}
 	case *syscall.SockaddrInet6:
-		// TODO
-	case *syscall.SockaddrUnix:
-		return &net.UnixAddr{
-			Name: addr.Name,
-			Net:  "unix",
-		}
+		panic("not supported")
+	default:
+		panic("not supported")
 	}
+}
 
-	return nil
+func FromSockaddrUDP(sockAddr syscall.Sockaddr) net.Addr {
+	switch addr := sockAddr.(type) {
+	case *syscall.SockaddrInet4:
+		return &net.UDPAddr{
+			IP:   append([]byte{}, addr.Addr[:]...),
+			Port: addr.Port,
+		}
+	case *syscall.SockaddrInet6:
+		panic("not supported")
+	default:
+		panic("not supported")
+	}
+}
+
+func FromSockaddrUnix(sockAddr syscall.Sockaddr) net.Addr {
+	panic("not supported")
 }
