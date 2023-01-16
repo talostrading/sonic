@@ -148,7 +148,7 @@ func TestConnUDPAsyncRead(t *testing.T) {
 	}
 }
 
-func TestConnAsyncTCPEchoClient(t *testing.T) {
+func TestConnTCPAsyncEchoClient(t *testing.T) {
 	marker := make(chan struct{}, 1)
 
 	go func() {
@@ -236,7 +236,7 @@ func TestConnAsyncTCPEchoClient(t *testing.T) {
 	marker <- struct{}{}
 }
 
-func TestConnReadHandlesError(t *testing.T) {
+func TestConnTCPReadHandlesError(t *testing.T) {
 	marker := make(chan struct{}, 1)
 	go func() {
 		ln, err := net.Listen("tcp", "localhost:8087")
@@ -293,7 +293,7 @@ func TestConnReadHandlesError(t *testing.T) {
 	}
 }
 
-func TestConnWriteHandlesError(t *testing.T) {
+func TestConnTCPWriteHandlesError(t *testing.T) {
 	marker := make(chan struct{}, 1)
 
 	go func() {
@@ -348,4 +348,81 @@ func TestConnWriteHandlesError(t *testing.T) {
 	if !done {
 		t.Fatal("test did not run to completion")
 	}
+}
+
+func TestUDPAddresses(t *testing.T) {
+	marker := make(chan struct{}, 1)
+	defer close(marker)
+	go func() {
+		udpAddr, err := net.ResolveUDPAddr("udp", "localhost:8100")
+		if err != nil {
+			panic(err)
+		}
+
+		udp, err := net.ListenUDP("udp", udpAddr) // this never blocks
+		if err != nil {
+			panic(err)
+		}
+		defer udp.Close()
+		marker <- struct{}{}
+		<-marker
+	}()
+	<-marker
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	udp, err := Dial(ioc, "udp", "localhost:8100")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udp.Close()
+
+	if addr := udp.LocalAddr().(*net.UDPAddr); addr.Port == 0 {
+		t.Fatalf("invalid local address %s", addr)
+	}
+	if addr := udp.RemoteAddr().(*net.UDPAddr); addr.Port != 8100 {
+		t.Fatalf("invalid remote address %s", addr)
+	}
+	marker <- struct{}{}
+}
+
+func TestTCPAddresses(t *testing.T) {
+	marker := make(chan struct{}, 1)
+	defer close(marker)
+	go func() {
+		tcp, err := net.Listen("tcp", "localhost:8101") // this never blocks
+		if err != nil {
+			panic(err)
+		}
+		defer tcp.Close()
+
+		marker <- struct{}{}
+
+		conn, err := tcp.Accept()
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		<-marker
+	}()
+	<-marker
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	tcp, err := Dial(ioc, "tcp", "localhost:8101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tcp.Close()
+
+	if addr := tcp.LocalAddr().(*net.TCPAddr); addr.Port == 0 {
+		t.Fatalf("invalid local address %s", addr)
+	}
+	if addr := tcp.RemoteAddr().(*net.TCPAddr); addr.Port != 8101 {
+		t.Fatalf("invalid remote address %s", addr)
+	}
+	marker <- struct{}{}
 }
