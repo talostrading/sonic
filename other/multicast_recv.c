@@ -87,11 +87,17 @@ int main(void) {
   // get_sock_info(sockfd);
 
   char buf[128];
+  struct sockaddr_in sender_addr;
+  int sender_addrlen = sizeof(sender_addr);
+  char sender_addr_buf[128];
   for (;;) {
-    int n = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr*)&addr,
-                     &addrlen);
+    int n = recvfrom(sockfd, buf, sizeof(buf), 0,
+                     (struct sockaddr*)&sender_addr, &sender_addrlen);
     if (n < 0) panic("recvfrom");
     buf[n] = '\0';
-    logline("received %s\n", buf);
+    const char* src_addr =
+        inet_ntop(sender_addr.sin_family, &sender_addr.sin_addr,
+                  sender_addr_buf, sizeof(sender_addr_buf));
+    logline("received %s from %s:%d\n", buf, src_addr, sender_addr.sin_port);
   }
 }
