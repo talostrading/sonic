@@ -35,6 +35,8 @@ func DialTimeout(
 	timeout time.Duration,
 	opts ...sonicopts.Option,
 ) (Conn, error) {
+	opts = sonicopts.DelOption(sonicopts.TypeNonblocking, opts)
+
 	fd, localAddr, remoteAddr, err := internal.ConnectTimeout(network, addr, timeout, opts...)
 	if err != nil {
 		return nil, err

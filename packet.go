@@ -36,12 +36,18 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 		return nil, fmt.Errorf("network must start with udp for DialPacket")
 	}
 
-	fd, localAddr, err := internal.CreateSocketUDP(network, addr, opts...)
+	opts = sonicopts.DelOption(sonicopts.TypeNonblocking, opts)
+
+	fd, localAddr, err := internal.CreateSocketUDP(network, addr)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := syscall.Bind(fd, internal.ToSockaddr(localAddr)); err != nil {
+	if localAddr != nil {
+		opts = sonicopts.AddOption(sonicopts.BindSocket(localAddr), opts)
+	}
+
+	if err := internal.ApplyOpts(fd, opts...); err != nil {
 		return nil, err
 	}
 
@@ -215,9 +221,8 @@ func (c *packetConn) Closed() bool {
 }
 
 func (c *packetConn) LocalAddr() net.Addr {
-	if c.localAddr.Port == 0 {
-		localAddr, _ := internal.SocketAddressUDP(c.fd)
-		c.localAddr = localAddr.(*net.UDPAddr)
+	if c.localAddr == nil {
+		c.localAddr, _ = internal.SocketAddressUDP(c.fd)
 	}
 	return c.localAddr
 }

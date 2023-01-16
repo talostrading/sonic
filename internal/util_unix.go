@@ -37,7 +37,7 @@ func ToSockaddr(addr net.Addr) syscall.Sockaddr {
 	}
 }
 
-func FromSockaddrTCP(sockAddr syscall.Sockaddr) net.Addr {
+func FromSockaddrTCP(sockAddr syscall.Sockaddr) *net.TCPAddr {
 	switch addr := sockAddr.(type) {
 	case *syscall.SockaddrInet4:
 		return &net.TCPAddr{
@@ -51,7 +51,7 @@ func FromSockaddrTCP(sockAddr syscall.Sockaddr) net.Addr {
 	}
 }
 
-func FromSockaddrUDP(sockAddr syscall.Sockaddr) net.Addr {
+func FromSockaddrUDP(sockAddr syscall.Sockaddr) *net.UDPAddr {
 	switch addr := sockAddr.(type) {
 	case *syscall.SockaddrInet4:
 		return &net.UDPAddr{
@@ -65,6 +65,6 @@ func FromSockaddrUDP(sockAddr syscall.Sockaddr) net.Addr {
 	}
 }
 
-func FromSockaddrUnix(sockAddr syscall.Sockaddr) net.Addr {
+func FromSockaddrUnix(sockAddr syscall.Sockaddr) *net.UnixAddr {
 	panic("not supported")
 }
