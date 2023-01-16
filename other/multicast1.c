@@ -27,6 +27,14 @@ joined)
 more code here:
 http://www.cs.kent.edu/~javed/internetbook/programs/TCP-client-server/unp.h
 
+
+source ip filtering and full multicast filtering API is on IP level and set with
+setsockopt see here: https://man7.org/linux/man-pages/man7/ip.7.html especially
+IP_MSFILTER and IP_ADD_MEMBERSHIP and IP_ADD_SOURCE_MEMBERSHIP and
+IP_DROP_MEMBERSHIP and IP_DROP_SOURCE_MEMBERSHIP
+
+https://www.ibiblio.org/pub/Linux/docs/HOWTO/other-formats/html_single/Multicast-HOWTO.html
+
  */
 #include "net.h"
 

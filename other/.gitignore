@@ -1,4 +1,7 @@
 recvfrom
 sendto
 broadcast
+multicast1
+multicast_send
+multicast_recv
 multicast
