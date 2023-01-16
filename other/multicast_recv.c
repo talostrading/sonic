@@ -40,8 +40,44 @@ int main(void) {
   int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
   if (sockfd < 0) panic("socket");
 
-  int ret = bind(sockfd, (struct sockaddr*)&addr, sizeof(addr));
-  if (ret < 0) panic("bind");
+  // for UDP multicast we can have multiple sockets listening to the same
+  // multicast group so they need to be bound to the same multicast port so we
+  // need SO_REUSEADDR.
+  //
+  // there is a trick here: INADDR_ANY is a unicast address. So what we actually
+  // need is unicast SO_REUSEPORT behaviour but for a multicast bound socket.
+  // Hence we use SO_REUSEPORT.
+  //
+  // if the addr would not be INADDR_ANY, we could use SO_REUSEADDR.
+  //
+  // summary of SO_REUSEADDR for unicast (or point to point hence also TCP)
+  // addresses = has an effect on wildcard addresses (as in I can bind some
+  // process to 0.0.0.0:8080 and another to 192.168.0.0:8080 without getting
+  // EADDRINUSE) and on TCP sockets in TIME_WAIT state (I can reuse a TIME_WAIT
+  // socket). It only care about the state of the current socket, not about the
+  // state of the other sockets that are already bound.
+  //
+  // summary of SO_REUSEPORT for ... (same as above) ... = bind an arbitrary
+  // amount of sockets to exactly the same source address and port as long as
+  // all prior bound sockets also had SO_REUSEPORT set before they were bound.
+  // So for TIME_WAIT TCP sockets. Either set SO_REUSEADDR on the new socket or
+  // SO_REUSEPORT on both sockets.j
+  int enabled = 1;
+  int ret =
+      setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &enabled, sizeof(enabled));
+  if (ret < 0) panic("setsockopt SO_REUSEPORT");
+
+  // discard all the above and also do SO_REUSEADDR cause you never know
+  ret = setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &enabled, sizeof(enabled));
+  if (ret < 0) panic("setsockopt SO_REUSEADDR");
+
+  ret = bind(sockfd, (struct sockaddr*)&addr, sizeof(addr));
+  if (ret < 0) {
+    if (errno == EADDRINUSE) {
+      panic("bind EADDRINUSE");
+    }
+    panic("bind");
+  }
 
   char addr_str_buf[128];
   const char* addr_str =
@@ -88,7 +124,7 @@ int main(void) {
 
   char buf[128];
   struct sockaddr_in sender_addr;
-  int sender_addrlen = sizeof(sender_addr);
+  socklen_t sender_addrlen = sizeof(sender_addr);
   char sender_addr_buf[128];
   for (;;) {
     int n = recvfrom(sockfd, buf, sizeof(buf), 0,
