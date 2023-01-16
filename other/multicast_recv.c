@@ -22,11 +22,18 @@ for unix domain sockets.
 */
 
 int main(void) {
-  int port = 9090;
-  struct sockaddr_in addr;
+  // this is the address and port from which the socket receives data
+  // i.e. the peer is a udp sender bound to a group address
+  //
+  // this has a filtering role: the socket will only receive datagrams sent to
+  // this multicast address and port no matter what groups are joined by the
+  // socket on the IP level.
+  //
+  // if you wanna receive all datagrams sent to the port, bind to INADDR_ANY
+  struct sockaddr_in addr;  // address and port from which we receive data
   memset(&addr, 0, sizeof(addr));
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  addr.sin_port = htons(port);
+  addr.sin_addr.s_addr = INADDR_ANY;
+  addr.sin_port = htons(MULTICAST_PORT);
   addr.sin_family = AF_INET;
   int addrlen = sizeof(addr);
 
@@ -41,17 +48,43 @@ int main(void) {
       addr_to_str(addr_str_buf, 128, (struct sockaddr*)&addr);
   if (addr_str == NULL) panic("addr_to_str");
 
-  printf("bound to %s:%d\n", addr_str, port);
+  printf("bound to %s:%d\n", addr_str, MULTICAST_PORT);
 
+  // this is needed by the interface. Without it, the interface will discard
+  // stuff that doesn't match its MAC address
+  // but the ethernet layer has a specific set of mac addresses for multicast
+  // (1-1 deterministic mapping from IP to link layer)
+  // so for multicast, you need to tell the interface to not discard messages
+  // destined to the multicast address, which of course doesn't match the MAC
+  // address
+  //
+  // the interface doesn't care about the port number. Port filtering is done on
+  // the TCP/IP layer
   struct ip_mreqn mreq;  // for IPv4
   mreq.imr_multiaddr.s_addr = inet_addr(MULTICAST_ADDR);
-  mreq.imr_address.s_addr = htonl(INADDR_ANY);
+  mreq.imr_address.s_addr = addr.sin_addr.s_addr;
   mreq.imr_ifindex = 0;  // let the kernel decide the interface
   ret = setsockopt(sockfd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*)&mreq,
                    sizeof(mreq));
-  if (ret < 0) panic("setsockopt");
 
-  get_sock_info(sockfd);
+  // even if everything is good and happy you might have not actually joined the
+  // multicast group check the memberships with netstat -g
+
+  if (ret < 0) {
+    if (errno == EBADF) {
+      panic("setsockopt EBADF");
+    } else if (errno == EFAULT) {
+      panic("setsockopt EFAULT");
+    } else if (errno == EINVAL) {
+      panic("setsockopt EINVAL");
+    } else if (errno == ENOPROTOOPT) {
+      panic("setsockopt ENOPROTOOPT");
+    } else if (errno == ENOTSOCK) {
+      panic("setsockopt ENOTSOCK");
+    }
+  }
+
+  // get_sock_info(sockfd);
 
   char buf[128];
   for (;;) {
@@ -59,6 +92,6 @@ int main(void) {
                      &addrlen);
     if (n < 0) panic("recvfrom");
     buf[n] = '\0';
-    printf("received %s\n", buf);
+    logline("received %s\n", buf);
   }
 }

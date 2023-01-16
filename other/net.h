@@ -15,13 +15,35 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#define MULTICAST_ADDR "224.0.42.42"
+// https://datatracker.ietf.org/doc/html/rfc5771
+#define MULTICAST_ADDR \
+  "224.0.1.0"  // anything from 224.0.0.0 to 224.0.0.255 is not routable as it's
+               // used by the protocol
 #define MULTICAST_PORT 8080
 
 const char* kUdpPort = "8080";  // port we sendto and recvfrom
 const int kBufLen = 128;        // max number of bytes we can recv of send
 
 const char* kPanicStr = "panic: \0";
+
+void logline(const char* format, ...) {
+  time_t ts;
+  time(&ts);
+
+  struct tm tm;
+  localtime_r(&ts, &tm);
+
+  char buf[1024];
+  memset(buf, 0, 1024);
+  strcat(buf, asctime(&tm));
+  strcat(buf, format);
+  strcat(buf, "\n");
+
+  va_list arglist;
+  va_start(arglist, format);
+  vfprintf(stdout, buf, arglist);
+  va_end(arglist);
+}
 
 void panic(const char* format, ...) {
   char buf[1024];  // sad

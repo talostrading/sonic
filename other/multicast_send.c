@@ -2,6 +2,7 @@
 
 /*
 multicast range: 224.0.0.0 to 239.255.255.255
+some address are routable: https://en.wikipedia.org/wiki/Multicast_address
 */
 
 int main(void) {
@@ -23,7 +24,7 @@ int main(void) {
   const char* msg = "hello multicast";
 
   for (;;) {
-    int ret = sendto(sockfd, msg, sizeof(msg), 0, (struct sockaddr*)&addr,
+    int ret = sendto(sockfd, msg, strlen(msg), 0, (struct sockaddr*)&addr,
                      sizeof(addr));
     if (ret < 0) panic("sendto");
     printf("sent %s\n", msg);
