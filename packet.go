@@ -36,7 +36,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 		return nil, fmt.Errorf("network must start with udp for DialPacket")
 	}
 
-	fd, localAddr, err := internal.CreateSocketUDP(network, addr)
+	fd, localAddr, err := internal.CreateSocketUDP(network, addr, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -57,7 +57,6 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 func (c *packetConn) ReadFrom(b []byte) (n int, from net.Addr, err error) {
 	var addr syscall.Sockaddr
 	n, addr, err = syscall.Recvfrom(c.fd, b, 0)
-	from = internal.FromSockaddrUDP(addr)
 
 	if err != nil {
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
@@ -74,7 +73,7 @@ func (c *packetConn) ReadFrom(b []byte) (n int, from net.Addr, err error) {
 		n = 0 // errors embeds the information
 	}
 
-	return n, from, err
+	return n, internal.FromSockaddrUDP(addr), err
 }
 
 func (c *packetConn) AsyncReadFrom(b []byte, cb AsyncReadCallbackPacket) {

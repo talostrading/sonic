@@ -18,16 +18,6 @@ var (
 	errUnknownNetwork = errors.New("unknown network argument")
 )
 
-func maybeBindBeforeConnect(fd int, opts ...sonicopts.Option) error {
-	for _, opt := range opts {
-		if opt.Type() == sonicopts.TypeBindBeforeConnect {
-			addr := opt.Value().(net.Addr)
-			return syscall.Bind(fd, ToSockaddr(addr))
-		}
-	}
-	return nil
-}
-
 func socket(domain, socketType, proto int, nonblock bool) (fd int, err error) {
 	fd, err = syscall.Socket(domain, socketType, proto)
 	if err != nil {
@@ -37,7 +27,7 @@ func socket(domain, socketType, proto int, nonblock bool) (fd int, err error) {
 	return fd, syscall.SetNonblock(fd, nonblock)
 }
 
-func CreateSocketTCP(network, addr string) (fd int, tcpAddr *net.TCPAddr, err error) {
+func CreateSocketTCP(network, addr string, opts ...sonicopts.Option) (fd int, tcpAddr *net.TCPAddr, err error) {
 	if addr == "" {
 		// when listening
 		tcpAddr = &net.TCPAddr{}
@@ -58,11 +48,16 @@ func CreateSocketTCP(network, addr string) (fd int, tcpAddr *net.TCPAddr, err er
 	}
 
 	fd, err = socket(domain, socketType, 0, true)
+	if err != nil {
+		return -1, nil, err
+	}
+
+	err = ApplyOpts(fd, opts...)
 
 	return
 }
 
-func CreateSocketUDP(network, addr string) (fd int, udpAddr *net.UDPAddr, err error) {
+func CreateSocketUDP(network, addr string, opts ...sonicopts.Option) (fd int, udpAddr *net.UDPAddr, err error) {
 	if addr == "" {
 		// when sending
 		udpAddr = &net.UDPAddr{}
@@ -83,6 +78,11 @@ func CreateSocketUDP(network, addr string) (fd int, udpAddr *net.UDPAddr, err er
 	}
 
 	fd, err = socket(domain, socketType, 0, true)
+	if err != nil {
+		return -1, nil, nil
+	}
+
+	err = ApplyOpts(fd, opts...)
 
 	return
 }
@@ -116,15 +116,7 @@ func ConnectTimeout(
 	}
 }
 
-func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicopts.Option) error {
-	if err := ApplyOpts(fd, opts...); err != nil {
-		return err
-	}
-
-	if err := maybeBindBeforeConnect(fd, opts...); err != nil {
-		return err
-	}
-
+func connect(fd int, remoteAddr net.Addr, timeout time.Duration) error {
 	if err := syscall.Connect(fd, ToSockaddr(remoteAddr)); err != nil {
 		// this can happen if the socket is nonblocking, so we fix it with a select
 		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
@@ -160,12 +152,12 @@ func ConnectTCP(
 	timeout time.Duration,
 	opts ...sonicopts.Option,
 ) (fd int, localAddr, remoteAddr net.Addr, err error) {
-	fd, remoteAddr, err = CreateSocketTCP(network, addr)
+	fd, remoteAddr, err = CreateSocketTCP(network, addr, opts...)
 	if err != nil {
 		return -1, nil, nil, err
 	}
 
-	if err := connect(fd, remoteAddr, timeout, opts...); err != nil {
+	if err := connect(fd, remoteAddr, timeout); err != nil {
 		return -1, nil, nil, err
 	}
 
@@ -178,12 +170,12 @@ func ConnectUDP(
 	timeout time.Duration,
 	opts ...sonicopts.Option,
 ) (fd int, localAddr, remoteAddr net.Addr, err error) {
-	fd, remoteAddr, err = CreateSocketUDP(network, addr)
+	fd, remoteAddr, err = CreateSocketUDP(network, addr, opts...)
 	if err != nil {
 		return -1, nil, nil, err
 	}
 
-	if err := connect(fd, remoteAddr, timeout, opts...); err != nil {
+	if err := connect(fd, remoteAddr, timeout); err != nil {
 		return -1, nil, nil, err
 	}
 
@@ -298,6 +290,9 @@ func ApplyOpts(fd int, opts ...sonicopts.Option) error {
 			); err != nil {
 				return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
 			}
+		case sonicopts.TypeBindBeforeConnect:
+			addr := opt.Value().(net.Addr)
+			return syscall.Bind(fd, ToSockaddr(addr))
 		default:
 			return fmt.Errorf("unsupported socket option %s", t)
 		}
