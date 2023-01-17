@@ -15,7 +15,7 @@ int main(void) {
   memset(&multicast_addr, 0, sizeof(multicast_addr));
   multicast_addr.sin_family = AF_INET;
   multicast_addr.sin_addr.s_addr = inet_addr(MULTICAST_ADDR);
-  multicast_addr.sin_port = htons(MULTICAST_PORT);
+  multicast_addr.sin_port = htons(40000);
 
   char addr_str_buf[128];
   const char* addr_str =

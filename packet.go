@@ -36,6 +36,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 		return nil, fmt.Errorf("network must start with udp for DialPacket")
 	}
 
+	// Set by default, so we ignore the user provided value.
 	opts = sonicopts.DelOption(sonicopts.TypeNonblocking, opts)
 
 	fd, localAddr, err := internal.CreateSocketUDP(network, addr)
@@ -48,6 +49,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 	}
 
 	if err := internal.ApplyOpts(fd, opts...); err != nil {
+		syscall.Close(fd)
 		return nil, err
 	}
 
@@ -212,8 +214,11 @@ func (c *packetConn) setWrite() error {
 }
 
 func (c *packetConn) Close() error {
-	atomic.StoreUint32(&c.closed, 1)
-	return syscall.Close(c.fd)
+	if atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
+		c.fd = -1
+		return syscall.Close(c.fd)
+	}
+	return nil
 }
 
 func (c *packetConn) Closed() bool {
@@ -225,4 +230,8 @@ func (c *packetConn) LocalAddr() net.Addr {
 		c.localAddr, _ = internal.SocketAddressUDP(c.fd)
 	}
 	return c.localAddr
+}
+
+func (c *packetConn) RawFd() int {
+	return c.fd
 }

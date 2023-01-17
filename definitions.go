@@ -149,6 +149,8 @@ type PacketConn interface {
 
 	LocalAddr() net.Addr
 
+	RawFd() int
+
 	// TODO maybe do adhere to net.PacketConn?
 }
 
