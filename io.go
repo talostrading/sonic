@@ -88,6 +88,7 @@ func (ioc *IO) RunOne() (err error) {
 //
 // This blocks the calling goroutine until one event is ready to process.
 func (ioc *IO) RunOneFor(dur time.Duration) (err error) {
+	// TODO return number of events
 	ms := int(dur.Milliseconds())
 	_, err = ioc.poll(ms)
 	return

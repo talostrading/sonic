@@ -150,8 +150,26 @@ type PacketConn interface {
 	LocalAddr() net.Addr
 
 	RawFd() int
+}
 
-	// TODO maybe do adhere to net.PacketConn?
+type MulticastClient interface {
+	Join(multicastAddr *net.UDPAddr, sourceAddrs ...*net.UDPAddr) error
+	Leave(multicastAddrs ...*net.UDPAddr) error
+	LeaveAll() error
+	Block(sourceAddrs ...*net.UDPAddr) error
+	Unblock(sourceAddrs ...*net.UDPAddr) error
+
+	ReadFrom([]byte) (n int, addr net.Addr, err error)
+	AsyncReadFrom([]byte, AsyncReadCallbackPacket)
+	AsyncReadAllFrom([]byte, AsyncReadCallbackPacket)
+
+	RawFd() int
+	Interface() *net.Interface
+	MulticastAddrs() []*net.UDPAddr
+	LocalAddr() *net.UDPAddr
+
+	Close() error
+	Closed() bool
 }
 
 // Listener is a generic network listener for stream-oriented protocols.
