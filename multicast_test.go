@@ -24,13 +24,13 @@ func TestMain(t *testing.M) {
 	os.Exit(t.Run())
 }
 
-type testMulticast struct {
+type testMulticastServer struct {
 	fd            int
 	multicastAddr *net.UDPAddr
 	bindAddr      *net.UDPAddr
 }
 
-func newTestMulticast(multicastAddr *net.UDPAddr) (*testMulticast, error) {
+func newTestMulticast(multicastAddr *net.UDPAddr) (*testMulticastServer, error) {
 	fd, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_DGRAM, 0)
 	if err != nil {
 		return nil, err
@@ -52,14 +52,14 @@ func newTestMulticast(multicastAddr *net.UDPAddr) (*testMulticast, error) {
 		return nil, err
 	}
 
-	return &testMulticast{
+	return &testMulticastServer{
 		fd:            fd,
 		multicastAddr: multicastAddr,
 		bindAddr:      bindAddr,
 	}, nil
 }
 
-func (s *testMulticast) Run(n int, msg []byte, pause time.Duration) error {
+func (s *testMulticastServer) Run(n int, msg []byte, pause time.Duration) error {
 	for i := 0; i < n; i++ {
 		if err := syscall.Sendto(s.fd, msg, 0, internal.ToSockaddr(s.multicastAddr)); err != nil {
 			return err
@@ -69,7 +69,7 @@ func (s *testMulticast) Run(n int, msg []byte, pause time.Duration) error {
 	return nil
 }
 
-func (s *testMulticast) Close() {
+func (s *testMulticastServer) Close() {
 	syscall.Close(s.fd)
 }
 
@@ -130,6 +130,140 @@ func TestMulticastIPv4JoinNoFilter(t *testing.T) {
 	}
 }
 
+func TestMulticastIPv4JoinAndBlock(t *testing.T) {
+	multicastAddr, err := net.ResolveUDPAddr("udp4", "224.0.1.0:40000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	marker := make(chan struct{}, 1)
+	defer close(marker)
+	var srv *testMulticastServer
+	go func() {
+		srv, err = newTestMulticast(multicastAddr)
+		if err != nil {
+			panic(err)
+		}
+		defer srv.Close()
+		marker <- struct{}{}
+
+		<-marker
+		srv.Run(100, []byte("hello"), time.Millisecond)
+	}()
+	<-marker
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	client, err := NewMulticastClient(ioc, multicastTestInterface, net.IPv4zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.Join(multicastAddr); err != nil {
+		t.Fatal(err)
+	}
+	marker <- struct{}{}
+
+	left := false
+	nread := 0
+	b := make([]byte, 128)
+	var onRead AsyncReadCallbackPacket
+	onRead = func(err error, n int, addr net.Addr) {
+		if err != nil {
+			t.Fatal(err)
+		} else {
+			nread++
+			b = b[:n]
+			if !left {
+				if err := client.BlockSource(multicastAddr, srv.bindAddr); err != nil {
+					t.Fatal(err)
+				}
+				left = true
+			}
+			b = b[:cap(b)]
+			client.AsyncReadFrom(b, onRead)
+		}
+	}
+	client.AsyncReadFrom(b, onRead)
+
+	start := time.Now()
+	for nread < 50 && time.Now().Sub(start) < time.Second {
+		ioc.PollOne()
+	}
+	if nread == 0 {
+		t.Fatal("client did not read anything")
+	}
+}
+
+func TestMulticastIPv4JoinAndLeave(t *testing.T) {
+	multicastAddr, err := net.ResolveUDPAddr("udp4", "224.0.1.0:40000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	marker := make(chan struct{}, 1)
+	defer close(marker)
+	var srv *testMulticastServer
+	go func() {
+		srv, err = newTestMulticast(multicastAddr)
+		if err != nil {
+			panic(err)
+		}
+		defer srv.Close()
+		marker <- struct{}{}
+
+		<-marker
+		srv.Run(100, []byte("hello"), time.Millisecond)
+	}()
+	<-marker
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	client, err := NewMulticastClient(ioc, multicastTestInterface, net.IPv4zero)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.Join(multicastAddr); err != nil {
+		t.Fatal(err)
+	}
+	marker <- struct{}{}
+
+	left := false
+	nread := 0
+	b := make([]byte, 128)
+	var onRead AsyncReadCallbackPacket
+	onRead = func(err error, n int, addr net.Addr) {
+		if err != nil {
+			t.Fatal(err)
+		} else {
+			nread++
+			b = b[:n]
+			if !left {
+				if err := client.Leave(multicastAddr); err != nil {
+					t.Fatal(err)
+				}
+				left = true
+			}
+			b = b[:cap(b)]
+			client.AsyncReadFrom(b, onRead)
+		}
+	}
+	client.AsyncReadFrom(b, onRead)
+
+	start := time.Now()
+	for nread < 50 && time.Now().Sub(start) < time.Second {
+		ioc.PollOne()
+	}
+	if nread == 0 {
+		t.Fatal("client did not read anything")
+	}
+}
+
 func TestMulticastIPv4JoinWithFilter(t *testing.T) {
 	// 2 servers sending on the group, we join both
 	// TODO it is hard to test this locally because we need two different IP addresses, one for each server,
@@ -149,7 +283,7 @@ func TestMulticastIPv4JoinWithFilter(t *testing.T) {
 	// try to bind to the same port
 	var setup sync.WaitGroup
 
-	var srv1 *testMulticast
+	var srv1 *testMulticastServer
 	setup.Add(1)
 	go func() {
 		srv1, err = newTestMulticast(multicastAddr)
@@ -164,7 +298,7 @@ func TestMulticastIPv4JoinWithFilter(t *testing.T) {
 	}()
 	setup.Wait()
 
-	var srv2 *testMulticast
+	var srv2 *testMulticastServer
 	setup.Add(1)
 	go func() {
 		srv2, err = newTestMulticast(multicastAddr)
@@ -188,9 +322,15 @@ func TestMulticastIPv4JoinWithFilter(t *testing.T) {
 	}
 	defer client.Close()
 
-	if err := client.Join(multicastAddr, srv1.bindAddr, srv2.bindAddr); err != nil {
+	if err := client.JoinSource(multicastAddr, srv1.bindAddr); err != nil {
 		t.Fatal(err)
 	}
+	if !srv1.bindAddr.IP.Equal(srv2.bindAddr.IP) {
+		if err := client.JoinSource(multicastAddr, srv2.bindAddr); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	marker1 <- struct{}{}
 	marker2 <- struct{}{}
 
@@ -215,7 +355,7 @@ func TestMulticastIPv4JoinWithFilter(t *testing.T) {
 	client.AsyncReadFrom(b, onRead)
 
 	start := time.Now()
-	for nread1 < 50 && nread2 < 50 && time.Now().Sub(start) < time.Second {
+	for (nread1 < 50 || nread2 < 50) && time.Now().Sub(start) < time.Second {
 		ioc.PollOne()
 	}
 	if nread1 == 0 || nread2 == 0 {

@@ -9,8 +9,70 @@ import (
 	"net"
 	"sync/atomic"
 	"syscall"
-	"unsafe"
 )
+
+// SizeofIPMreqSource I would love to do unsafe.SizeOf  but for a struct with 3 4-byte arrays, it returns 8 on my Mac.
+// It should return 12 :). So we add 4 bytes instead which is enough for the source IP.
+const SizeofIPMreqSource = syscall.SizeofIPMreq + 4
+
+// IPMreqSource adds Sourceaddr to net.IPMreq
+type IPMreqSource struct {
+	Multiaddr  [4]byte /* in_addr */
+	Interface  [4]byte /* in_addr */
+	Sourceaddr [4]byte /* in_addr */
+}
+
+type MulticastRequestType int
+
+const (
+	JoinGroup = iota
+	JoinSourceGroup
+	LeaveGroup
+	LeaveSourceGroup
+	BlockSource
+	UnblockSource
+)
+
+func (r MulticastRequestType) ToIPv4() int {
+	switch r {
+	case JoinGroup:
+		return syscall.IP_ADD_MEMBERSHIP
+	case JoinSourceGroup:
+		return syscall.IP_ADD_SOURCE_MEMBERSHIP
+	case LeaveGroup:
+		return syscall.IP_DROP_MEMBERSHIP
+	case LeaveSourceGroup:
+		return syscall.IP_DROP_SOURCE_MEMBERSHIP
+	case BlockSource:
+		return syscall.IP_BLOCK_SOURCE
+	case UnblockSource:
+		return syscall.IP_UNBLOCK_SOURCE
+	default:
+		panic("invalid request")
+	}
+}
+
+func (r MulticastRequestType) ToIPv6() int {
+	// TODO not sure how IPv6 works, some are not defined
+	// I think the filtering is most likely done on layer 2 (ethernet) level
+
+	switch r {
+	case JoinGroup:
+		return syscall.IPV6_JOIN_GROUP
+	case JoinSourceGroup:
+		return syscall.IPV6_JOIN_GROUP
+	case LeaveGroup:
+		return syscall.IPV6_LEAVE_GROUP
+	case LeaveSourceGroup:
+		return syscall.IPV6_LEAVE_GROUP
+	case BlockSource:
+		panic("invalid request")
+	case UnblockSource:
+		panic("invalid request")
+	default:
+		panic("invalid request")
+	}
+}
 
 type multicastClient struct {
 	ioc     *IO
@@ -18,12 +80,11 @@ type multicastClient struct {
 	boundIP net.IP
 	opts    []sonicopts.Option
 
-	fd             int
-	pd             internal.PollData
-	boundAddr      *net.UDPAddr
-	multicastAddrs []*net.UDPAddr
-	closed         uint32
-	dispatched     int
+	fd         int
+	pd         internal.PollData
+	boundAddr  *net.UDPAddr
+	closed     uint32
+	dispatched int
 }
 
 // NewMulticastClient creates a new multicast client bound to the provided interface and IP. For most cases, the boundIP
@@ -86,12 +147,7 @@ func (c *multicastClient) createConn(port int) error {
 	return nil
 }
 
-// Join joins the multicast group specified by multicastAddr optionally filtering datagrams by the source addresses in
-// sourceAddrs.
-//
-// A MulticastClient may join multiple groups as long as they are all bound to the same port and the client is not
-// bound to a specific group address (i.e. it is instead bound to 0.0.0.0).
-func (c *multicastClient) Join(multicastAddr *net.UDPAddr, sourceAddrs ...*net.UDPAddr) error {
+func (c *multicastClient) prepareJoin(multicastAddr *net.UDPAddr) error {
 	if !multicastAddr.IP.IsMulticast() {
 		return fmt.Errorf("cannot join on non-multicast address %s", multicastAddr)
 	}
@@ -104,100 +160,58 @@ func (c *multicastClient) Join(multicastAddr *net.UDPAddr, sourceAddrs ...*net.U
 		return fmt.Errorf("invalid address %s: client must join groups on the same port", multicastAddr)
 	}
 
-	c.multicastAddrs = append(c.multicastAddrs, multicastAddr)
+	return nil
+}
 
-	// IPv4 is not compatible with IPv6 which means devices cannot communicate with each other if they mix
-	// addressing. So we want an IPv4 interface address for an IPv4 multicast address and same for IPv6.
-	if multicastIP := multicastAddr.IP.To4(); multicastIP != nil {
-		var (
-			errno syscall.Errno
-			err   error
-		)
-
-		// If we don't dedup IPs then setsockopt will return "can't assign requested address" on a duplicate IP.
-		uniqAddrs := make(map[string]*net.UDPAddr)
-		for _, addr := range sourceAddrs {
-			uniqAddrs[addr.IP.String()] = addr
-		}
-
-		if len(sourceAddrs) > 0 {
-			for _, sourceAddr := range uniqAddrs {
-				mreq, err := createIPv4InterfaceRequestWithSource(multicastIP, c.iff, sourceAddr)
-				if err != nil {
-					return err
-				}
-
-				_, _, errno = syscall.Syscall6(
-					syscall.SYS_SETSOCKOPT,
-					uintptr(c.fd),
-					uintptr(syscall.IPPROTO_IP),
-					uintptr(syscall.IP_ADD_SOURCE_MEMBERSHIP),
-					uintptr(unsafe.Pointer(mreq)),
-					// I would love to do unsafe.SizeOf but for a struct with 3 4-byte arrays, it returns 8 on my Mac.
-					// It should return 12 :). So we add 4 bytes instead.
-					syscall.SizeofIPMreq+4, 0)
-				if errno != 0 {
-					err = errno
-				}
-				if err != nil {
-					return err
-				}
-			}
-
-		} else {
-			mreq, err := createIPv4InterfaceRequest(multicastIP, c.iff)
-			if err != nil {
-				return err
-			}
-
-			_, _, errno = syscall.Syscall6(
-				syscall.SYS_SETSOCKOPT,
-				uintptr(c.fd),
-				uintptr(syscall.IPPROTO_IP),
-				uintptr(syscall.IP_ADD_MEMBERSHIP),
-				uintptr(unsafe.Pointer(mreq)),
-				syscall.SizeofIPMreq, 0)
-		}
-
-		if errno != 0 {
-			err = errno
-		}
-		return err
-	} else {
-		mreq, err := createIPv6InterfaceRequest(multicastAddr.IP.To16(), c.iff)
-		if err != nil {
-			return err
-		}
-
-		_, _, errno := syscall.Syscall6(
-			syscall.SYS_SETSOCKOPT,
-			uintptr(c.fd),
-			uintptr(syscall.IPPROTO_IPV6),
-			uintptr(syscall.IPV6_JOIN_GROUP),
-			uintptr(unsafe.Pointer(mreq)),
-			unsafe.Sizeof(mreq), 0,
-		)
-		if errno != 0 {
-			err = errno
-		}
+// Join a multicast group.
+//
+// A MulticastClient may join multiple groups as long as they are all bound to the same port and the client is not
+// bound to a specific group address (i.e. it is instead bound to 0.0.0.0).
+//
+// The caller must ensure they do not join an already joined group.
+func (c *multicastClient) Join(multicastAddr *net.UDPAddr) error {
+	if err := c.prepareJoin(multicastAddr); err != nil {
 		return err
 	}
+	return makeInterfaceRequest(JoinGroup, c.iff, c.fd, multicastAddr, nil)
 }
 
-func (c *multicastClient) Leave(multicastAddrs ...*net.UDPAddr) error {
-	return nil
+// JoinSource joins a multicast group, filtering out packets not coming from sourceAddr.
+//
+// The caller must ensure they do not join an already joined source.
+func (c *multicastClient) JoinSource(multicastAddr, sourceAddr *net.UDPAddr) error {
+	if err := c.prepareJoin(multicastAddr); err != nil {
+		return err
+	}
+	return makeInterfaceRequest(JoinSourceGroup, c.iff, c.fd, multicastAddr, sourceAddr)
 }
 
-func (c *multicastClient) LeaveAll() error {
-	return nil
+// Leave a group.
+//
+// The caller must ensure they do not leave an already left group.
+func (c *multicastClient) Leave(multicastAddr *net.UDPAddr) error {
+	return makeInterfaceRequest(LeaveGroup, c.iff, c.fd, multicastAddr, nil)
 }
 
-func (c *multicastClient) Block(sourceAddrs ...*net.UDPAddr) error {
-	return nil
+// LeaveSource ...
+//
+// The caller must ensure they do not leave an already left source from the group.
+func (c *multicastClient) LeaveSource(multicastAddr, sourceAddr *net.UDPAddr) error {
+	return makeInterfaceRequest(LeaveSourceGroup, c.iff, c.fd, multicastAddr, sourceAddr)
 }
 
-func (c *multicastClient) Unblock(sourceAddrs ...*net.UDPAddr) error {
-	return nil
+// BlockSource ...
+//
+// The caller must ensure they do not block an already blocked source.
+func (c *multicastClient) BlockSource(multicastAddr, sourceAddr *net.UDPAddr) error {
+	return makeInterfaceRequest(BlockSource, c.iff, c.fd, multicastAddr, sourceAddr)
+}
+
+// UnblockSource ...
+//
+// The caller must ensure they do not unblock an already unblocked source.
+func (c *multicastClient) UnblockSource(multicastAddr, sourceAddr *net.UDPAddr) error {
+	return makeInterfaceRequest(UnblockSource, c.iff, c.fd, multicastAddr, sourceAddr)
 }
 
 func (c *multicastClient) ReadFrom(b []byte) (n int, from net.Addr, err error) {
@@ -298,104 +312,18 @@ func (c *multicastClient) Interface() *net.Interface {
 	return c.iff
 }
 
-func (c *multicastClient) MulticastAddrs() []*net.UDPAddr {
-	return c.multicastAddrs
+func (c *multicastClient) LocalAddr() *net.UDPAddr {
+	return c.boundAddr
 }
 
+// Close closes the client. The caller must make sure to leave all groups with Leave(...) before calling Close.
 func (c *multicastClient) Close() error {
 	if atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
-		c.LeaveAll()
 		return syscall.Close(c.fd)
 	}
 	return nil
 }
 
-func (c *multicastClient) LocalAddr() *net.UDPAddr {
-	return c.boundAddr
-}
-
 func (c *multicastClient) Closed() bool {
 	return atomic.LoadUint32(&c.closed) == 1
-}
-
-func serializeIPv4Addr(addr net.Addr, into []byte) bool {
-	copyIPv4 := func(ip net.IP) bool {
-		if ipv4 := ip.To4(); ipv4 != nil {
-			n := copy(into, ipv4)
-			if n >= len(ipv4) {
-				return true
-			}
-		}
-		return false
-	}
-
-	switch addr := addr.(type) {
-	case *net.IPAddr:
-		return copyIPv4(addr.IP)
-	case *net.IPNet:
-		return copyIPv4(addr.IP)
-	case *net.UDPAddr:
-		return copyIPv4(addr.IP)
-	}
-	return false
-}
-
-func createIPv4InterfaceRequest(multicastIP net.IP, iff *net.Interface) (*syscall.IPMreq, error) {
-	// set multicast address
-	mreq := &syscall.IPMreq{}
-	copy(mreq.Multiaddr[:], multicastIP)
-
-	// set interface address
-	addrs, err := iff.Addrs()
-	if err != nil {
-		return nil, err
-	}
-
-	for _, addr := range addrs {
-		if serializeIPv4Addr(addr, mreq.Interface[:]) {
-			return mreq, nil
-		}
-	}
-
-	return nil, fmt.Errorf(
-		"interface name=%s index=%d has not IPv4 address addrs=%v",
-		iff.Name, iff.Index, addrs)
-}
-
-// IPMreqSource adds Sourceaddr to net.IPMreq
-type IPMreqSource struct {
-	Multiaddr  [4]byte /* in_addr */
-	Interface  [4]byte /* in_addr */
-	Sourceaddr [4]byte /* in_addr */
-}
-
-func createIPv4InterfaceRequestWithSource(
-	multicastIP net.IP,
-	iff *net.Interface,
-	sourceAddr *net.UDPAddr,
-) (*IPMreqSource, error) {
-	mreqAll, err := createIPv4InterfaceRequest(multicastIP, iff)
-	if err != nil {
-		return nil, err
-	}
-
-	mreq := &IPMreqSource{}
-	copy(mreq.Interface[:], mreqAll.Interface[:])
-	copy(mreq.Multiaddr[:], mreqAll.Multiaddr[:])
-	if !serializeIPv4Addr(sourceAddr, mreq.Sourceaddr[:]) {
-		return nil, fmt.Errorf("source addr %s is not IPv4", sourceAddr)
-	}
-
-	return mreq, nil
-}
-
-func createIPv6InterfaceRequest(multicastIP net.IP, iff *net.Interface) (*syscall.IPv6Mreq, error) {
-	// set multicast address
-	mreq := &syscall.IPv6Mreq{}
-	copy(mreq.Multiaddr[:], multicastIP)
-
-	// set interface address
-	mreq.Interface = uint32(iff.Index)
-
-	return mreq, nil
 }
