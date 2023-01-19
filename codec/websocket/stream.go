@@ -675,10 +675,14 @@ func (s *WebsocketStream) dial(
 		s.conn, err = net.DialTimeout("tcp", addr, DialTimeout)
 		if err == nil {
 			sc = s.conn.(syscall.Conn)
+		} else {
+			// This is needed otherwise the net.Conn interface will be pointing to a nil pointer. Calling
+			// something like CloseNextLayer will produce a panic then.
+			s.conn = nil
 		}
 	case "https":
 		if s.tls == nil {
-			err = fmt.Errorf("wss:// scheme endpoints require a TLS configuration.")
+			err = fmt.Errorf("wss:// scheme endpoints require a TLS configuration")
 		}
 
 		if err == nil {
@@ -689,6 +693,10 @@ func (s *WebsocketStream) dial(
 			s.conn, err = tls.DialWithDialer(s.dialer, "tcp", addr, s.tls)
 			if err == nil {
 				sc = s.conn.(*tls.Conn).NetConn().(syscall.Conn)
+			} else {
+				// This is needed otherwise the net.Conn interface will be pointing to a nil pointer. Calling
+				// something like CloseNextLayer will produce a panic then.
+				s.conn = nil
 			}
 		}
 	default:
@@ -820,9 +828,10 @@ func (s *WebsocketStream) RawFd() int {
 	return -1
 }
 
-func (s *WebsocketStream) CloseNextLayer() error {
+func (s *WebsocketStream) CloseNextLayer() (err error) {
 	if s.conn != nil {
-		return s.conn.Close()
+		err = s.conn.Close()
+		s.conn = nil
 	}
-	return nil
+	return
 }
