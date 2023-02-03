@@ -663,3 +663,53 @@ func TestTimerScheduleRepeatingConsecutively(t *testing.T) {
 		t.Fatal("slept for the wrong period of time")
 	}
 }
+
+func BenchmarkTimerNew(b *testing.B) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	// just to see the allocations
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		t, err := NewTimer(ioc)
+		if err != nil {
+			panic(err)
+		}
+		t.Close()
+	}
+	b.ReportAllocs()
+}
+
+func BenchmarkTimerScheduleOnce(b *testing.B) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	t, err := NewTimer(ioc)
+	if err != nil {
+		panic(err)
+	}
+	defer t.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		t.ScheduleOnce(time.Nanosecond, func() {})
+	}
+	b.ReportAllocs()
+}
+
+func BenchmarkTimerScheduleRepeating(b *testing.B) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	t, err := NewTimer(ioc)
+	if err != nil {
+		panic(err)
+	}
+	defer t.Close()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		t.ScheduleRepeating(time.Nanosecond, func() {})
+	}
+	b.ReportAllocs()
+}
