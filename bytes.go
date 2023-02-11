@@ -239,7 +239,8 @@ func (b *ByteBuffer) WriteTo(w io.Writer) (int64, error) {
 	return int64(writtenBytes), err
 }
 
-// WriteTo writes the bytes from the read area to the provided writer asynchronously.
+// AsyncWriteTo writes all the bytes from the read area to the
+// provided writer asynchronously.
 func (b *ByteBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
 	w.AsyncWriteAll(b.data[:b.ri], func(err error, n int) {
 		b.Consume(n)

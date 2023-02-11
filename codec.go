@@ -33,6 +33,21 @@ type Codec[Enc, Dec any] interface {
 	Decoder[Dec]
 }
 
+type CodecConn[Enc, Dec any] interface {
+	AsyncReadNext(func(error, Dec))
+	ReadNext() (Dec, error)
+
+	AsyncWriteNext(Enc, AsyncCallback)
+	WriteNext(Enc) (int, error)
+
+	NextLayer() Stream
+}
+
+var (
+	_ CodecConn[any, any] = &BlockingCodecConn[any, any]{}
+	_ CodecConn[any, any] = &NonblockingCodecConn[any, any]{}
+)
+
 // BlockingCodecConn handles the decoding/encoding of bytes funneled through a
 // provided blocking file descriptor.
 type BlockingCodecConn[Enc, Dec any] struct {
@@ -50,71 +65,175 @@ func NewBlockingCodecConn[Enc, Dec any](
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 ) (*BlockingCodecConn[Enc, Dec], error) {
-	s := &BlockingCodecConn[Enc, Dec]{
+	c := &BlockingCodecConn[Enc, Dec]{
 		stream: stream,
 		codec:  codec,
 		src:    src,
 		dst:    dst,
 	}
-	return s, nil
+	return c, nil
 }
 
-func (s *BlockingCodecConn[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
-	item, err := s.codec.Decode(s.src)
+func (c *BlockingCodecConn[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
+	item, err := c.codec.Decode(c.src)
 	if errors.Is(err, sonicerrors.ErrNeedMore) {
-		s.scheduleAsyncRead(cb)
+		c.scheduleAsyncRead(cb)
 	} else {
 		cb(err, item)
 	}
 }
 
-func (s *BlockingCodecConn[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
-	s.src.AsyncReadFrom(s.stream, func(err error, _ int) {
+func (c *BlockingCodecConn[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
+	c.src.AsyncReadFrom(c.stream, func(err error, _ int) {
 		if err != nil {
-			cb(err, s.emptyDec)
+			cb(err, c.emptyDec)
 		} else {
-			s.AsyncReadNext(cb)
+			c.AsyncReadNext(cb)
 		}
 	})
 }
 
-func (s *BlockingCodecConn[Enc, Dec]) ReadNext() (Dec, error) {
+func (c *BlockingCodecConn[Enc, Dec]) ReadNext() (Dec, error) {
 	for {
-		item, err := s.codec.Decode(s.src)
+		item, err := c.codec.Decode(c.src)
 		if err == nil {
 			return item, nil
 		}
 
 		if !errors.Is(err, sonicerrors.ErrNeedMore) {
-			return s.emptyDec, err
+			return c.emptyDec, err
 		}
 
-		_, err = s.src.ReadFrom(s.stream)
+		_, err = c.src.ReadFrom(c.stream)
 		if err != nil {
-			return s.emptyDec, err
+			return c.emptyDec, err
 		}
 	}
 }
 
-func (s *BlockingCodecConn[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
-	err = s.codec.Encode(item, s.dst)
+func (c *BlockingCodecConn[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
+	err = c.codec.Encode(item, c.dst)
 	if err == nil {
 		var nn int64
-		nn, err = s.dst.WriteTo(s.stream)
+		nn, err = c.dst.WriteTo(c.stream)
 		n = int(nn)
 	}
 	return
 }
 
-func (s *BlockingCodecConn[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback) {
-	err := s.codec.Encode(item, s.dst)
+func (c *BlockingCodecConn[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback) {
+	err := c.codec.Encode(item, c.dst)
 	if err == nil {
-		s.dst.AsyncWriteTo(s.stream, cb)
+		c.dst.AsyncWriteTo(c.stream, cb)
 	} else {
 		cb(err, 0)
 	}
 }
 
-func (s *BlockingCodecConn[Enc, Dec]) NextLayer() Stream {
-	return s.stream
+func (c *BlockingCodecConn[Enc, Dec]) NextLayer() Stream {
+	return c.stream
+}
+
+type NonblockingCodecConn[Enc, Dec any] struct {
+	stream Stream
+	codec  Codec[Enc, Dec]
+	src    *ByteBuffer
+	dst    *ByteBuffer
+
+	dispatched int
+
+	emptyEnc Enc
+	emptyDec Dec
+}
+
+func NewNonblockingCodecConn[Enc, Dec any](
+	stream Stream,
+	codec Codec[Enc, Dec],
+	src, dst *ByteBuffer,
+) (*BlockingCodecConn[Enc, Dec], error) {
+	c := &BlockingCodecConn[Enc, Dec]{
+		stream: stream,
+		codec:  codec,
+		src:    src,
+		dst:    dst,
+	}
+	return c, nil
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
+	c.asyncTryDecode(cb)
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) asyncTryDecode(cb func(error, Dec)) {
+	item, err := c.codec.Decode(c.src)
+	if errors.Is(err, sonicerrors.ErrNeedMore) {
+		c.asyncReadNow(cb)
+	} else {
+		cb(err, item)
+	}
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) asyncReadNext(cb func(error, Dec)) {
+	if c.dispatched < MaxCallbackDispatch {
+		c.asyncReadNow(func(err error, item Dec) {
+			c.dispatched++
+			cb(err, item)
+			c.dispatched--
+		})
+	} else {
+		c.scheduleAsyncRead(cb)
+	}
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) asyncReadNow(cb func(error, Dec)) {
+	_, err := c.src.ReadFrom(c.stream)
+	if err == nil {
+		c.asyncTryDecode(cb)
+	} else if err == sonicerrors.ErrWouldBlock {
+		c.scheduleAsyncRead(cb)
+	} else {
+		cb(err, c.emptyDec)
+	}
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
+	c.src.AsyncReadFrom(c.stream, func(err error, n int) {
+		if err != nil {
+			cb(err, c.emptyDec)
+		} else {
+			c.asyncTryDecode(cb)
+		}
+	})
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) ReadNext() (Dec, error) {
+	for {
+		item, err := c.codec.Decode(c.src)
+		if err == nil {
+			return item, nil
+		}
+
+		if err != sonicerrors.ErrNeedMore {
+			return c.emptyDec, err
+		}
+
+		_, err = c.src.ReadFrom(c.stream)
+		if err != nil {
+			return c.emptyDec, err
+		}
+	}
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) AsyncWriteNext(enc Enc, callback AsyncCallback) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) WriteNext(enc Enc) (int, error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) NextLayer() Stream {
+	return c.stream
 }
