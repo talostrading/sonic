@@ -40,7 +40,7 @@ type WebsocketStream struct {
 	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
-	cs *sonic.BlockingCodecStream[*Frame, *Frame]
+	cs *sonic.BlockingCodecConn[*Frame, *Frame]
 
 	// Websocket role: client or server.
 	role Role
@@ -109,7 +109,7 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewBlockingCodecStream[*Frame, *Frame](stream, codec, s.src, s.dst)
+	s.cs, err = sonic.NewBlockingCodecConn[*Frame, *Frame](stream, codec, s.src, s.dst)
 	return
 }
 
@@ -179,7 +179,7 @@ func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 	// async read.
 	//
 	// I think we can just flush asynchronously while reading asynchronously at
-	// the same time. I'm pretty sure this will work with a BlockingCodecStream.
+	// the same time. I'm pretty sure this will work with a BlockingCodecConn.
 	//
 	// Not entirely sure about a NonblockingCodecStream.
 	s.AsyncFlush(func(err error) {

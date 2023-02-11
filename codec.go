@@ -33,9 +33,9 @@ type Codec[Enc, Dec any] interface {
 	Decoder[Dec]
 }
 
-// BlockingCodecStream handles the decoding/encoding of bytes funneled through a
+// BlockingCodecConn handles the decoding/encoding of bytes funneled through a
 // provided blocking file descriptor.
-type BlockingCodecStream[Enc, Dec any] struct {
+type BlockingCodecConn[Enc, Dec any] struct {
 	stream Stream
 	codec  Codec[Enc, Dec]
 	src    *ByteBuffer
@@ -45,12 +45,12 @@ type BlockingCodecStream[Enc, Dec any] struct {
 	emptyDec Dec
 }
 
-func NewBlockingCodecStream[Enc, Dec any](
+func NewBlockingCodecConn[Enc, Dec any](
 	stream Stream,
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
-) (*BlockingCodecStream[Enc, Dec], error) {
-	s := &BlockingCodecStream[Enc, Dec]{
+) (*BlockingCodecConn[Enc, Dec], error) {
+	s := &BlockingCodecConn[Enc, Dec]{
 		stream: stream,
 		codec:  codec,
 		src:    src,
@@ -59,7 +59,7 @@ func NewBlockingCodecStream[Enc, Dec any](
 	return s, nil
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
+func (s *BlockingCodecConn[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
 	item, err := s.codec.Decode(s.src)
 	if errors.Is(err, sonicerrors.ErrNeedMore) {
 		s.scheduleAsyncRead(cb)
@@ -68,7 +68,7 @@ func (s *BlockingCodecStream[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
 	}
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
+func (s *BlockingCodecConn[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
 	s.src.AsyncReadFrom(s.stream, func(err error, _ int) {
 		if err != nil {
 			cb(err, s.emptyDec)
@@ -78,7 +78,7 @@ func (s *BlockingCodecStream[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
 	})
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) ReadNext() (Dec, error) {
+func (s *BlockingCodecConn[Enc, Dec]) ReadNext() (Dec, error) {
 	for {
 		item, err := s.codec.Decode(s.src)
 		if err == nil {
@@ -96,7 +96,7 @@ func (s *BlockingCodecStream[Enc, Dec]) ReadNext() (Dec, error) {
 	}
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
+func (s *BlockingCodecConn[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
 	err = s.codec.Encode(item, s.dst)
 	if err == nil {
 		var nn int64
@@ -106,7 +106,7 @@ func (s *BlockingCodecStream[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
 	return
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback) {
+func (s *BlockingCodecConn[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback) {
 	err := s.codec.Encode(item, s.dst)
 	if err == nil {
 		s.dst.AsyncWriteTo(s.stream, cb)
@@ -115,6 +115,6 @@ func (s *BlockingCodecStream[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallbac
 	}
 }
 
-func (s *BlockingCodecStream[Enc, Dec]) NextLayer() Stream {
+func (s *BlockingCodecConn[Enc, Dec]) NextLayer() Stream {
 	return s.stream
 }
