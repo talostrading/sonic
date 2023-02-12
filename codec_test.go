@@ -137,6 +137,11 @@ func TestNonblockingCodecConnAsyncReadNext(t *testing.T) {
 	if src.WriteLen() != 1 {
 		t.Fatal("should have read the extra byte (6)")
 	}
+
+	src.Commit(1)
+	if src.Data()[:1][0] != 6 {
+		t.Fatal("wrong extra byte")
+	}
 }
 
 func TestNonblockingCodecConnReadNext(t *testing.T) {
@@ -192,5 +197,14 @@ func TestNonblockingCodecConnReadNext(t *testing.T) {
 		if item.V[i] != byte(i+1) {
 			t.Fatal("wrong decoding")
 		}
+	}
+
+	if src.WriteLen() != 1 {
+		t.Fatal("should have read the extra byte (6)")
+	}
+
+	src.Commit(1)
+	if src.Data()[:1][0] != 6 {
+		t.Fatal("wrong extra byte")
 	}
 }
