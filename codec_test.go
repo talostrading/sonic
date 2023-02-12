@@ -19,8 +19,13 @@ type TestCodec struct {
 }
 
 func (t *TestCodec) Encode(item TestItem, dst *ByteBuffer) error {
-	_, err := dst.Write(item.V[:])
-	return err
+	n, err := dst.Write(item.V[:])
+	dst.Commit(n)
+	if err != nil {
+		dst.Consume(n) // TODO not really happy about this (same for websocket)
+		return err
+	}
+	return nil
 }
 
 func (t *TestCodec) Decode(src *ByteBuffer) (TestItem, error) {
@@ -40,8 +45,17 @@ func TestSimpleCodec(t *testing.T) {
 	buf := NewByteBuffer()
 	buf.Reserve(128)
 
-	if err := codec.Encode(TestItem{V: [5]byte{0x1, 0x2, 0x3, 0x4, 0x5}}, buf); err != nil {
+	err := codec.Encode(TestItem{V: [5]byte{0x1, 0x2, 0x3, 0x4, 0x5}}, buf)
+	if err != nil {
 		t.Fatal(err)
+	}
+
+	if buf.WriteLen() != 0 {
+		t.Fatal("write area should be zero")
+	}
+
+	if buf.ReadLen() != 5 || len(buf.Data()) != 5 || buf.Len() != 5 {
+		t.Fatal("read area should be 5")
 	}
 
 	item, err := codec.Decode(buf)
