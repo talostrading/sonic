@@ -155,3 +155,7 @@ func (s *MockStream) AsyncClose(cb func(err error)) {
 func (s *MockStream) Close() error {
 	return nil
 }
+
+func (s *MockStream) RawFd() int {
+	return -1
+}

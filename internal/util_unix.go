@@ -4,6 +4,7 @@ package internal
 
 import (
 	"fmt"
+	"golang.org/x/sys/unix"
 	"net"
 	"reflect"
 	"syscall"
@@ -54,4 +55,12 @@ func FromSockaddr(sockAddr syscall.Sockaddr) net.Addr {
 	}
 
 	return nil
+}
+
+func IsNonblocking(fd int) (bool, error) {
+	v, err := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
+	if err != nil {
+		return false, err
+	}
+	return v&unix.O_NONBLOCK == unix.O_NONBLOCK, nil
 }

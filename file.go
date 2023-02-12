@@ -282,3 +282,7 @@ func (f *file) cancelWrites() {
 		f.pd.Cbs[internal.WriteEvent](err)
 	}
 }
+
+func (f *file) RawFd() int {
+	return f.fd
+}

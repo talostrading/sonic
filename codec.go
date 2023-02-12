@@ -2,6 +2,8 @@ package sonic
 
 import (
 	"errors"
+	"fmt"
+	"github.com/talostrading/sonic/internal"
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
@@ -69,6 +71,8 @@ func NewBlockingCodecConn[Enc, Dec any](
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 ) (*BlockingCodecConn[Enc, Dec], error) {
+	// Works on both blocking and nonblocking fds.
+
 	c := &BlockingCodecConn[Enc, Dec]{
 		stream: stream,
 		codec:  codec,
@@ -155,6 +159,14 @@ func NewNonblockingCodecConn[Enc, Dec any](
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 ) (*NonblockingCodecConn[Enc, Dec], error) {
+	nonblocking, err := internal.IsNonblocking(stream.RawFd())
+	if err != nil {
+		return nil, err
+	}
+	if !nonblocking {
+		return nil, fmt.Errorf("the provided Stream is blocking")
+	}
+
 	c := &NonblockingCodecConn[Enc, Dec]{
 		stream: stream,
 		codec:  codec,

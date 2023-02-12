@@ -71,6 +71,8 @@ type AsyncWriterTo interface {
 }
 
 type FileDescriptor interface {
+	RawFd() int
+
 	io.Closer
 	io.ReadWriter
 	AsyncReadWriter
@@ -91,6 +93,8 @@ type AsyncCanceller interface {
 // where data represented as bytes may be received reliably in the same order
 // they were written.
 type Stream interface {
+	RawFd() int
+
 	AsyncStream
 	SyncStream
 }

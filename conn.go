@@ -72,3 +72,7 @@ func (c *conn) SetReadDeadline(t time.Time) error {
 func (c *conn) SetWriteDeadline(t time.Time) error {
 	return fmt.Errorf("not supported")
 }
+
+func (c *conn) RawFd() int {
+	return c.fd
+}
