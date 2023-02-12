@@ -86,6 +86,7 @@ func setupCodecTestWriter() chan struct{} {
 		if err != nil {
 			panic(err)
 		}
+		defer conn.Close()
 
 		<-mark // send a partial
 		n, err := conn.Write([]byte{1, 2, 3})
@@ -123,6 +124,7 @@ func TestNonblockingCodecConnAsyncReadNext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	src := NewByteBuffer()
 	dst := NewByteBuffer()
@@ -170,6 +172,7 @@ func TestNonblockingCodecConnReadNext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	src := NewByteBuffer()
 	dst := NewByteBuffer()
@@ -220,5 +223,158 @@ func TestNonblockingCodecConnReadNext(t *testing.T) {
 	src.Commit(1)
 	if src.Data()[:1][0] != 6 {
 		t.Fatal("wrong extra byte")
+	}
+}
+
+func setupCodecTestReader() chan struct{} {
+	mark := make(chan struct{}, 1)
+	go func() {
+		ln, err := net.Listen("tcp", "localhost:9091")
+		if err != nil {
+			panic(err)
+		}
+		defer func() {
+			ln.Close()
+			mark <- struct{}{}
+		}()
+		mark <- struct{}{}
+
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+		mark <- struct{}{}
+
+		b := make([]byte, 128)
+
+		<-mark
+
+		// partial read
+		n, err := conn.Read(b[:3])
+		if err != nil {
+			panic(err)
+		}
+		if n != 3 {
+			panic("should have read 3")
+		}
+
+		n, err = conn.Read(b[3:])
+		if err != nil {
+			panic(err)
+		}
+		if n != 2 {
+			panic("should have read 2")
+		}
+
+		for i := 0; i < 5; i++ {
+			if b[i] != byte(i+1) {
+				panic("wrong read")
+			}
+		}
+	}()
+	return mark
+}
+
+func TestNonblockingCodecConnAsyncWriteNext(t *testing.T) {
+	mark := setupCodecTestReader()
+	defer func() { <-mark /* wait for the listener to close*/ }()
+	<-mark // wait for the listener to open
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	conn, err := Dial(ioc, "tcp", "localhost:9091")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	src := NewByteBuffer()
+	dst := NewByteBuffer()
+	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
+		conn, &TestCodec{}, src, dst)
+
+	<-mark // wait to connect
+
+	// trigger the reads
+	mark <- struct{}{}
+	time.Sleep(100 * time.Millisecond)
+
+	wrote := false
+	codecConn.AsyncWriteNext(TestItem{V: [5]byte{1, 2, 3, 4, 5}}, func(err error, n int) {
+		wrote = true
+	})
+
+	// ioc.RunOne() might actually block because 99% of the time
+	// the write can go through immediately; so we cover that 1% of the time
+	// with the loop below and the 99% with the wrote variable
+	for {
+		n, err := ioc.PollOne()
+		if err != nil && err != sonicerrors.ErrTimeout {
+			t.Fatal(err)
+		}
+		if n > 0 || wrote {
+			break
+		}
+	}
+
+	if !wrote {
+		// if we're in the 1%
+		t.Fatal("did not read")
+	}
+}
+
+func TestNonblockingCodecConnWriteNext(t *testing.T) {
+	mark := setupCodecTestReader()
+	defer func() { <-mark /* wait for the listener to close*/ }()
+	<-mark // wait for the listener to open
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	conn, err := Dial(ioc, "tcp", "localhost:9091")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	src := NewByteBuffer()
+	dst := NewByteBuffer()
+	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
+		conn, &TestCodec{}, src, dst)
+
+	<-mark // wait to connect
+
+	item := TestItem{V: [5]byte{1, 2, 3, 4, 5}}
+	n, err := codecConn.WriteNext(item)
+	if err != nil {
+		t.Fatal("should not error")
+	}
+	if n != 5 {
+		t.Fatal("did not write 5 bytes")
+	}
+
+	// trigger the reads
+	mark <- struct{}{}
+	time.Sleep(100 * time.Millisecond)
+
+	// At this point the peer has closed the socket.
+	// TCP's design around shutdowns is quite poor mostly due to write buffering.
+	// So we wait for at most 5 seconds for the write to fail, if it doesn't
+	// then something is wrong with sonic.
+	timer := time.NewTimer(5 * time.Second)
+
+	for {
+		select {
+		case <-timer.C:
+			t.Fatal("the write did not fail within 5 seconds")
+		default:
+		}
+
+		n, err = codecConn.WriteNext(item)
+		if err != nil {
+			timer.Stop()
+			break
+		}
 	}
 }

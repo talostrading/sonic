@@ -79,12 +79,12 @@ func (b *ByteBuffer) Data() []byte {
 	return b.data[:b.ri]
 }
 
-// Len returns the length of the read area.
+// ReadLen returns the length of the read area.
 func (b *ByteBuffer) ReadLen() int {
 	return len(b.data[:b.ri])
 }
 
-// UnreadLen returns the length of the write area.
+// WriteLen returns the length of the write area.
 func (b *ByteBuffer) WriteLen() int {
 	return len(b.data[b.ri:b.wi])
 }
@@ -206,8 +206,8 @@ func (b *ByteBuffer) WriteByte(bb byte) error {
 	return nil
 }
 
-// Write writes the supplied string into the buffer, growing the buffer
-// as needed to accomodate the new data.
+// WriteString writes the supplied string into the buffer, growing the buffer
+// as needed to accommodate the new data.
 func (b *ByteBuffer) WriteString(s string) (int, error) {
 	b.data = append(b.data, s...)
 	n := len(s)

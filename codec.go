@@ -2,12 +2,16 @@ package sonic
 
 import (
 	"errors"
-
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
 type Encoder[Item any] interface {
 	// Encode encodes the given item into the `dst` byte stream.
+	//
+	// Implementations should:
+	// - Commit the bytes into the read area of `dst`.
+	// - ensure `dst` is big enough to hold the serialized item by
+	//   calling dst.Reserve(...)
 	Encode(item Item, dst *ByteBuffer) error
 }
 
@@ -150,8 +154,8 @@ func NewNonblockingCodecConn[Enc, Dec any](
 	stream Stream,
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
-) (*BlockingCodecConn[Enc, Dec], error) {
-	c := &BlockingCodecConn[Enc, Dec]{
+) (*NonblockingCodecConn[Enc, Dec], error) {
+	c := &NonblockingCodecConn[Enc, Dec]{
 		stream: stream,
 		codec:  codec,
 		src:    src,
@@ -224,14 +228,24 @@ func (c *NonblockingCodecConn[Enc, Dec]) ReadNext() (Dec, error) {
 	}
 }
 
-func (c *NonblockingCodecConn[Enc, Dec]) AsyncWriteNext(enc Enc, callback AsyncCallback) {
-	//TODO implement me
-	panic("implement me")
+func (c *NonblockingCodecConn[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback) {
+	if err := c.codec.Encode(item, c.dst); err != nil {
+		cb(err, 0)
+		return
+	}
+
+	// write everything into `dst`
+	c.dst.AsyncWriteTo(c.stream, cb)
 }
 
-func (c *NonblockingCodecConn[Enc, Dec]) WriteNext(enc Enc) (int, error) {
-	//TODO implement me
-	panic("implement me")
+func (c *NonblockingCodecConn[Enc, Dec]) WriteNext(item Enc) (n int, err error) {
+	err = c.codec.Encode(item, c.dst)
+	if err == nil {
+		var nn int64
+		nn, err = c.dst.WriteTo(c.stream)
+		n = int(nn)
+	}
+	return
 }
 
 func (c *NonblockingCodecConn[Enc, Dec]) NextLayer() Stream {
