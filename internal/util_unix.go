@@ -64,3 +64,11 @@ func IsNonblocking(fd int) (bool, error) {
 	}
 	return v&unix.O_NONBLOCK == unix.O_NONBLOCK, nil
 }
+
+func IsNoDelay(fd int) (bool, error) {
+	v, err := syscall.GetsockoptInt(fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY)
+	if err != nil {
+		return false, err
+	}
+	return v&syscall.TCP_NODELAY == syscall.TCP_NODELAY, nil
+}
