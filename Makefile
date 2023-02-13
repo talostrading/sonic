@@ -1,7 +1,7 @@
-all:
+all: lint
 	./build.sh
 
-linux:
+linux: lint
 	./build.sh linux
 
 fmt:
@@ -11,10 +11,10 @@ fmt:
 lint:
 	golangci-lint -j 4 run --fast --timeout=5m
 
-test: 
+test:
 	GODEBUG=asyncpreemptoff=1 go test -v -p 1 $$(go list ./... | grep -v /examples | grep -v tests/websocket-perf)
 
-bench: 
+bench:
 	GODEBUG=asyncpreemptoff=1 go test -bench=Benchmark -run=^# $$(go list ./... | grep -v /examples | grep -v tests/websocket-perf)
 
-.PHONY: all linux fmt test
+.PHONY: all linux fmt lint test bench
