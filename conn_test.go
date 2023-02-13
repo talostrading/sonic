@@ -382,6 +382,7 @@ func TestTCPClientDefaultOpts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer conn.Close()
 
 	nonblocking, err := internal.IsNonblocking(conn.RawFd())
 	if err != nil {

@@ -110,7 +110,8 @@ func (l *listener) accept() (Conn, error) {
 
 	remoteAddr := internal.FromSockaddr(addr)
 
-	return newConn(l.ioc, fd, localAddr, remoteAddr), nil
+	conn := newConn(l.ioc, fd, localAddr, remoteAddr)
+	return conn, syscall.SetNonblock(conn.RawFd(), true)
 }
 
 func (l *listener) Close() error {
@@ -120,4 +121,8 @@ func (l *listener) Close() error {
 
 func (l *listener) Addr() net.Addr {
 	return l.addr
+}
+
+func (l *listener) RawFd() int {
+	return l.fd
 }

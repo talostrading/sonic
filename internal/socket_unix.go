@@ -37,7 +37,10 @@ func socket(domain, socketType, proto int, nonblock bool) (fd int, err error) {
 	return fd, syscall.SetNonblock(fd, nonblock)
 }
 
-func CreateSocketTCP(network, addr string) (fd int, tcpAddr *net.TCPAddr, err error) {
+func CreateSocketTCP(
+	network, addr string,
+	nonblocking bool,
+) (fd int, tcpAddr *net.TCPAddr, err error) {
 	if addr == "" {
 		// when listening
 		tcpAddr = &net.TCPAddr{}
@@ -57,7 +60,7 @@ func CreateSocketTCP(network, addr string) (fd int, tcpAddr *net.TCPAddr, err er
 		domain = syscall.AF_UNSPEC
 	}
 
-	fd, err = socket(domain, socketType, 0, true)
+	fd, err = socket(domain, socketType, 0, nonblocking)
 
 	return
 }
@@ -160,7 +163,7 @@ func ConnectTCP(
 	timeout time.Duration,
 	opts ...sonicopts.Option,
 ) (fd int, localAddr, remoteAddr net.Addr, err error) {
-	fd, remoteAddr, err = CreateSocketTCP(network, addr)
+	fd, remoteAddr, err = CreateSocketTCP(network, addr, true)
 	if err != nil {
 		return -1, nil, nil, err
 	}
@@ -197,7 +200,7 @@ func Listen(network, addr string, opts ...sonicopts.Option) (int, net.Addr, erro
 	}
 
 	// TODO unix datagram as well, not only TCP
-	fd, localAddr, err := CreateSocketTCP(network, addr)
+	fd, localAddr, err := CreateSocketTCP(network, addr, false)
 	if err != nil {
 		return -1, nil, err
 	}

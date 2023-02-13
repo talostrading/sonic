@@ -167,6 +167,8 @@ type Listener interface {
 
 	// Addr returns the listener's network address.
 	Addr() net.Addr
+
+	RawFd() int
 }
 
 const (
