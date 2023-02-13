@@ -10,7 +10,7 @@ func TestTCPConnListenerDefaultOpts(t *testing.T) {
 	mark := make(chan struct{}, 1)
 	go func() {
 		<-mark
-		conn, err := net.Dial("tcp", "localhost:10100")
+		conn, err := net.Dial("tcp", "localhost:9999")
 		if err != nil {
 			panic(err)
 		}
@@ -21,7 +21,7 @@ func TestTCPConnListenerDefaultOpts(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	ln, err := Listen(ioc, "tcp", "localhost:10100")
+	ln, err := Listen(ioc, "tcp", "localhost:9999")
 	if err != nil {
 		t.Fatal(err)
 	}
