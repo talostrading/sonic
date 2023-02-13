@@ -197,6 +197,9 @@ func TestByteBufferPrepareRead(t *testing.T) {
 	}
 
 	err = b.PrepareRead(5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if b.ReadLen() != 5 {
 		t.Fatal("invalid write length")
 	}

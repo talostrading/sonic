@@ -406,6 +406,9 @@ func TestTimerZeroTimeout(t *testing.T) {
 	err = timer.ScheduleOnce(0, func() {
 		done = true
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	ioc.PollOne()
 

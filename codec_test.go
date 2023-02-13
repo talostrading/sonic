@@ -130,6 +130,9 @@ func TestNonblockingCodecConnAsyncReadNext(t *testing.T) {
 	dst := NewByteBuffer()
 	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	codecConn.AsyncReadNext(func(err error, item TestItem) {
 		if err != nil {
@@ -178,6 +181,9 @@ func TestNonblockingCodecConnReadNext(t *testing.T) {
 	dst := NewByteBuffer()
 	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	item, err := codecConn.ReadNext()
 	if err != sonicerrors.ErrWouldBlock {
@@ -293,6 +299,9 @@ func TestNonblockingCodecConnAsyncWriteNext(t *testing.T) {
 	dst := NewByteBuffer()
 	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	<-mark // wait to connect
 
@@ -342,6 +351,9 @@ func TestNonblockingCodecConnWriteNext(t *testing.T) {
 	dst := NewByteBuffer()
 	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	<-mark // wait to connect
 
@@ -371,7 +383,7 @@ func TestNonblockingCodecConnWriteNext(t *testing.T) {
 		default:
 		}
 
-		n, err = codecConn.WriteNext(item)
+		_, err = codecConn.WriteNext(item)
 		if err != nil {
 			timer.Stop()
 			break

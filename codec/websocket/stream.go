@@ -248,13 +248,13 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 			// verify continuation
 			if !continuation {
 				// this is the first frame of the series
-				continuation = !f.IsFin()
+				continuation = !f.IsFin() //nolint:ineffassign
 				if f.IsContinuation() {
 					err = ErrUnexpectedContinuation
 				}
 			} else {
 				// we are past the first frame of the series
-				continuation = !f.IsFin()
+				continuation = !f.IsFin() //nolint:ineffassign
 				if !f.IsContinuation() {
 					err = ErrExpectedContinuation
 				}

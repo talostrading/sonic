@@ -59,8 +59,7 @@ func (s *MockServer) Accept(addr string) (err error) {
 	res.Write([]byte("\r\n"))
 
 	_, err = res.WriteTo(s.conn)
-
-	return nil
+	return err
 }
 
 func (s *MockServer) Write(b []byte) error {
