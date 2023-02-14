@@ -1,6 +1,9 @@
 package tests
 
-import "testing"
+import (
+	"github.com/talostrading/sonic"
+	"testing"
+)
 
 var (
 	_ IBase = &Base{}
@@ -81,4 +84,48 @@ func BenchmarkDynamicPolymorphism(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		d.Foo()
 	}
+}
+
+type Sender struct {
+	b *sonic.ByteBuffer
+}
+
+func NewSender() *Sender {
+	return &Sender{b: sonic.NewByteBuffer()}
+}
+
+func (s *Sender) Send(claimFn func(buffer *sonic.ByteBuffer)) {
+	claimFn(s.b)
+	// do other stuff with the now encoded data
+}
+
+func BenchmarkClosureEmpty(b *testing.B) {
+	s := NewSender()
+	for i := 0; i < b.N; i++ {
+		s.Send(func(buf *sonic.ByteBuffer) {})
+	}
+	b.ReportAllocs()
+}
+
+func BenchmarkClosureFnPointer(b *testing.B) {
+	s := NewSender()
+	for i := 0; i < b.N; i++ {
+		s.Send(func(buf *sonic.ByteBuffer) {
+			buf.Reserve(10)
+			buf.Write([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9})
+		})
+	}
+	b.ReportAllocs()
+}
+
+func BenchmarkClosureReference(b *testing.B) {
+	s := NewSender()
+	msg := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
+	for i := 0; i < b.N; i++ {
+		s.Send(func(buf *sonic.ByteBuffer) {
+			buf.Reserve(10)
+			buf.Write(msg)
+		})
+	}
+	b.ReportAllocs()
 }
