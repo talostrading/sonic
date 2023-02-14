@@ -106,6 +106,10 @@ func (b *ByteBuffer) Consume(n int) {
 	}
 
 	if n != 0 {
+		// we should be a bit smarter here and only copy
+		// *sometimes* like when we are at 75% capacity
+		// or some other heuristic maybe based on the committed
+		// bytes.
 		copy(b.data, b.data[n:b.wi])
 	}
 
@@ -197,8 +201,8 @@ func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	return n, nil
 }
 
-// Write writes the supplied byte into the buffer, growing the buffer
-// as needed to accomodate the new data.
+// WriteByte writes the supplied byte into the buffer, growing the buffer
+// as needed to accommodate the new data.
 func (b *ByteBuffer) WriteByte(bb byte) error {
 	b.data = append(b.data, bb)
 	b.wi += 1
