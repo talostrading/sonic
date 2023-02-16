@@ -68,16 +68,16 @@ func (f *Frame) SetPayloadLen() (bytes int) {
 
 	switch {
 	case n > 65535: // more than two bytes needed for extra length
-		bytes = 8
+		bytes = 8 //nolint:ineffassign
 		f.header[1] |= uint8(127)
 		binary.BigEndian.PutUint64(f.header[2:], uint64(n))
 	case n > 125:
-		bytes = 2
+		bytes = 2 //nolint:ineffassign
 		f.header[1] |= uint8(126)
 		binary.BigEndian.PutUint16(f.header[2:], uint16(n))
 		return 2
 	default:
-		bytes = 0
+		bytes = 0 //nolint:ineffassign
 		f.header[1] |= uint8(n)
 	}
 	return
