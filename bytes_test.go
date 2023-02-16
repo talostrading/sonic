@@ -213,6 +213,107 @@ func TestByteBufferPrepareRead(t *testing.T) {
 	}
 }
 
+func TestByteBufferClaim(t *testing.T) {
+	b := NewByteBuffer()
+
+	// check setup
+	if b.ReadLen() != 0 {
+		t.Fatal("read area should have 0 length")
+	}
+
+	if b.WriteLen() != 0 {
+		t.Fatal("write area should have 0 length")
+	}
+
+	if b.Reserved() != 512 {
+		t.Fatal("should have 512 bytes reserved")
+	}
+
+	// claim multiple times and check
+	b.Claim(func(b []byte) int {
+		if len(b) != 512 {
+			t.Fatal("should have provided 512 bytes")
+		}
+		for i := 0; i < 256; i++ {
+			b[i] = 1
+		}
+		return 256
+	})
+
+	if b.Reserved() != 256 {
+		t.Fatal("should have 256 bytes reserved")
+	}
+
+	if b.WriteLen() != 256 {
+		t.Fatal("should have 256 bytes in the write area")
+	}
+
+	b.Commit(256)
+	for i := 0; i < 256; i++ {
+		if b.Data()[i] != 1 {
+			t.Fatal("something wrong with claimed bytes")
+		}
+	}
+
+	b.Claim(func(b []byte) int {
+		if len(b) != 256 {
+			t.Fatal("should have provided 256 bytes")
+		}
+		for i := 0; i < 256; i++ {
+			b[i] = 2
+		}
+		return 256
+	})
+
+	if b.Reserved() != 0 {
+		t.Fatal("should have 0 bytes reserved")
+	}
+
+	if b.WriteLen() != 256 {
+		t.Fatal("should have 256 bytes in the write area")
+	}
+
+	b.Commit(256)
+	// from before
+	for i := 0; i < 256; i++ {
+		if b.Data()[i] != 1 {
+			t.Fatal("something wrong with claimed bytes")
+		}
+	}
+	// the current ones
+	for i := 256; i < 512; i++ {
+		if b.Data()[i] != 2 {
+			t.Fatal("something wrong with claimed bytes")
+		}
+	}
+
+	if b.Reserved() != 0 {
+		t.Fatal("should have 0 bytes reserved")
+	}
+
+	if b.WriteLen() != 0 {
+		t.Fatal("should have 0 bytes in the write area")
+	}
+
+	if b.ReadLen() != 512 {
+		t.Fatal("should have 512 bytes in the read area")
+	}
+
+	b.Consume(512)
+
+	if b.Reserved() != 512 {
+		t.Fatal("should have 512 bytes reserved")
+	}
+
+	if b.WriteLen() != 0 {
+		t.Fatal("should have 0 bytes in the write area")
+	}
+
+	if b.ReadLen() != 0 {
+		t.Fatal("should have 0 bytes in the read area")
+	}
+}
+
 func BenchmarkByteBuffer(b *testing.B) {
 	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 

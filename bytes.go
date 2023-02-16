@@ -264,3 +264,10 @@ func (b *ByteBuffer) PrepareRead(n int) (err error) {
 	}
 	return
 }
+
+// Claim allows clients to write directly into the write area of the buffer.
+//
+// claimFn implementation should return the number of bytes written into the provided slice.
+func (b *ByteBuffer) Claim(claimFn func(b []byte) int) {
+	b.wi += claimFn(b.data[b.wi:cap(b.data)])
+}
