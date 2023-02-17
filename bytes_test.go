@@ -317,13 +317,28 @@ func TestByteBufferClaim1(t *testing.T) {
 func TestByteBufferClaim2(t *testing.T) {
 	b := NewByteBuffer()
 	n := b.Reserved()
+
+	// first claim should return the whole reserved area
+	b.Claim(func(b []byte) int {
+		if len(b) != n {
+			t.Fatalf("wrong size on claimed slice expected=%d given=%d", n, len(b))
+		}
+		return n
+	})
+
+	// subsequent claims should return 0 bytes since we already claimed the whole reserved area
 	for i := 0; i < 10; i++ {
+		before := b.WriteLen()
 		b.Claim(func(b []byte) int {
-			if len(b) != n {
-				t.Fatalf("wrong size on claimed slice expected=%d given=%d", n, len(b))
+			if len(b) != 0 {
+				t.Fatalf("wrong size on claimed slice expected=%d given=%d", 0, len(b))
 			}
-			return n
+			return n // this should have no effect
 		})
+		after := b.WriteLen()
+		if before != after {
+			t.Fatal("write area should not be modified")
+		}
 	}
 }
 

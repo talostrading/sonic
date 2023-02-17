@@ -10,7 +10,7 @@ import (
 //
 // Invariants:
 //   - ri <= wi at all times
-//   - wi = len(data) after each function call
+//   - wi = min(len(data), cap(b.data)) after each function call
 type ByteBuffer struct {
 	ri int // End index of the read area, always smaller or equal to wi.
 	wi int // End index of the write area.
@@ -253,7 +253,7 @@ func (b *ByteBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
 }
 
 // PrepareRead prepares n bytes to be read from the read area. If less than n bytes are
-// available, ErrNeedMore is returned and no bytes are commited to the read area.
+// available, ErrNeedMore is returned and no bytes are committed to the read area.
 func (b *ByteBuffer) PrepareRead(n int) (err error) {
 	if need := n - b.ReadLen(); need > 0 {
 		if b.WriteLen() >= need {
@@ -270,7 +270,8 @@ func (b *ByteBuffer) PrepareRead(n int) (err error) {
 // `fn` implementations should return the number of bytes written into the provided slice.
 func (b *ByteBuffer) Claim(fn func(b []byte) int) {
 	n := fn(b.data[b.wi:cap(b.data)])
-	if wi := b.wi + n; n >= 0 && wi < cap(b.data) {
+	if wi := b.wi + n; n >= 0 && wi <= cap(b.data) {
+		// wi <= cap(b.data) because the invariant is that b.wi = min(len(b.data), cap(b.data)) after each call
 		b.wi = wi
 	}
 }
