@@ -213,7 +213,7 @@ func TestByteBufferPrepareRead(t *testing.T) {
 	}
 }
 
-func TestByteBufferClaim(t *testing.T) {
+func TestByteBufferClaim1(t *testing.T) {
 	b := NewByteBuffer()
 
 	// check setup
@@ -314,6 +314,19 @@ func TestByteBufferClaim(t *testing.T) {
 	}
 }
 
+func TestByteBufferClaim2(t *testing.T) {
+	b := NewByteBuffer()
+	n := b.Reserved()
+	for i := 0; i < 10; i++ {
+		b.Claim(func(b []byte) int {
+			if len(b) != n {
+				t.Fatalf("wrong size on claimed slice expected=%d given=%d", n, len(b))
+			}
+			return n
+		})
+	}
+}
+
 func BenchmarkByteBuffer(b *testing.B) {
 	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
@@ -337,5 +350,15 @@ func BenchmarkByteBuffer(b *testing.B) {
 		buf.Consume(n)
 	}
 
+	b.ReportAllocs()
+}
+
+func BenchmarkByteBufferClaim(b *testing.B) {
+	buf := NewByteBuffer()
+	for i := 0; i < b.N; i++ {
+		buf.Claim(func(b []byte) int {
+			return 1
+		})
+	}
 	b.ReportAllocs()
 }

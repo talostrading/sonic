@@ -270,7 +270,7 @@ func (b *ByteBuffer) PrepareRead(n int) (err error) {
 // `fn` implementations should return the number of bytes written into the provided slice.
 func (b *ByteBuffer) Claim(fn func(b []byte) int) {
 	n := fn(b.data[b.wi:cap(b.data)])
-	if n >= 0 && n < cap(b.data) {
-		b.wi += n
+	if wi := b.wi + n; n >= 0 && wi < cap(b.data) {
+		b.wi = wi
 	}
 }
