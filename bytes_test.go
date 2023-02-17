@@ -342,6 +342,27 @@ func TestByteBufferClaim2(t *testing.T) {
 	}
 }
 
+func TestByteBufferClaim3(t *testing.T) {
+	b := NewByteBuffer()
+	n := b.Reserved()
+	n10 := n * 10
+
+	before := b.WriteLen()
+	b.Claim(func(b []byte) int {
+		if len(b) != n {
+			t.Fatalf("wrong size on claimed slice expected=%d given=%d", n, len(b))
+		}
+		return n10
+	})
+	after := b.WriteLen()
+	if before != after {
+		t.Fatal("the write index should not move past the reserved area on an over-claim")
+	}
+	if b.Reserved() != n {
+		t.Fatal("the reserve area should be untouched as our Claim return is wrong")
+	}
+}
+
 func BenchmarkByteBuffer(b *testing.B) {
 	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
