@@ -220,6 +220,54 @@ func TestSleep(t *testing.T) {
 	log.Printf("slept for a total of %s, went over by %s", dur, dur-time.Duration(40)*time.Millisecond)
 }
 
+func TestRunWarmInvalidBusyCycles(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	if err := ioc.RunWarm(0, 2*time.Millisecond); err == nil {
+		t.Fatal("should have errored: invalid busy-cycles")
+	}
+}
+
+func TestRunWarmInvalidTimeout(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	if err := ioc.RunWarm(10, time.Microsecond); err == nil {
+		t.Fatal("should have errored: invalid timeout")
+	}
+}
+
+func TestRunWarm(t *testing.T) {
+	// This test will always pass until we have some mechanism to measure the reactor's cycle duration.
+	// TODO revisit after introducing CycleDur() in reactor.
+	ioc := MustIO()
+	defer ioc.Close()
+
+	ticker, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ticker.Close()
+
+	i := 0
+	ticker.ScheduleRepeating(time.Millisecond, func() {
+		i++
+		if i >= 10 {
+			ioc.Close()
+		}
+	})
+
+	// The ticker triggers every 1ms for 10 times, so we should run through the whole warm period and then yield
+	// until the ticker triggers, for 10 times. Each yield be resumed by the ticker.
+	if err := ioc.RunWarm(10, 2*time.Millisecond); err != nil {
+		if i < 10 {
+			// something happened before `Close()`ing the reactor.
+			t.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkPollOne(b *testing.B) {
 	ioc := MustIO()
 	defer ioc.Close()

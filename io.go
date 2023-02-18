@@ -83,17 +83,74 @@ func (ioc *IO) RunOne() (err error) {
 	return
 }
 
+func checkTimeout(t time.Duration) error {
+	if t < time.Millisecond {
+		return fmt.Errorf("the provided duration's unit cannot be lower than a millisecond")
+	}
+	return nil
+}
+
 // RunOneFor runs the event processing loop for a specified duration to execute at
 // most one handler. The provided duration should not be lower than a millisecond.
 //
 // This blocks the calling goroutine until one event is ready to process.
 func (ioc *IO) RunOneFor(dur time.Duration) (err error) {
-	if dur < time.Millisecond {
-		return fmt.Errorf("the provided duration's unit cannot be lower than a millisecond")
+	if err := checkTimeout(dur); err != nil {
+		return err
 	}
 	ms := int(dur.Milliseconds())
 	_, err = ioc.poll(ms)
 	return
+}
+
+const (
+	WarmDefaultBusyCycles = 10
+	WarmDefaultTimeout    = time.Millisecond
+)
+
+// RunWarm runs the reactor in a combined busy-wait and yielding mode, meaning that if the current cycle
+// does not process anything, the reactor will busy-wait for at most `busyCycles` more which we call the warm-period.
+// After `busyCycles` cycles of not processing anything, the reactor is out of the warm-period and falls back to
+// yielding with the provided timeout. If at any moment an event occurs and something is processed, the reactor restarts
+// its warm-period.
+//
+// RunWarm should be invoked with the above defaults: WarmDefaultBusyCycles and WarmDefaultTimeout.
+func (ioc *IO) RunWarm(busyCycles int, timeout time.Duration) (err error) {
+	if busyCycles <= 0 {
+		return fmt.Errorf("busyCycles must be greater than 0")
+	}
+	if err = checkTimeout(timeout); err != nil {
+		return err
+	}
+
+	var (
+		t = int(timeout.Milliseconds())
+		i = 0
+		n int
+	)
+	for {
+		if i < busyCycles {
+			// We are still in the warm-period, we poll.
+			n, err = ioc.poll(0)
+		} else {
+			// We are out of the warm-period, we yield for at most `t`.
+			n, err = ioc.poll(t)
+		}
+		if err != nil && err != sonicerrors.ErrTimeout {
+			return err
+		}
+		if n > 0 {
+			// We processed something in this cycle, be it inside or outside the warm-period. We restart the warm-period
+			i = 0
+		} else {
+			// We did not process anything in this cycle. If we are still in the warm period i.e. `i < busyCycles`,
+			// we are going to poll in the next cycle. If we are outside the warm period i.e. `i >= busyCycles`,
+			// we are going to yield in the next cycle.
+			i++
+		}
+	}
+
+	return nil
 }
 
 // Poll runs the event processing loop to execute ready handlers.
@@ -119,12 +176,12 @@ func (ioc *IO) poll(timeoutMs int) (int, error) {
 
 	if err != nil {
 		if err == syscall.EINTR {
+			// TODO not sure about this one, and whether returning timeout here is ok.
+			// need to look into syscall.EINTR again
 			if timeoutMs >= 0 {
 				return 0, sonicerrors.ErrTimeout
 			}
-
 			runtime.Gosched()
-
 			return 0, nil
 		}
 
