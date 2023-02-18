@@ -88,6 +88,9 @@ func (ioc *IO) RunOne() (err error) {
 //
 // This blocks the calling goroutine until one event is ready to process.
 func (ioc *IO) RunOneFor(dur time.Duration) (err error) {
+	if dur < time.Millisecond {
+		return fmt.Errorf("the provided duration's unit cannot be lower than a millisecond")
+	}
 	ms := int(dur.Milliseconds())
 	_, err = ioc.poll(ms)
 	return
