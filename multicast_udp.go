@@ -3,14 +3,17 @@ package sonic
 import (
 	"fmt"
 	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/sonicopts"
+	"io"
 	"net"
+	"sync/atomic"
 	"syscall"
 )
 
 // SizeofIPMreqSource I would love to do unsafe.SizeOf  but for a struct with 3 4-byte arrays, it returns 8 on my Mac.
 // It should return 12 :). So we add 4 bytes instead which is enough for the source IP.
-const SizeofIPMreqSource = syscall.SizeofIPMreq
+const SizeofIPMreqSource = syscall.SizeofIPMreq + 4
 
 // IPMreqSource adds Sourceaddr to net.IPMreq
 type IPMreqSource struct {
@@ -29,6 +32,25 @@ const (
 	BlockSource
 	UnblockSource
 )
+
+func (r MulticastRequestType) String() string {
+	switch r {
+	case JoinGroup:
+		return "join_group"
+	case JoinSourceGroup:
+		return "join_source_group"
+	case LeaveGroup:
+		return "leave_group"
+	case LeaveSourceGroup:
+		return "leave_source_group"
+	case BlockSource:
+		return "block_source"
+	case UnblockSource:
+		return "unblock_source"
+	default:
+		panic("unknown multicast_request_type")
+	}
+}
 
 func (r MulticastRequestType) ToIPv4() int {
 	switch r {
@@ -82,6 +104,9 @@ type udpMulticastClient struct {
 	boundAddr  *net.UDPAddr
 	closed     uint32
 	dispatched int
+
+	// from is updated on every read
+	from *net.UDPAddr
 }
 
 var _ UDPMulticastClient = &udpMulticastClient{}
@@ -102,6 +127,8 @@ func NewUDPMulticastClient(
 		opts:    opts,
 
 		fd: -1,
+
+		from: &net.UDPAddr{},
 	}
 
 	return c, nil
@@ -128,7 +155,7 @@ func (c *udpMulticastClient) make(port int) error {
 
 	var opts []sonicopts.Option
 	opts = append(opts, c.opts...)
-	opts = append(opts, sonicopts.BindBeforeConnect(boundAddr))
+	opts = append(opts, sonicopts.BindSocket(boundAddr))
 	// Allow multiple sockets to listen to the same multicast group.
 	opts = append(opts, sonicopts.ReusePort(true))
 
@@ -166,7 +193,7 @@ func (c *udpMulticastClient) Join(multicastAddr *net.UDPAddr) error {
 	if err := c.prepareJoin(multicastAddr); err != nil {
 		return err
 	}
-	return makeInterfaceRequest(JoinGroup, c.iff, c.fd, multicastAddr, nil)
+	return makeInterfaceRequest(JoinGroup, c.iff, c.fd, multicastAddr.IP, nil)
 }
 
 // JoinSource joins a multicast group, filtering out packets not coming from sourceAddr.
@@ -176,14 +203,14 @@ func (c *udpMulticastClient) JoinSource(multicastAddr, sourceAddr *net.UDPAddr) 
 	if err := c.prepareJoin(multicastAddr); err != nil {
 		return err
 	}
-	return makeInterfaceRequest(JoinSourceGroup, c.iff, c.fd, multicastAddr, sourceAddr)
+	return makeInterfaceRequest(JoinSourceGroup, c.iff, c.fd, multicastAddr.IP, sourceAddr.IP)
 }
 
 // Leave a group.
 //
 // The caller must ensure they do not leave an already left group.
 func (c *udpMulticastClient) Leave(multicastAddr *net.UDPAddr) error {
-	return makeInterfaceRequest(LeaveGroup, c.iff, c.fd, multicastAddr, nil)
+	return makeInterfaceRequest(LeaveGroup, c.iff, c.fd, multicastAddr.IP, nil)
 
 }
 
@@ -191,54 +218,124 @@ func (c *udpMulticastClient) Leave(multicastAddr *net.UDPAddr) error {
 //
 // The caller must ensure they do not leave an already left source from the group.
 func (c *udpMulticastClient) LeaveSource(multicastAddr, sourceAddr *net.UDPAddr) error {
-	return makeInterfaceRequest(LeaveSourceGroup, c.iff, c.fd, multicastAddr, sourceAddr)
+	return makeInterfaceRequest(LeaveSourceGroup, c.iff, c.fd, multicastAddr.IP, sourceAddr.IP)
 }
 
 // BlockSource ...
 //
 // The caller must ensure they do not block an already blocked source.
-func (c *udpMulticastClient) BlockSource(multicastAddr *net.UDPAddr) error {
-	return makeInterfaceRequest(BlockSource, c.iff, c.fd, multicastAddr, sourceAddr)
+func (c *udpMulticastClient) BlockSource(multicastAddr, sourceAddr *net.UDPAddr) error {
+	return makeInterfaceRequest(BlockSource, c.iff, c.fd, multicastAddr.IP, sourceAddr.IP)
 }
 
 // UnblockSource ...
 //
 // The caller must ensure they do not unblock an already unblocked source.
 func (c *udpMulticastClient) UnblockSource(multicastAddr, sourceAddr *net.UDPAddr) error {
-	return makeInterfaceRequest(UnblockSource, c.iff, c.fd, multicastAddr, sourceAddr)
+	return makeInterfaceRequest(UnblockSource, c.iff, c.fd, multicastAddr.IP, sourceAddr.IP)
 }
 
-func (c *udpMulticastClient) ReadFrom(bytes []byte) (n int, addr net.Addr, err error) {
-	//TODO implement me
-	panic("implement me")
+func (c *udpMulticastClient) ReadFrom(b []byte) (n int, from net.Addr, err error) {
+	var addr syscall.Sockaddr
+	n, addr, err = syscall.Recvfrom(c.fd, b, 0)
+
+	if err != nil {
+		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+			return 0, nil, sonicerrors.ErrWouldBlock
+		}
+		return 0, nil, err
+	}
+
+	if n == 0 {
+		return 0, from, io.EOF
+	}
+
+	if n < 0 {
+		n = 0 // error contains the information
+	}
+
+	return n, internal.FromSockaddrUDP(addr, c.from), err
 }
 
-func (c *udpMulticastClient) AsyncReadFrom(bytes []byte, packet AsyncReadCallbackPacket) {
-	//TODO implement me
-	panic("implement me")
+func (c *udpMulticastClient) AsyncReadFrom(b []byte, cb AsyncReadCallbackPacket) {
+	if c.dispatched < MaxCallbackDispatch {
+		c.asyncReadNow(b, func(err error, n int, addr net.Addr) {
+			c.dispatched++
+			cb(err, n, addr)
+			c.dispatched--
+		})
+	} else {
+		c.scheduleRead(b, cb)
+	}
+}
+
+func (c *udpMulticastClient) asyncReadNow(b []byte, cb AsyncReadCallbackPacket) {
+	n, addr, err := c.ReadFrom(b)
+
+	if err == nil {
+		cb(err, n, addr)
+		return
+	}
+
+	if err == sonicerrors.ErrWouldBlock {
+		c.scheduleRead(b, cb)
+	} else {
+		cb(err, 0, addr)
+	}
+}
+
+func (c *udpMulticastClient) scheduleRead(b []byte, cb AsyncReadCallbackPacket) {
+	if c.Closed() {
+		cb(io.EOF, 0, nil)
+		return
+	}
+
+	handler := c.getReadHandler(b, cb)
+	c.pd.Set(internal.ReadEvent, handler)
+
+	if err := c.setRead(); err != nil {
+		cb(err, 0, nil)
+	} else {
+		c.ioc.pendingReads[&c.pd] = struct{}{}
+	}
+}
+
+func (c *udpMulticastClient) getReadHandler(b []byte, cb AsyncReadCallbackPacket) internal.Handler {
+	return func(err error) {
+		delete(c.ioc.pendingReads, &c.pd)
+
+		if err != nil {
+			cb(err, 0, nil)
+		} else {
+			c.asyncReadNow(b, cb)
+		}
+	}
+}
+
+func (c *udpMulticastClient) setRead() error {
+	return c.ioc.poller.SetRead(c.fd, &c.pd)
 }
 
 func (c *udpMulticastClient) RawFd() int {
-	//TODO implement me
-	panic("implement me")
+	return c.fd
 }
 
 func (c *udpMulticastClient) Interface() *net.Interface {
-	//TODO implement me
-	panic("implement me")
+	return c.iff
 }
 
 func (c *udpMulticastClient) LocalAddr() *net.UDPAddr {
-	//TODO implement me
-	panic("implement me")
+	return c.boundAddr
 }
 
 func (c *udpMulticastClient) Close() error {
-	//TODO implement me
-	panic("implement me")
+	if atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
+		// TODO maybe shutdown instead? on TCP it is cleaner. Also check TCP then.
+		return syscall.Close(c.fd)
+	}
+	return nil
 }
 
 func (c *udpMulticastClient) Closed() bool {
-	//TODO implement me
-	panic("implement me")
+	return atomic.LoadUint32(&c.closed) == 1
 }

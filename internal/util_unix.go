@@ -4,6 +4,7 @@ package internal
 
 import (
 	"fmt"
+	"github.com/talostrading/sonic/util"
 	"golang.org/x/sys/unix"
 	"net"
 	"reflect"
@@ -76,9 +77,11 @@ func IsNoDelay(fd int) (bool, error) {
 func FromSockaddrUDP(sockAddr syscall.Sockaddr, to *net.UDPAddr) *net.UDPAddr {
 	switch addr := sockAddr.(type) {
 	case *syscall.SockaddrInet4:
+		to.IP = util.ExtendSlice(to.IP, net.IPv4len)
 		copy(to.IP, addr.Addr[:])
 		to.Port = addr.Port
 	case *syscall.SockaddrInet6:
+		to.IP = util.ExtendSlice(to.IP, net.IPv6len)
 		copy(to.IP, addr.Addr[:])
 		to.Port = addr.Port
 		// TODO zoneID (not sure the encoding)

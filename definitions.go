@@ -5,6 +5,12 @@ import (
 	"net"
 )
 
+const (
+	// MaxCallbackDispatch is the maximum number of callbacks which can be
+	// placed onto the stack for immediate invocation.
+	MaxCallbackDispatch int = 1024
+)
+
 // TODO this is quite a mess right now. Properly define what a Conn, Stream,
 // PacketConn is and what should the async adapter return, as more than TCP
 // streams can be "async-adapted".
@@ -171,8 +177,31 @@ type Listener interface {
 	RawFd() int
 }
 
-const (
-	// MaxCallbackDispatch is the maximum number of callbacks which can be
-	// placed onto the stack for immediate invocation.
-	MaxCallbackDispatch int = 1024
-)
+// UDPMulticastClient defines a UDP multicast client that can read data from one or multiple multicast groups,
+// optionally filtering packets on the source IP.
+type UDPMulticastClient interface {
+	Join(multicastAddr *net.UDPAddr) error
+	JoinSource(multicastAddr, sourceAddr *net.UDPAddr) error
+
+	Leave(multicastAddr *net.UDPAddr) error
+	LeaveSource(multicastAddr, sourceAddr *net.UDPAddr) error
+
+	BlockSource(multicastAddr, sourceAddr *net.UDPAddr) error
+	UnblockSource(multicastAddr, sourceAddr *net.UDPAddr) error
+
+	// ReadFrom and AsyncReadFrom read a partial or complete datagram into the provided buffer. When the datagram
+	// is smaller than the passed buffer, only that much data is returned; when it is bigger, the packet is truncated
+	// to fit into the buffer. The truncated bytes are lost.
+	//
+	// It is the responsibility of the caller to ensure the passed buffer can hold an entire datagram. A rule of thumb
+	// is to have the buffer size equal to the network interface's MTU.
+	ReadFrom([]byte) (n int, addr net.Addr, err error)
+	AsyncReadFrom([]byte, AsyncReadCallbackPacket)
+
+	RawFd() int
+	Interface() *net.Interface
+	LocalAddr() *net.UDPAddr
+
+	Close() error
+	Closed() bool
+}
