@@ -20,7 +20,7 @@ var (
 
 func maybeBindBeforeConnect(fd int, opts ...sonicopts.Option) error {
 	for _, opt := range opts {
-		if opt.Type() == sonicopts.TypeBindBeforeConnect {
+		if opt.Type() == sonicopts.TypeBindSocket {
 			addr := opt.Value().(net.Addr)
 			return syscall.Bind(fd, ToSockaddr(addr))
 		}
@@ -81,9 +81,10 @@ func CreateSocketUDP(network, addr string) (fd int, udpAddr *net.UDPAddr, err er
 	if len(udpAddr.Zone) > 0 {
 		domain = syscall.AF_INET6
 	}
-	if udpAddr.IP.IsUnspecified() {
-		domain = syscall.AF_UNSPEC
-	}
+	// TODO why this fails?
+	//if udpAddr.IP.IsUnspecified() {
+	//	domain = syscall.AF_UNSPEC
+	//}
 
 	fd, err = socket(domain, socketType, 0, true)
 
@@ -301,6 +302,9 @@ func ApplyOpts(fd int, opts ...sonicopts.Option) error {
 			); err != nil {
 				return os.NewSyscallError(fmt.Sprintf("tcp_no_delay(%v)", v), err)
 			}
+		case sonicopts.TypeBindSocket:
+			addr := opt.Value().(net.Addr)
+			return syscall.Bind(fd, ToSockaddr(addr))
 		default:
 			return fmt.Errorf("unsupported socket option %s", t)
 		}
@@ -315,4 +319,9 @@ func SocketAddress(fd int) (net.Addr, error) {
 		return nil, err
 	}
 	return FromSockaddr(addr), nil
+}
+
+func Sockaddr(fd int) (syscall.Sockaddr, error) {
+	addr, err := syscall.Getsockname(fd)
+	return addr, err
 }

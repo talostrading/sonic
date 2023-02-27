@@ -72,3 +72,18 @@ func IsNoDelay(fd int) (bool, error) {
 	}
 	return v&syscall.TCP_NODELAY == syscall.TCP_NODELAY, nil
 }
+
+func FromSockaddrUDP(sockAddr syscall.Sockaddr, to *net.UDPAddr) *net.UDPAddr {
+	switch addr := sockAddr.(type) {
+	case *syscall.SockaddrInet4:
+		copy(to.IP, addr.Addr[:])
+		to.Port = addr.Port
+	case *syscall.SockaddrInet6:
+		copy(to.IP, addr.Addr[:])
+		to.Port = addr.Port
+		// TODO zoneID (not sure the encoding)
+	default:
+		panic("not supported")
+	}
+	return to
+}
