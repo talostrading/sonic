@@ -1,3 +1,5 @@
+//go:build darwin || netbsd || freebsd || openbsd || dragonfly
+
 package sonic
 
 import (
@@ -177,6 +179,10 @@ func TestMulticastIPv4JoinAndBlock(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		} else {
+			if !srv.bindAddr.IP.Equal(addr.(*net.UDPAddr).IP) {
+				t.Fatal("source address not equal to the server's address")
+			}
+
 			nread++
 			b = b[:n]
 			if !left {
@@ -244,6 +250,10 @@ func TestMulticastIPv4JoinAndLeave(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		} else {
+			if !srv.bindAddr.IP.Equal(addr.(*net.UDPAddr).IP) {
+				t.Fatal("source address not equal to the server's address")
+			}
+
 			nread++
 			b = b[:n]
 			if !left {
@@ -267,7 +277,7 @@ func TestMulticastIPv4JoinAndLeave(t *testing.T) {
 	}
 }
 
-func TestMulticastIPv4JoinWithFilter(t *testing.T) {
+func TestMulticastIPv4JoinWithSource(t *testing.T) {
 	// 2 servers sending on the group, we join both
 	// TODO it is hard to test this locally because we need two different IP addresses, one for each server,
 	// hence two interfaces
