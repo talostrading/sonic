@@ -158,6 +158,7 @@ type PacketConn interface {
 	Closed() bool
 
 	LocalAddr() net.Addr
+	RawFd() int
 }
 
 // Listener is a generic network listener for stream-oriented protocols.

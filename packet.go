@@ -215,3 +215,7 @@ func (c *packetConn) Closed() bool {
 func (c *packetConn) LocalAddr() net.Addr {
 	return c.localAddr
 }
+
+func (c *packetConn) RawFd() int {
+	return c.fd
+}
