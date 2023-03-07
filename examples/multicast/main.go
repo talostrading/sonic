@@ -58,7 +58,7 @@ func main() {
 		panic(err)
 	}
 
-	PrintIff(iff)
+	log.Println(PrintIff(iff))
 
 	log.Println("creating multicast client")
 
