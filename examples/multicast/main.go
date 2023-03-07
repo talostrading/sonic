@@ -6,6 +6,7 @@ import (
 	"github.com/talostrading/sonic/util"
 	"log"
 	"net"
+	"time"
 )
 
 var (
@@ -59,11 +60,14 @@ func main() {
 
 	tracker := util.NewTrackerWithSamples(*ns)
 	for {
-		start := util.GetMonoNanos()
+		// I would use util.GetMonoNanos() but cross-compiling is a mess,
+		// because we link against the local glibc which might not be the glibc
+		// on the remote.
+		start := time.Now()
 		n, _ := ioc.PollOne()
 		if n > 0 {
-			end := util.GetMonoNanos()
-			if stats := tracker.Record(end - start); stats != nil {
+			diff := time.Now().Sub(start)
+			if stats := tracker.Record(diff.Nanoseconds()); stats != nil {
 				log.Printf("loop latency (ns): %s\n", stats)
 			}
 		}
