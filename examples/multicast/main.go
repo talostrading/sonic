@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/util"
 	"log"
@@ -10,25 +11,51 @@ import (
 )
 
 var (
+	lf    = flag.Bool("lf", false, "list network interfaces and quit")
+	iname = flag.String("iname", "en0", "interface to multicast with")
 	// for a server: iperf -c 224.0.1.0 -u -i 1
 	addr = flag.String("addr", "224.0.1.0:5001", "multicast group to join")
-
-	ns = flag.Int("ns", 128, "number of samples")
+	ns   = flag.Int("ns", 128, "number of samples")
 )
+
+func PrintIff(iff *net.Interface) string {
+	return fmt.Sprintf(
+		"interface name=%s mtu=%d index=%d addr=%s up=%v lo=%v p2p=%v multicast=%v",
+		iff.Name,
+		iff.MTU,
+		iff.Index,
+		iff.HardwareAddr,
+		iff.Flags&net.FlagUp == net.FlagUp,
+		iff.Flags&net.FlagLoopback == net.FlagLoopback,
+		iff.Flags&net.FlagPointToPoint == net.FlagPointToPoint,
+		iff.Flags&net.FlagMulticast == net.FlagMulticast,
+	)
+}
 
 func main() {
 	flag.Parse()
 
+	if *lf {
+		log.Println("listing interfaces")
+		iffs, err := net.Interfaces()
+		if err != nil {
+			panic(err)
+		}
+		for _, iff := range iffs {
+			log.Println(PrintIff(&iff))
+		}
+
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	iff, err := net.InterfaceByName("en0")
+	iff, err := net.InterfaceByName(*iname)
 	if err != nil {
 		panic(err)
 	}
-	log.Printf(
-		"interface name=%s mtu=%d index=%d addr=%s\n",
-		iff.Name, iff.MTU, iff.Index, iff.HardwareAddr)
+	PrintIff(iff)
 
 	mc, err := sonic.NewUDPMulticastClient(ioc, iff, net.IPv4zero)
 	if err != nil {
