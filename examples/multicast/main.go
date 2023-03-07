@@ -51,25 +51,36 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
+	log.Printf("getting interface %s\n", *iname)
+
 	iff, err := net.InterfaceByName(*iname)
 	if err != nil {
 		panic(err)
 	}
+
 	PrintIff(iff)
+
+	log.Println("creating multicast client")
 
 	mc, err := sonic.NewUDPMulticastClient(ioc, iff, net.IPv4zero)
 	if err != nil {
 		panic(err)
 	}
 
+	log.Printf("created multicast client, resolving address %s\n", *addr)
+
 	udpAddr, err := net.ResolveUDPAddr("udp4", *addr)
 	if err != nil {
 		panic(err)
 	}
 
+	log.Printf("resolved address %s, joining multicast group\n", udpAddr)
+
 	if err := mc.Join(udpAddr); err != nil {
 		panic(err)
 	}
+
+	log.Println("joined multicast, starting to read")
 
 	b := make([]byte, iff.MTU)
 	var onRead sonic.AsyncReadCallbackPacket
