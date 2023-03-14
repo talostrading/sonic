@@ -14,6 +14,7 @@ import (
 var (
 	addr = flag.String("addr", "localhost:8080", "server address")
 	n    = flag.Int64("n", 1024*32, "samples in a batch")
+	rw   = flag.Bool("rw", true, "if true, each connection will handle the read and write ends in separate goroutines")
 
 	// If true, then we use less memory but there will be quite some contention
 	// on the histogram. We want to test for both cases.
@@ -34,7 +35,8 @@ func EncodeNanos(into []byte) {
 
 func Record(id int, hist *hdrhistogram.Histogram, diff int64) {
 	if err := hist.RecordValue(diff); err != nil {
-		panic(err)
+		// diff might be to big for the histogram and we ignore it
+		log.Printf("err=%v\n", err)
 	}
 	if hist.TotalCount() >= *n {
 		log.Printf(
@@ -74,26 +76,64 @@ func handle(conn net.Conn) {
 		log.Printf("conn %d using global histogram\n", id)
 	}
 
-	b := make([]byte, 8)
-	for {
-		EncodeNanos(b)
-		n, err := conn.Write(b)
-		if n != 8 || err != nil {
-			panic(err)
-		}
+	if *rw {
+		var wg sync.WaitGroup
+		wg.Add(2)
 
-		n, err = conn.Read(b)
-		if n != 8 || err != nil {
-			panic(err)
-		}
+		go func() {
+			log.Printf("conn %d started writer goroutine\n", id)
+			b := make([]byte, 8)
+			for {
+				EncodeNanos(b)
+				n, err := conn.Write(b)
+				if n != 8 || err != nil {
+					panic(err)
+				}
+			}
+		}()
+		go func() {
+			log.Printf("conn %d started reader goroutine\n", id)
+			b := make([]byte, 8)
+			for {
+				n, err := conn.Read(b)
+				if n != 8 || err != nil {
+					panic(err)
+				}
 
-		diff := util.GetMonoNanos() - DecodeNanos(b)
-		if *shareHist {
-			lck.Lock()
-			Record(id, globalHist, diff)
-			lck.Unlock()
-		} else {
-			Record(id, localHist, diff)
+				diff := util.GetMonoNanos() - DecodeNanos(b)
+				if *shareHist {
+					lck.Lock()
+					Record(id, globalHist, diff)
+					lck.Unlock()
+				} else {
+					Record(id, localHist, diff)
+				}
+			}
+		}()
+
+		wg.Wait()
+	} else {
+		b := make([]byte, 8)
+		for {
+			EncodeNanos(b)
+			n, err := conn.Write(b)
+			if n != 8 || err != nil {
+				panic(err)
+			}
+
+			n, err = conn.Read(b)
+			if n != 8 || err != nil {
+				panic(err)
+			}
+
+			diff := util.GetMonoNanos() - DecodeNanos(b)
+			if *shareHist {
+				lck.Lock()
+				Record(id, globalHist, diff)
+				lck.Unlock()
+			} else {
+				Record(id, localHist, diff)
+			}
 		}
 	}
 }
