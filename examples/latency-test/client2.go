@@ -7,14 +7,12 @@ import (
 
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/sonicopts"
 	"github.com/talostrading/sonic/util"
 )
 
 var (
-	addr = flag.String("addr", "localhost:8080", "server address")
+	addr = flag.String("addr", "localhost:8080", "address to connect to")
 	n    = flag.Int64("n", 1024*32, "samples in a batch")
-	hot  = flag.Bool("hot", true, "if true, busy-wait for events")
 
 	hist = hdrhistogram.New(1, 10_000_000, 1)
 )
@@ -58,69 +56,39 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	ln, err := sonic.Listen(
-		ioc,
-		"tcp",
-		*addr,
-		sonicopts.Nonblocking(true))
+	conn, err := sonic.Dial(ioc, "tcp", *addr)
 	if err != nil {
 		panic(err)
 	}
-	defer ln.Close()
+
+	b := make([]byte, 8)
 
 	var (
-		b = make([]byte, 8)
-
-		onAccept sonic.AcceptCallback
+		onRead  sonic.AsyncCallback
+		onWrite sonic.AsyncCallback
 	)
 
-	onAccept = func(err error, conn sonic.Conn) {
-		log.Printf(
-			"accepted connection local_addr=%s remote_addr=%s\n",
-			conn.LocalAddr(), conn.RemoteAddr())
-
-		ln.AsyncAccept(onAccept)
-
-		var (
-			onWrite sonic.AsyncCallback
-			onRead  sonic.AsyncCallback
-		)
-
-		onRead = func(err error, n int) {
-			if err != nil {
-				conn.Close()
-				panic(err)
-			} else {
-				Record(util.GetMonoNanos() - DecodeNanos(b))
-
-				EncodeNanos(b)
-				conn.AsyncWrite(b, onWrite)
-			}
+	onWrite = func(err error, _ int) {
+		if err != nil {
+			panic(err)
 		}
-
-		onWrite = func(err error, n int) {
-			if err != nil {
-				conn.Close()
-				panic(err)
-			} else {
-				conn.AsyncRead(b, onRead)
-			}
-		}
-
-		EncodeNanos(b)
-		conn.AsyncWrite(b, onWrite)
+		conn.AsyncRead(b, onRead)
 	}
 
-	ln.AsyncAccept(onAccept)
-
-	log.Printf("listening on %s\n", *addr)
-
-	if *hot {
-		log.Print("busy wait")
-		for {
-			ioc.PollOne()
+	onRead = func(err error, _ int) {
+		if err != nil {
+			panic(err)
+		} else {
+			Record(util.GetMonoNanos() - DecodeNanos(b))
+			EncodeNanos(b)
+			conn.AsyncWrite(b, onWrite)
 		}
-	} else {
-		ioc.Run()
+	}
+
+	EncodeNanos(b)
+	conn.AsyncWrite(b, onWrite)
+
+	for {
+		ioc.PollOne()
 	}
 }
