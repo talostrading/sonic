@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"flag"
 	"log"
-	"sync"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/talostrading/sonic"
@@ -15,9 +14,9 @@ import (
 var (
 	addr = flag.String("addr", "localhost:8080", "server address")
 	n    = flag.Int64("n", 1024*32, "samples in a batch")
+	hot  = flag.Bool("hot", true, "if true, busy-wait for events")
 
 	hist = hdrhistogram.New(1, 10_000_000, 1)
-	lck  sync.Mutex
 )
 
 func DecodeNanos(from []byte) int64 {
@@ -29,11 +28,10 @@ func EncodeNanos(into []byte) {
 }
 
 func Record(diff int64) {
-	lck.Lock()
-	defer lck.Unlock()
-
 	if err := hist.RecordValue(diff); err != nil {
-		panic(err)
+		// diff might be to big for the histogram and we ignore it
+		log.Printf("err=%v\n", err)
+		return
 	}
 	if hist.TotalCount() >= *n {
 		log.Printf(
@@ -68,6 +66,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer ln.Close()
 
 	var (
 		b = make([]byte, 8)
@@ -86,6 +85,7 @@ func main() {
 
 		onRead = func(err error, n int) {
 			if err != nil {
+				conn.Close()
 				panic(err)
 			} else {
 				Record(util.GetMonoNanos() - DecodeNanos(b))
@@ -97,6 +97,7 @@ func main() {
 
 		onWrite = func(err error, n int) {
 			if err != nil {
+				conn.Close()
 				panic(err)
 			} else {
 				conn.AsyncRead(b, onRead)
@@ -111,7 +112,12 @@ func main() {
 
 	log.Printf("listening on %s\n", *addr)
 
-	for {
-		ioc.PollOne()
+	if *hot {
+		log.Print("busy wait")
+		for {
+			ioc.PollOne()
+		}
+	} else {
+		ioc.Run()
 	}
 }

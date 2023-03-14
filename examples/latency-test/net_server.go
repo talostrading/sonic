@@ -15,8 +15,13 @@ var (
 	addr = flag.String("addr", "localhost:8080", "server address")
 	n    = flag.Int64("n", 1024*32, "samples in a batch")
 
-	hist = hdrhistogram.New(1, 10_000_000, 1)
-	lck  sync.Mutex
+	// If true, then we use less memory but there will be quite some contention
+	// on the histogram. We want to test for both cases.
+	shareHist  = flag.Bool("sh", false, "if true, then all connections share the same histogram")
+	globalHist = hdrhistogram.New(1, 10_000_000, 1)
+	lck        sync.Mutex
+
+	connID = 1
 )
 
 func DecodeNanos(from []byte) int64 {
@@ -27,16 +32,14 @@ func EncodeNanos(into []byte) {
 	binary.LittleEndian.PutUint64(into, uint64(util.GetMonoNanos()))
 }
 
-func Record(diff int64) {
-	lck.Lock()
-	defer lck.Unlock()
-
+func Record(id int, hist *hdrhistogram.Histogram, diff int64) {
 	if err := hist.RecordValue(diff); err != nil {
 		panic(err)
 	}
 	if hist.TotalCount() >= *n {
 		log.Printf(
-			"min/avg/max/stddev = %d/%d/%d/%d p50=%d p75=%d p90=%d p95=%d p99=%d p99.5=%d p99.9=%d",
+			"conn_id=%d min/avg/max/stddev = %d/%d/%d/%d p50=%d p75=%d p90=%d p95=%d p99=%d p99.5=%d p99.9=%d",
+			id,
 			hist.Min(),
 			int64(hist.Mean()),
 			hist.Max(),
@@ -54,12 +57,24 @@ func Record(diff int64) {
 }
 
 func handle(conn net.Conn) {
+	defer conn.Close()
+
+	id := connID
+	connID++
+
 	log.Printf(
 		"accepted connection local_addr=%s remote_addr=%s\n",
 		conn.LocalAddr(), conn.RemoteAddr())
 
-	b := make([]byte, 8)
+	var localHist *hdrhistogram.Histogram
+	if !*shareHist {
+		log.Printf("conn %d using local histogram\n", id)
+		localHist = hdrhistogram.New(1, 10_000_000, 1)
+	} else {
+		log.Printf("conn %d using global histogram\n", id)
+	}
 
+	b := make([]byte, 8)
 	for {
 		EncodeNanos(b)
 		n, err := conn.Write(b)
@@ -72,7 +87,14 @@ func handle(conn net.Conn) {
 			panic(err)
 		}
 
-		Record(util.GetMonoNanos() - DecodeNanos(b))
+		diff := util.GetMonoNanos() - DecodeNanos(b)
+		if *shareHist {
+			lck.Lock()
+			Record(id, globalHist, diff)
+			lck.Unlock()
+		} else {
+			Record(id, localHist, diff)
+		}
 	}
 }
 
@@ -85,6 +107,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	defer ln.Close()
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
