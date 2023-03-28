@@ -32,6 +32,11 @@ type Timer struct {
 	ioc   *IO
 	it    *internal.Timer
 	state timerState
+
+	// This is only checked in ScheduleRepeating. It is set in Cancel.
+	// This ensures that we do not schedule the timer again if the ScheduleRepeating
+	// callback cancelled the timer.
+	cancelled bool
 }
 
 func NewTimer(ioc *IO) (*Timer, error) {
@@ -89,7 +94,11 @@ func (t *Timer) ScheduleRepeating(repeat time.Duration, cb func()) error {
 		var ccb func()
 		ccb = func() {
 			cb()
-			t.ScheduleOnce(repeat, ccb)
+			if t.cancelled {
+				t.cancelled = false
+			} else {
+				t.ScheduleOnce(repeat, ccb)
+			}
 		}
 
 		return t.ScheduleOnce(repeat, ccb)
@@ -103,6 +112,7 @@ func (t *Timer) Scheduled() bool {
 func (t *Timer) Cancel() error {
 	err := t.it.Unset()
 	if err == nil {
+		t.cancelled = true
 		t.state = stateReady
 	}
 	return err

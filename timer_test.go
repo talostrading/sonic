@@ -667,6 +667,72 @@ func TestTimerScheduleRepeatingConsecutively(t *testing.T) {
 	}
 }
 
+func TestTimerScheduleRepeatingAndCancel(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 10; i++ {
+		called := 0
+		err := timer.ScheduleRepeating(time.Millisecond, func() {
+			called++
+			if called == 5 {
+				timer.Cancel()
+			}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for i := 0; i < 5; i++ {
+			if !timer.Scheduled() {
+				t.Fatal("timer should be scheduled")
+			}
+			if len(timer.ioc.pendingTimers) != 1 {
+				t.Fatal("there should be a pending timer")
+			}
+			ioc.RunOne()
+		}
+		if timer.Scheduled() {
+			t.Fatal("timer should not be scheduled")
+		}
+		if timer.cancelled {
+			t.Fatal("timer.cancelled should not be false")
+		}
+		if timer.state != stateReady {
+			t.Fatal("timer should be in ready state")
+		}
+		if len(timer.ioc.pendingTimers) != 0 {
+			t.Fatal("there should be no pending timers")
+		}
+	}
+
+	once := false
+	err = timer.ScheduleOnce(time.Millisecond, func() {
+		once = true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ioc.RunOne()
+	if len(timer.ioc.pendingTimers) != 0 {
+		t.Fatal("there should be no pending timers")
+	}
+	if !once {
+		t.Fatal("schedule once did not call")
+	}
+	if timer.Scheduled() {
+		t.Fatal("timer should not be scheduled")
+	}
+	if timer.state != stateReady {
+		t.Fatal("timer should be in ready state")
+	}
+}
+
 func BenchmarkTimerNew(b *testing.B) {
 	ioc := MustIO()
 	defer ioc.Close()
