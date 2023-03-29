@@ -47,6 +47,8 @@ type CodecConn[Enc, Dec any] interface {
 	WriteNext(Enc) (int, error)
 
 	NextLayer() Stream
+
+	Close() error
 }
 
 var (
@@ -140,6 +142,10 @@ func (c *BlockingCodecConn[Enc, Dec]) AsyncWriteNext(item Enc, cb AsyncCallback)
 
 func (c *BlockingCodecConn[Enc, Dec]) NextLayer() Stream {
 	return c.stream
+}
+
+func (c *BlockingCodecConn[Enc, Dec]) Close() error {
+	return c.stream.Close()
 }
 
 type NonblockingCodecConn[Enc, Dec any] struct {
@@ -262,4 +268,8 @@ func (c *NonblockingCodecConn[Enc, Dec]) WriteNext(item Enc) (n int, err error) 
 
 func (c *NonblockingCodecConn[Enc, Dec]) NextLayer() Stream {
 	return c.stream
+}
+
+func (c *NonblockingCodecConn[Enc, Dec]) Close() error {
+	return c.stream.Close()
 }

@@ -108,16 +108,19 @@ type Stream interface {
 type AsyncStream interface {
 	AsyncReadStream
 	AsyncWriteStream
+	io.Closer
 }
 
 type AsyncReadStream interface {
 	AsyncReader
 	AsyncCanceller
+	io.Closer
 }
 
 type AsyncWriteStream interface {
 	AsyncWriter
 	AsyncCanceller
+	io.Closer
 }
 
 type SyncStream interface {
