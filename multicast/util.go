@@ -30,7 +30,7 @@ func parseMulticastAddr(addr string) (netip.Addr, error) {
 	return ip, err
 }
 
-func resolveInterface(name string, addr string) (*net.Interface, error) {
+func resolveInterface(name string) (*net.Interface, error) {
 	iff, err := net.InterfaceByName(name)
 	if err != nil {
 		return nil, err
@@ -44,33 +44,38 @@ func resolveInterface(name string, addr string) (*net.Interface, error) {
 		return nil, fmt.Errorf("interface=%s does not support multicast", name)
 	}
 
-	if addr != "" {
-		interfaceAddrs, err := iff.Addrs()
+	return iff, nil
+}
+
+func resolveInterfaceIP(iff *net.Interface, ipAddr string) (netip.Addr, error) {
+	interfaceAddrs, err := iff.Addrs()
+	if err != nil {
+		return netip.Addr{}, err
+	}
+
+	desiredIP, err := parseAddr(ipAddr)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+
+	var (
+		interfaceIP netip.Addr
+		found       = false
+	)
+	for _, interfaceAddr := range interfaceAddrs {
+		interfaceIP, err = parseAddr(interfaceAddr.String())
 		if err != nil {
-			return nil, err
+			return netip.Addr{}, err
 		}
-
-		desiredIP, err := parseAddr(addr)
-		if err != nil {
-			return nil, err
-		}
-
-		found := false
-		for _, interfaceAddr := range interfaceAddrs {
-			interfaceIP, err := parseAddr(interfaceAddr.String())
-			if err != nil {
-				return nil, err
-			}
-			if interfaceIP == desiredIP {
-				found = true
-				break
-			}
-		}
-
-		if !found {
-			return nil, fmt.Errorf("desired interface IP=%s is not bound to interface %s", addr, name)
+		if interfaceIP == desiredIP {
+			found = true
+			break
 		}
 	}
 
-	return iff, nil
+	if !found {
+		return netip.Addr{}, fmt.Errorf("desired interface IP=%s is not bound to interface %s", iff.Name, ipAddr)
+	} else {
+		return interfaceIP, nil
+	}
 }
