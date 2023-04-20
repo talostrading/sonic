@@ -12,6 +12,9 @@ import (
 type UDPPeer struct {
 	socket    *sonic.Socket
 	localAddr *net.UDPAddr
+
+	outbound   *net.Interface
+	outboundIP netip.Addr
 }
 
 func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
@@ -76,60 +79,51 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 	return p, nil
 }
 
+func (p *UDPPeer) SetOutboundIPv4(interfaceName string) error {
+	iff, err := resolveInterface(interfaceName)
+	if err != nil {
+		return err
+	}
+
+	outboundIP, err := ipv4.SetMulticastInterface(p.socket, iff)
+	if err != nil {
+		return nil
+	}
+
+	p.outbound = iff
+	p.outboundIP = outboundIP
+
+	return nil
+}
+
+func (p *UDPPeer) Outbound() (*net.Interface, netip.Addr) {
+	return p.outbound, p.outboundIP
+}
+
 func (p *UDPPeer) Join(multicastIPAddr string) error {
-	return p.join(multicastIPAddr, "", "")
-}
-
-func (p *UDPPeer) JoinWithInterface(multicastIPAddr string, interfaceName string) error {
-	return p.join(multicastIPAddr, interfaceName, "")
-}
-
-func (p *UDPPeer) JoinWithInterfaceIP(multicastIPAddr string, interfaceName string, interfaceIPAddr string) error {
-	return p.join(multicastIPAddr, interfaceName, interfaceIPAddr)
-}
-
-func (p *UDPPeer) join(multicastIPAddr string, interfaceName string, interfaceIPAddr string) error {
 	multicastIP, err := parseMulticastAddr(multicastIPAddr)
 	if err != nil {
 		return err
 	}
 
-	var iff *net.Interface
-	if interfaceName != "" {
-		iff, err = resolveInterface(interfaceName, interfaceIPAddr)
-		if err != nil {
-			return err
-		}
-	}
-
 	if multicastIP.Is4() || multicastIP.Is4In6() {
-		return p.joinIPv4(multicastIP, iff)
+		return p.joinIPv4(multicastIP)
 	} else if multicastIP.Is6() {
-		return p.joinIPv6(multicastIP, iff)
+		return p.joinIPv6(multicastIP)
 	} else {
 		return fmt.Errorf("unknown IP addressing scheme for addr=%s", multicastIPAddr)
 	}
 }
 
-func (p *UDPPeer) joinIPv4(ip netip.Addr, iff *net.Interface) error {
+func (p *UDPPeer) joinIPv4(ip netip.Addr) error {
 	if err := ipv4.AddMembership(p.socket, ip); err != nil {
 		return err
-	}
-
-	if iff != nil {
-		addrs, err := iff.Addrs()
-		if err != nil {
-			return err
-		}
-		for _, addr := range addrs {
-			fmt.Println(addr, addr.Network())
-		}
 	}
 
 	return nil
 }
 
-func (p *UDPPeer) joinIPv6(ip netip.Addr, iff *net.Interface) error {
+func (p *UDPPeer) joinIPv6(ip netip.Addr) error {
 	panic("IPv6 multicast peer not yet supported")
 }
 
