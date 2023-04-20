@@ -3,15 +3,10 @@ package multicast
 import (
 	"fmt"
 	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/net/ipv4"
 	"net"
 	"net/netip"
 	"syscall"
-)
-
-type Addr string
-
-var (
-	AddrAny = Addr(net.IPv4zero.String())
 )
 
 type UDPPeer struct {
@@ -81,8 +76,61 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 	return p, nil
 }
 
-func (p *UDPPeer) Join(addr string) {
+func (p *UDPPeer) Join(multicastIPAddr string) error {
+	return p.join(multicastIPAddr, "", "")
+}
 
+func (p *UDPPeer) JoinWithInterface(multicastIPAddr string, interfaceName string) error {
+	return p.join(multicastIPAddr, interfaceName, "")
+}
+
+func (p *UDPPeer) JoinWithInterfaceIP(multicastIPAddr string, interfaceName string, interfaceIPAddr string) error {
+	return p.join(multicastIPAddr, interfaceName, interfaceIPAddr)
+}
+
+func (p *UDPPeer) join(multicastIPAddr string, interfaceName string, interfaceIPAddr string) error {
+	multicastIP, err := parseMulticastAddr(multicastIPAddr)
+	if err != nil {
+		return err
+	}
+
+	var iff *net.Interface
+	if interfaceName != "" {
+		iff, err = resolveInterface(interfaceName, interfaceIPAddr)
+		if err != nil {
+			return err
+		}
+	}
+
+	if multicastIP.Is4() || multicastIP.Is4In6() {
+		return p.joinIPv4(multicastIP, iff)
+	} else if multicastIP.Is6() {
+		return p.joinIPv6(multicastIP, iff)
+	} else {
+		return fmt.Errorf("unknown IP addressing scheme for addr=%s", multicastIPAddr)
+	}
+}
+
+func (p *UDPPeer) joinIPv4(ip netip.Addr, iff *net.Interface) error {
+	if err := ipv4.AddMembership(p.socket, ip); err != nil {
+		return err
+	}
+
+	if iff != nil {
+		addrs, err := iff.Addrs()
+		if err != nil {
+			return err
+		}
+		for _, addr := range addrs {
+			fmt.Println(addr, addr.Network())
+		}
+	}
+
+	return nil
+}
+
+func (p *UDPPeer) joinIPv6(ip netip.Addr, iff *net.Interface) error {
+	panic("IPv6 multicast peer not yet supported")
 }
 
 func (p *UDPPeer) LocalAddr() *net.UDPAddr {
