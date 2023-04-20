@@ -40,17 +40,17 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 		return nil, fmt.Errorf("could not create socket domain=%s err=%v", domain, err)
 	}
 
-	if err := socket.Bind(resolvedAddr.AddrPort()); err != nil {
-		return nil, fmt.Errorf("cannot bind socket to addr=%s err=%v", resolvedAddr, err)
-	}
-
 	if err := socket.SetNonblocking(true); err != nil {
 		return nil, fmt.Errorf("cannot make socket nonblocking")
 	}
 
-	// Allow multiple sockets to listen to the same multicast group.
+	// Allow multiple sockets to bind to the same address.
 	if err := socket.ReusePort(true); err != nil {
 		return nil, fmt.Errorf("cannot make socket reuse the port")
+	}
+
+	if err := socket.Bind(resolvedAddr.AddrPort()); err != nil {
+		return nil, fmt.Errorf("cannot bind socket to addr=%s err=%v", resolvedAddr, err)
 	}
 
 	sockAddr, err := syscall.Getsockname(socket.RawFd())
@@ -79,6 +79,10 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 	}
 
 	return p, nil
+}
+
+func (p *UDPPeer) Join(addr string) {
+
 }
 
 func (p *UDPPeer) LocalAddr() *net.UDPAddr {
