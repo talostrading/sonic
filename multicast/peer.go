@@ -264,7 +264,7 @@ func (p *UDPPeer) asyncWriteNow(b []byte, addr netip.AddrPort, fn func(error, in
 		return
 	}
 
-	if err == sonicerrors.ErrWouldBlock {
+	if err == sonicerrors.ErrWouldBlock || err == sonicerrors.ErrNoBufferSpaceAvailable {
 		p.scheduleWrite(fn)
 	} else {
 		fn(err, 0)

@@ -244,14 +244,18 @@ func (s *Socket) SendTo(
 	peerAddr netip.AddrPort,
 ) (int, error) {
 	// TODO also inet6
-	err := syscall.Sendto(s.fd, b, 0, &syscall.SockaddrInet4{
+	if err := syscall.Sendto(s.fd, b, 0, &syscall.SockaddrInet4{
 		Addr: peerAddr.Addr().As4(),
 		Port: int(peerAddr.Port()),
-	})
-	if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
-		return len(b), sonicerrors.ErrWouldBlock
+	}); err == nil {
+		return len(b), nil
+	} else if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+		return 0, sonicerrors.ErrWouldBlock
+	} else if err == syscall.ENOBUFS {
+		return 0, sonicerrors.ErrNoBufferSpaceAvailable
+	} else {
+		return 0, err
 	}
-	return len(b), err
 }
 
 func (s *Socket) Close() error {
