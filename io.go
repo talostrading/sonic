@@ -73,6 +73,10 @@ func (ioc *IO) SetRead(fd int, slot *internal.PollData) error {
 	return ioc.poller.SetRead(fd, slot)
 }
 
+func (ioc *IO) SetWrite(fd int, slot *internal.PollData) error {
+	return ioc.poller.SetWrite(fd, slot)
+}
+
 // Run runs the event processing loop.
 func (ioc *IO) Run() error {
 	for {

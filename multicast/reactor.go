@@ -4,14 +4,10 @@ import (
 	"net/netip"
 )
 
-type reactor struct {
+type readReactor struct {
 	peer *UDPPeer
 	b    []byte
 	fn   func(error, int, netip.AddrPort)
-}
-
-type readReactor struct {
-	reactor
 }
 
 func (r *readReactor) on(err error) {
@@ -25,9 +21,18 @@ func (r *readReactor) on(err error) {
 }
 
 type writeReactor struct {
-	reactor
+	peer *UDPPeer
+	b    []byte
+	addr netip.AddrPort
+	fn   func(error, int)
 }
 
 func (r *writeReactor) on(err error) {
+	r.peer.ioc.DeregisterWrite(&r.peer.slot)
 
+	if err != nil {
+		r.fn(err, 0)
+	} else {
+		r.peer.asyncWriteNow(r.b, r.addr, r.fn)
+	}
 }
