@@ -95,8 +95,8 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		localAddr: localAddr,
 		ipv:       ipv,
 	}
-	p.read = &readReactor{}
-	p.read.peer = p
+	p.read = &readReactor{peer: p}
+	p.write = &writeReactor{peer: p}
 
 	if ipv == 4 {
 		p.outboundIP, err = ipv4.GetMulticastInterface(p.socket)
@@ -187,6 +187,7 @@ func (p *UDPPeer) Read(b []byte) (int, netip.AddrPort, error) {
 func (p *UDPPeer) AsyncRead(b []byte, fn func(error, int, netip.AddrPort)) {
 	p.read.b = b
 	p.read.fn = fn
+
 	if p.dispatched < sonic.MaxCallbackDispatch {
 		p.asyncReadNow(b, func(err error, n int, addr netip.AddrPort) {
 			p.dispatched++
@@ -194,7 +195,7 @@ func (p *UDPPeer) AsyncRead(b []byte, fn func(error, int, netip.AddrPort)) {
 			p.dispatched--
 		})
 	} else {
-		p.scheduleRead(b, fn)
+		p.scheduleRead(fn)
 	}
 }
 
@@ -207,13 +208,13 @@ func (p *UDPPeer) asyncReadNow(b []byte, fn func(error, int, netip.AddrPort)) {
 	}
 
 	if err == sonicerrors.ErrWouldBlock {
-		p.scheduleRead(b, fn)
+		p.scheduleRead(fn)
 	} else {
 		fn(err, 0, addr)
 	}
 }
 
-func (p *UDPPeer) scheduleRead(b []byte, fn func(error, int, netip.AddrPort)) {
+func (p *UDPPeer) scheduleRead(fn func(error, int, netip.AddrPort)) {
 	if p.Closed() {
 		fn(io.EOF, 0, netip.AddrPort{})
 	} else {
@@ -231,8 +232,57 @@ func (p *UDPPeer) setRead() error {
 	return p.ioc.SetRead(p.socket.RawFd(), &p.slot)
 }
 
-func (p *UDPPeer) SendTo(b []byte, peerAddr netip.AddrPort) (int, error) {
-	return p.socket.SendTo(b, 0, peerAddr)
+func (p *UDPPeer) Write(b []byte, addr netip.AddrPort) (int, error) {
+	return p.socket.SendTo(b, 0, addr)
+}
+
+func (p *UDPPeer) AsyncWrite(b []byte, addr netip.AddrPort, fn func(error, int)) {
+	p.write.b = b
+	p.write.addr = addr
+	p.write.fn = fn
+
+	if p.dispatched < sonic.MaxCallbackDispatch {
+		p.asyncWriteNow(b, addr, func(err error, n int) {
+			p.dispatched++
+			fn(err, n)
+			p.dispatched--
+		})
+	} else {
+		p.scheduleWrite(fn)
+	}
+}
+
+func (p *UDPPeer) asyncWriteNow(b []byte, addr netip.AddrPort, fn func(error, int)) {
+	n, err := p.Write(b, addr)
+
+	if err == nil {
+		fn(err, n)
+		return
+	}
+
+	if err == sonicerrors.ErrWouldBlock {
+		p.scheduleWrite(fn)
+	} else {
+		fn(err, 0)
+	}
+}
+
+func (p *UDPPeer) scheduleWrite(fn func(error, int)) {
+	if p.Closed() {
+		fn(io.EOF, 0)
+	} else {
+		p.slot.Set(internal.WriteEvent, p.write.on)
+
+		if err := p.setWrite(); err != nil {
+			fn(err, 0)
+		} else {
+			p.ioc.RegisterWrite(&p.slot)
+		}
+	}
+}
+
+func (p *UDPPeer) setWrite() error {
+	return p.ioc.SetWrite(p.socket.RawFd(), &p.slot)
 }
 
 func (p *UDPPeer) LocalAddr() *net.UDPAddr {
