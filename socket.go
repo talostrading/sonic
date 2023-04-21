@@ -2,7 +2,9 @@ package sonic
 
 import (
 	"fmt"
+	"github.com/talostrading/sonic/sonicerrors"
 	"golang.org/x/sys/unix"
+	"io"
 	"net"
 	"net/netip"
 	"syscall"
@@ -106,7 +108,8 @@ type Socket struct {
 	socketType SocketType
 	protocol   SocketProtocol
 
-	fd int
+	fd       int
+	sockAddr syscall.Sockaddr
 }
 
 func NewSocket(
@@ -202,6 +205,53 @@ func (s *Socket) SetNoDelay(delay bool) error {
 	}
 
 	return syscall.SetsockoptInt(s.fd, syscall.IPPROTO_TCP, syscall.TCP_NODELAY, v)
+}
+
+type SocketIOFlags int
+
+func (s *Socket) RecvFrom(
+	b []byte,
+	flags SocketIOFlags, /* not yet usable */
+) (n int, peerAddr netip.AddrPort, err error) {
+	n, s.sockAddr, err = syscall.Recvfrom(s.fd, b, 0)
+	if err != nil {
+		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+			return 0, netip.AddrPort{}, sonicerrors.ErrWouldBlock
+		}
+		return 0, netip.AddrPort{}, err
+	}
+	if n == 0 {
+		return 0, netip.AddrPort{}, io.EOF
+	}
+
+	if n < 0 {
+		n = 0
+	}
+
+	switch sa := s.sockAddr.(type) {
+	case *syscall.SockaddrInet4:
+		return n, netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), uint16(sa.Port)), err
+	case *syscall.SockaddrInet6:
+		return n, netip.AddrPortFrom(netip.AddrFrom16(sa.Addr), uint16(sa.Port)), err
+	default:
+		return n, netip.AddrPort{}, fmt.Errorf("can only recvfrom ipv4 and ipv6 peers err=%v", err)
+	}
+}
+
+func (s *Socket) SendTo(
+	b []byte,
+	flags SocketIOFlags, /* not yet usable */
+	peerAddr netip.AddrPort,
+) (int, error) {
+	// TODO also inet6
+	err := syscall.Sendto(s.fd, b, 0, &syscall.SockaddrInet4{
+		Addr: peerAddr.Addr().As4(),
+		Port: int(peerAddr.Port()),
+	})
+	if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
+		return len(b), sonicerrors.ErrWouldBlock
+	}
+	return len(b), err
 }
 
 func (s *Socket) Close() error {

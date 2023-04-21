@@ -16,6 +16,8 @@ type UDPPeer struct {
 	outbound   *net.Interface
 	outboundIP netip.Addr
 	loop       bool
+
+	sockAddr syscall.Sockaddr
 }
 
 func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
@@ -138,18 +140,18 @@ func (p *UDPPeer) Loop() bool {
 	return p.loop
 }
 
-func (p *UDPPeer) Join(multicastIPAddr string) error {
-	multicastIP, err := parseMulticastAddr(multicastIPAddr)
+func (p *UDPPeer) Join(multicastIP string) error {
+	ip, err := parseMulticastIP(multicastIP)
 	if err != nil {
 		return err
 	}
 
-	if multicastIP.Is4() || multicastIP.Is4In6() {
-		return p.joinIPv4(multicastIP)
-	} else if multicastIP.Is6() {
-		return p.joinIPv6(multicastIP)
+	if ip.Is4() || ip.Is4In6() {
+		return p.joinIPv4(ip)
+	} else if ip.Is6() {
+		return p.joinIPv6(ip)
 	} else {
-		return fmt.Errorf("unknown IP addressing scheme for addr=%s", multicastIPAddr)
+		return fmt.Errorf("unknown IP addressing scheme for addr=%s", multicastIP)
 	}
 }
 
@@ -163,6 +165,14 @@ func (p *UDPPeer) joinIPv4(ip netip.Addr) error {
 
 func (p *UDPPeer) joinIPv6(ip netip.Addr) error {
 	panic("IPv6 multicast peer not yet supported")
+}
+
+func (p *UDPPeer) RecvFrom(b []byte) (int, netip.AddrPort, error) {
+	return p.socket.RecvFrom(b, 0)
+}
+
+func (p *UDPPeer) SendTo(b []byte, peerAddr netip.AddrPort) (int, error) {
+	return p.socket.SendTo(b, 0, peerAddr)
 }
 
 func (p *UDPPeer) LocalAddr() *net.UDPAddr {

@@ -6,7 +6,7 @@ import (
 	"net/netip"
 )
 
-func parseAddr(addr string) (netip.Addr, error) {
+func parseIP(addr string) (netip.Addr, error) {
 	ip, err := netip.ParseAddr(addr)
 	if err != nil {
 		return netip.Addr{}, err
@@ -17,8 +17,8 @@ func parseAddr(addr string) (netip.Addr, error) {
 	return ip, nil
 }
 
-func parseMulticastAddr(addr string) (netip.Addr, error) {
-	ip, err := parseAddr(addr)
+func parseMulticastIP(addr string) (netip.Addr, error) {
+	ip, err := parseIP(addr)
 	if err != nil {
 		return netip.Addr{}, err
 	}
@@ -45,37 +45,4 @@ func resolveInterface(name string) (*net.Interface, error) {
 	}
 
 	return iff, nil
-}
-
-func resolveInterfaceIP(iff *net.Interface, ipAddr string) (netip.Addr, error) {
-	interfaceAddrs, err := iff.Addrs()
-	if err != nil {
-		return netip.Addr{}, err
-	}
-
-	desiredIP, err := parseAddr(ipAddr)
-	if err != nil {
-		return netip.Addr{}, err
-	}
-
-	var (
-		interfaceIP netip.Addr
-		found       = false
-	)
-	for _, interfaceAddr := range interfaceAddrs {
-		interfaceIP, err = parseAddr(interfaceAddr.String())
-		if err != nil {
-			return netip.Addr{}, err
-		}
-		if interfaceIP == desiredIP {
-			found = true
-			break
-		}
-	}
-
-	if !found {
-		return netip.Addr{}, fmt.Errorf("desired interface IP=%s is not bound to interface %s", iff.Name, ipAddr)
-	} else {
-		return interfaceIP, nil
-	}
 }
