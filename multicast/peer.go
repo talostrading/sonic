@@ -13,6 +13,8 @@ type UDPPeer struct {
 	socket    *sonic.Socket
 	localAddr *net.UDPAddr
 
+	ipv int // either 4 or 6
+
 	outbound   *net.Interface
 	outboundIP netip.Addr
 }
@@ -56,17 +58,22 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 		return nil, fmt.Errorf("cannot get socket address err=%v", err)
 	}
 
-	localAddr := &net.UDPAddr{}
+	var (
+		localAddr = &net.UDPAddr{}
+		ipv       int
+	)
 	switch sa := sockAddr.(type) {
 	case *syscall.SockaddrInet4:
 		addrPort := netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), uint16(sa.Port))
 		localAddr.IP = addrPort.Addr().AsSlice()
 		localAddr.Port = int(addrPort.Port())
+		ipv = 4
 	case *syscall.SockaddrInet6:
 		addrPort := netip.AddrPortFrom(netip.AddrFrom16(sa.Addr), uint16(sa.Port))
 		localAddr.IP = addrPort.Addr().AsSlice()
 		localAddr.Port = int(addrPort.Port())
 		localAddr.Zone = addrPort.Addr().Zone()
+		ipv = 6
 	default:
 		return nil, fmt.Errorf("cannot resolve local socket address")
 	}
@@ -74,9 +81,23 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 	p := &UDPPeer{
 		socket:    socket,
 		localAddr: localAddr,
+		ipv:       ipv,
+	}
+
+	if ipv == 4 {
+		p.outboundIP, err = ipv4.GetMulticastInterface(p.socket)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// TODO
 	}
 
 	return p, nil
+}
+
+func (p *UDPPeer) NextLayer() *sonic.Socket {
+	return p.socket
 }
 
 func (p *UDPPeer) SetOutboundIPv4(interfaceName string) error {
