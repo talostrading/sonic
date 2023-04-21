@@ -34,9 +34,13 @@ func NewIO() (*IO, error) {
 	}
 
 	return &IO{
-		poller:        poller,
+		poller: poller,
+
+		// TODO pendingReads and pendingWrites should be merged in one. Also get rid of this map since everything
+		// is on an fd
 		pendingReads:  make(map[*internal.PollData]struct{}),
 		pendingWrites: make(map[*internal.PollData]struct{}),
+
 		pendingTimers: make(map[*Timer]struct{}),
 	}, nil
 }
@@ -47,6 +51,26 @@ func MustIO() *IO {
 		panic(err)
 	}
 	return ioc
+}
+
+func (ioc *IO) RegisterRead(pd *internal.PollData) {
+	ioc.pendingReads[pd] = struct{}{}
+}
+
+func (ioc *IO) RegisterWrite(pd *internal.PollData) {
+	ioc.pendingWrites[pd] = struct{}{}
+}
+
+func (ioc *IO) DeregisterRead(pd *internal.PollData) {
+	delete(ioc.pendingReads, pd)
+}
+
+func (ioc *IO) DeregisterWrite(pd *internal.PollData) {
+	delete(ioc.pendingWrites, pd)
+}
+
+func (ioc *IO) SetRead(fd int, slot *internal.PollData) error {
+	return ioc.poller.SetRead(fd, slot)
 }
 
 // Run runs the event processing loop.

@@ -3,24 +3,34 @@ package multicast
 import (
 	"fmt"
 	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/internal"
 	"github.com/talostrading/sonic/net/ipv4"
+	"github.com/talostrading/sonic/sonicerrors"
+	"io"
 	"net"
 	"net/netip"
 	"syscall"
 )
 
 type UDPPeer struct {
+	ioc        *sonic.IO
 	socket     *sonic.Socket
 	localAddr  *net.UDPAddr
 	ipv        int // either 4 or 6
+	read       *readReactor
+	write      *writeReactor
 	outbound   *net.Interface
 	outboundIP netip.Addr
 	loop       bool
 
-	sockAddr syscall.Sockaddr
+	slot internal.PollData
+
+	sockAddr   syscall.Sockaddr
+	closed     bool
+	dispatched int
 }
 
-func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
+func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	resolvedAddr, err := net.ResolveUDPAddr(network, addr)
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve addr=%s err=%v", addr, err)
@@ -80,10 +90,13 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 	}
 
 	p := &UDPPeer{
+		ioc:       ioc,
 		socket:    socket,
 		localAddr: localAddr,
 		ipv:       ipv,
 	}
+	p.read = &readReactor{}
+	p.read.peer = p
 
 	if ipv == 4 {
 		p.outboundIP, err = ipv4.GetMulticastInterface(p.socket)
@@ -167,8 +180,55 @@ func (p *UDPPeer) joinIPv6(ip netip.Addr) error {
 	panic("IPv6 multicast peer not yet supported")
 }
 
-func (p *UDPPeer) RecvFrom(b []byte) (int, netip.AddrPort, error) {
+func (p *UDPPeer) Read(b []byte) (int, netip.AddrPort, error) {
 	return p.socket.RecvFrom(b, 0)
+}
+
+func (p *UDPPeer) AsyncRead(b []byte, fn func(error, int, netip.AddrPort)) {
+	p.read.b = b
+	p.read.fn = fn
+	if p.dispatched < sonic.MaxCallbackDispatch {
+		p.asyncReadNow(b, func(err error, n int, addr netip.AddrPort) {
+			p.dispatched++
+			fn(err, n, addr)
+			p.dispatched--
+		})
+	} else {
+		p.scheduleRead(b, fn)
+	}
+}
+
+func (p *UDPPeer) asyncReadNow(b []byte, fn func(error, int, netip.AddrPort)) {
+	n, addr, err := p.Read(b)
+
+	if err == nil {
+		fn(err, n, addr)
+		return
+	}
+
+	if err == sonicerrors.ErrWouldBlock {
+		p.scheduleRead(b, fn)
+	} else {
+		fn(err, 0, addr)
+	}
+}
+
+func (p *UDPPeer) scheduleRead(b []byte, fn func(error, int, netip.AddrPort)) {
+	if p.Closed() {
+		fn(io.EOF, 0, netip.AddrPort{})
+	} else {
+		p.slot.Set(internal.ReadEvent, p.read.on)
+
+		if err := p.setRead(); err != nil {
+			fn(err, 0, netip.AddrPort{})
+		} else {
+			p.ioc.RegisterRead(&p.slot)
+		}
+	}
+}
+
+func (p *UDPPeer) setRead() error {
+	return p.ioc.SetRead(p.socket.RawFd(), &p.slot)
 }
 
 func (p *UDPPeer) SendTo(b []byte, peerAddr netip.AddrPort) (int, error) {
@@ -180,5 +240,13 @@ func (p *UDPPeer) LocalAddr() *net.UDPAddr {
 }
 
 func (p *UDPPeer) Close() error {
-	return p.socket.Close()
+	if !p.closed {
+		p.closed = true
+		return p.socket.Close()
+	}
+	return nil
+}
+
+func (p *UDPPeer) Closed() bool {
+	return p.closed
 }
