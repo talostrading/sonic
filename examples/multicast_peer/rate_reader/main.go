@@ -8,8 +8,12 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/util"
 	"log"
+	"net/http"
 	"net/netip"
 	"time"
+
+	"github.com/felixge/fgprof"
+	_ "net/http/pprof"
 )
 
 var (
@@ -19,10 +23,21 @@ var (
 		"multicast address to join")
 	busy     = flag.Bool("busy", false, "if true, busy-wait for events")
 	nSamples = flag.Int64("n", 128, "latency histogram samples, only relevant if busy == true")
+	profile  = flag.Bool("profile", false, "")
 )
 
 func main() {
 	flag.Parse()
+
+	if *profile {
+		http.DefaultServeMux.Handle("/debug/fgprof", fgprof.Handler())
+		go func() {
+			log.Println(http.ListenAndServe(":6060", nil))
+		}()
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6061", nil))
+		}()
+	}
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
