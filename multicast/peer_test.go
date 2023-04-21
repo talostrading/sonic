@@ -317,3 +317,36 @@ func TestUDPPeer_SetOutboundInterface2(t *testing.T) {
 		t.Fatal("outbound interface should not be nil as its been explicitly set")
 	}
 }
+
+func TestUDPPeer_SetLoop1(t *testing.T) {
+	peer, err := NewUDPPeer("udp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+
+	if peer.Loop() {
+		t.Fatal("peer should not loop packets by default")
+	}
+
+	if err := peer.SetLoop(false); err != nil {
+		t.Fatal(err)
+	}
+	if peer.Loop() {
+		t.Fatal("peer should not loop packets")
+	}
+
+	if err := peer.SetLoop(true); err != nil {
+		t.Fatal(err)
+	}
+	if !peer.Loop() {
+		t.Fatal("peer should loop packets")
+	}
+
+	if err := peer.SetLoop(false); err != nil {
+		t.Fatal(err)
+	}
+	if peer.Loop() {
+		t.Fatal("peer should not loop packets")
+	}
+}

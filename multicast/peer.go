@@ -10,13 +10,12 @@ import (
 )
 
 type UDPPeer struct {
-	socket    *sonic.Socket
-	localAddr *net.UDPAddr
-
-	ipv int // either 4 or 6
-
+	socket     *sonic.Socket
+	localAddr  *net.UDPAddr
+	ipv        int // either 4 or 6
 	outbound   *net.Interface
 	outboundIP netip.Addr
+	loop       bool
 }
 
 func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
@@ -89,6 +88,11 @@ func NewUDPPeer(network string, addr string) (*UDPPeer, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		p.loop, err = ipv4.GetMulticastLoop(p.socket)
+		if err != nil {
+			return nil, err
+		}
 	} else {
 		// TODO
 	}
@@ -119,6 +123,19 @@ func (p *UDPPeer) SetOutboundIPv4(interfaceName string) error {
 
 func (p *UDPPeer) Outbound() (*net.Interface, netip.Addr) {
 	return p.outbound, p.outboundIP
+}
+
+func (p *UDPPeer) SetLoop(loop bool) error {
+	if err := ipv4.SetMulticastLoop(p.socket, loop); err != nil {
+		return err
+	} else {
+		p.loop = loop
+		return nil
+	}
+}
+
+func (p *UDPPeer) Loop() bool {
+	return p.loop
 }
 
 func (p *UDPPeer) Join(multicastIPAddr string) error {

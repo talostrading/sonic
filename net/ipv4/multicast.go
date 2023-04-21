@@ -63,6 +63,34 @@ func SetMulticastInterface(socket *sonic.Socket, iff *net.Interface) (netip.Addr
 	}
 }
 
+func SetMulticastLoop(socket *sonic.Socket, loop bool) error {
+	v := 0
+	if loop {
+		v = 1
+	}
+	return syscall.SetsockoptInt(
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_MULTICAST_LOOP,
+		v,
+	)
+}
+
+func GetMulticastLoop(socket *sonic.Socket) (bool, error) {
+	v, err := syscall.GetsockoptInt(
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_MULTICAST_LOOP,
+	)
+	if err != nil {
+		return false, err
+	} else if v == 0 {
+		return true, nil
+	} else {
+		return false, nil
+	}
+}
+
 // AddMembership makes the given socket a member of the specified multicast IP.
 func AddMembership(socket *sonic.Socket, ip netip.Addr) error {
 	if !ip.Is4() && !ip.Is4In6() {
