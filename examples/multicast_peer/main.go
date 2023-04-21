@@ -2,10 +2,10 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/multicast"
-	"github.com/talostrading/sonic/sonicerrors"
 	"log"
+	"net/netip"
 )
 
 var (
@@ -18,7 +18,10 @@ var (
 func main() {
 	flag.Parse()
 
-	peer, err := multicast.NewUDPPeer("udp", *peerAddr)
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	peer, err := multicast.NewUDPPeer(ioc, "udp", *peerAddr)
 	if err != nil {
 		panic(err)
 	}
@@ -30,15 +33,21 @@ func main() {
 		panic(err)
 	}
 
-	log.Printf("joined multicast address", )
+	log.Printf("joined multicast address")
 
 	b := make([]byte, 128)
-	for {
-		n, addr, err := peer.RecvFrom(b)
-		if err != nil && err != sonicerrors.ErrWouldBlock {
+	var onRead func(error, int, netip.AddrPort)
+	onRead = func(err error, n int, addr netip.AddrPort) {
+		if err != nil {
 			panic(err)
-		} else if err == nil {
-			fmt.Println(n, addr, string(b))
+		} else {
+			b = b[:n]
+			log.Printf("received %d bytes from %s", n, addr)
+			b = b[:cap(b)]
+			peer.AsyncRead(b, onRead)
 		}
 	}
+	peer.AsyncRead(b, onRead)
+
+	ioc.Run()
 }
