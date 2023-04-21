@@ -1,23 +1,32 @@
 package multicast
 
 import (
-	"fmt"
 	"github.com/talostrading/sonic/net/ipv4"
 	"net"
 	"testing"
 )
 
+// Listing multicast group memberships: netstat -gsv
+
 func TestUDPPeer_IPv4Addresses(t *testing.T) {
 	{
-		_, err := NewUDPPeer("udp", net.IPv4zero.String())
+		peer, err := NewUDPPeer("udp", net.IPv4zero.String())
 		if err == nil {
 			t.Fatal("should have received an error as the address is missing the port")
 		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
+		}
 	}
 	{
-		_, err := NewUDPPeer("udp4", net.IPv4zero.String())
+		peer, err := NewUDPPeer("udp4", net.IPv4zero.String())
 		if err == nil {
 			t.Fatal("should have received an error as the address is missing the port")
+		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
 	{
@@ -34,6 +43,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
 		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
+		}
 	}
 	{
 		peer, err := NewUDPPeer("udp4", "")
@@ -48,6 +61,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		}
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
+		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
 	{
@@ -64,6 +81,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
 		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
+		}
 	}
 	{
 		peer, err := NewUDPPeer("udp4", ":0")
@@ -78,6 +99,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		}
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
+		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
 	{
@@ -94,6 +119,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
 		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
+		}
 	}
 	{
 		peer, err := NewUDPPeer("udp4", "127.0.0.1:0")
@@ -108,6 +137,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		}
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
+		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
 	{
@@ -124,6 +157,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
 		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
+		}
 	}
 	{
 		peer, err := NewUDPPeer("udp4", "localhost:0")
@@ -138,6 +175,10 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 		}
 		if addr.Port == 0 {
 			t.Fatal("port should not be 0")
+		}
+
+		if iface, _ := peer.Outbound(); iface != nil {
+			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
 }
@@ -243,16 +284,36 @@ func TestUDPPeer_Join(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_SetOutboundInterface(t *testing.T) {
+func TestUDPPeer_SetOutboundInterface1(t *testing.T) {
 	peer, err := NewUDPPeer("udp", "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer peer.Close()
 
-	if err := peer.SetOutboundIPv4("lo0"); err != nil {
+	if err := peer.SetOutboundIPv4("en0"); err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Println(peer.Outbound())
+	outIface, _ := peer.Outbound()
+	if outIface == nil {
+		t.Fatal("outbound interface should not be nil as its been explicitly set")
+	}
+}
+
+func TestUDPPeer_SetOutboundInterface2(t *testing.T) {
+	peer, err := NewUDPPeer("udp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+
+	if err := peer.SetOutboundIPv4("en0"); err != nil {
+		t.Fatal(err)
+	}
+
+	outIface, _ := peer.Outbound()
+	if outIface == nil {
+		t.Fatal("outbound interface should not be nil as its been explicitly set")
+	}
 }
