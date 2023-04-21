@@ -17,6 +17,7 @@ type UDPPeer struct {
 	socket     *sonic.Socket
 	localAddr  *net.UDPAddr
 	ipv        int // either 4 or 6
+	stats      *Stats
 	read       *readReactor
 	write      *writeReactor
 	outbound   *net.Interface
@@ -94,6 +95,7 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		socket:    socket,
 		localAddr: localAddr,
 		ipv:       ipv,
+		stats:     &Stats{},
 	}
 	p.read = &readReactor{peer: p}
 	p.write = &writeReactor{peer: p}
@@ -203,6 +205,7 @@ func (p *UDPPeer) asyncReadNow(b []byte, fn func(error, int, netip.AddrPort)) {
 	n, addr, err := p.Read(b)
 
 	if err == nil {
+		p.stats.AsyncImmediateReads++
 		fn(err, n, addr)
 		return
 	}
@@ -223,6 +226,7 @@ func (p *UDPPeer) scheduleRead(fn func(error, int, netip.AddrPort)) {
 		if err := p.setRead(); err != nil {
 			fn(err, 0, netip.AddrPort{})
 		} else {
+			p.stats.AsyncScheduledReads++
 			p.ioc.RegisterRead(&p.slot)
 		}
 	}
@@ -299,4 +303,8 @@ func (p *UDPPeer) Close() error {
 
 func (p *UDPPeer) Closed() bool {
 	return p.closed
+}
+
+func (p *UDPPeer) Stats() *Stats {
+	return p.stats
 }
