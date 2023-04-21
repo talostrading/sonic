@@ -14,23 +14,15 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 	defer ioc.Close()
 
 	{
-		peer, err := NewUDPPeer(ioc, "udp", net.IPv4zero.String())
+		_, err := NewUDPPeer(ioc, "udp", net.IPv4zero.String())
 		if err == nil {
 			t.Fatal("should have received an error as the address is missing the port")
-		}
-
-		if iface, _ := peer.Outbound(); iface != nil {
-			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
 	{
-		peer, err := NewUDPPeer(ioc, "udp4", net.IPv4zero.String())
+		_, err := NewUDPPeer(ioc, "udp4", net.IPv4zero.String())
 		if err == nil {
 			t.Fatal("should have received an error as the address is missing the port")
-		}
-
-		if iface, _ := peer.Outbound(); iface != nil {
-			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
 	{
