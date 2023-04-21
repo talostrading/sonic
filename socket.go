@@ -104,12 +104,12 @@ func (s SocketProtocol) String() string {
 }
 
 type Socket struct {
-	domain     SocketDomain
-	socketType SocketType
-	protocol   SocketProtocol
-
-	fd       int
-	sockAddr syscall.Sockaddr
+	domain            SocketDomain
+	socketType        SocketType
+	protocol          SocketProtocol
+	readSockAddr      syscall.Sockaddr
+	writeSockAddrIpv4 *syscall.SockaddrInet4
+	fd                int
 }
 
 func NewSocket(
@@ -127,11 +127,11 @@ func NewSocket(
 	}
 
 	s := &Socket{
-		domain:     domain,
-		socketType: socketType,
-		protocol:   protocol,
-
-		fd: -1,
+		domain:            domain,
+		socketType:        socketType,
+		protocol:          protocol,
+		writeSockAddrIpv4: &syscall.SockaddrInet4{},
+		fd:                -1,
 	}
 
 	s.fd, err = syscall.Socket(rawDomain, rawType, 0)
@@ -213,7 +213,7 @@ func (s *Socket) RecvFrom(
 	b []byte,
 	flags SocketIOFlags, /* not yet usable */
 ) (n int, peerAddr netip.AddrPort, err error) {
-	n, s.sockAddr, err = syscall.Recvfrom(s.fd, b, 0)
+	n, s.readSockAddr, err = syscall.Recvfrom(s.fd, b, 0)
 	if err != nil {
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
 			return 0, netip.AddrPort{}, sonicerrors.ErrWouldBlock
@@ -228,7 +228,7 @@ func (s *Socket) RecvFrom(
 		n = 0
 	}
 
-	switch sa := s.sockAddr.(type) {
+	switch sa := s.readSockAddr.(type) {
 	case *syscall.SockaddrInet4:
 		return n, netip.AddrPortFrom(netip.AddrFrom4(sa.Addr), uint16(sa.Port)), err
 	case *syscall.SockaddrInet6:
@@ -243,11 +243,9 @@ func (s *Socket) SendTo(
 	flags SocketIOFlags, /* not yet usable */
 	peerAddr netip.AddrPort,
 ) (int, error) {
-	// TODO also inet6
-	if err := syscall.Sendto(s.fd, b, 0, &syscall.SockaddrInet4{
-		Addr: peerAddr.Addr().As4(),
-		Port: int(peerAddr.Port()),
-	}); err == nil {
+	s.writeSockAddrIpv4.Addr = peerAddr.Addr().As4()
+	s.writeSockAddrIpv4.Port = int(peerAddr.Port())
+	if err := syscall.Sendto(s.fd, b, 0, s.writeSockAddrIpv4); err == nil {
 		return len(b), nil
 	} else if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
 		return 0, sonicerrors.ErrWouldBlock
