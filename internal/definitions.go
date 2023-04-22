@@ -14,9 +14,10 @@ type Handler func(error)
 
 type PollData struct {
 	// Fd is the file descriptor associated with an instance of PollData
-	Fd    int // TODO check this fd against the local copy fd of a conn/packet_conn (test)
-	Flags PollFlags
-	Cbs   [MaxEvent]Handler
+	Fd  int               // must set by callers
+	Cbs [MaxEvent]Handler // must set by callers
+
+	Flags PollFlags // must NOT be set by callers, instead set by the platform specific poller
 }
 
 func (pd *PollData) Set(et EventType, h Handler) {
