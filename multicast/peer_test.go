@@ -326,21 +326,46 @@ func TestUDPPeer_SetLoop1(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_ListInterfaces(t *testing.T) {
-	iffs, err := net.Interfaces()
+func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	peer, err := NewUDPPeer(ioc, "udp", "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	fmt.Println("found", len(iffs), "interfaces")
-	for _, iff := range iffs {
-		fmt.Printf(
-			"interface name=%s index=%d mac=%s up=%v loopback=%v multicast=%v\n",
-			iff.Name,
-			iff.Index,
-			iff.HardwareAddr,
-			iff.Flags&net.FlagUp != 0,
-			iff.Flags&net.FlagLoopback != 0,
-			iff.Flags&net.FlagMulticast != 0,
-		)
+	defer peer.Close()
+
+	for _, iff := range testInterfaces {
+		fmt.Println("setting", iff.Name, "as outbound")
+
+		if err := peer.SetOutboundIPv4(iff.Name); err != nil {
+			t.Fatal(err)
+		}
+
+		outboundInterface, outboundIP := peer.Outbound()
+		fmt.Println("outbound for", iff.Name, outboundInterface, outboundIP)
+	}
+}
+
+func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	peer, err := NewUDPPeer(ioc, "udp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+
+	for _, iff := range testInterfaces {
+		fmt.Println("setting", iff.Name, "as outbound")
+
+		if err := peer.SetOutboundIPv4(iff.Name); err != nil {
+			t.Fatal(err)
+		}
+
+		outboundInterface, outboundIP := peer.Outbound()
+		fmt.Println("outbound for", iff.Name, outboundInterface, outboundIP)
 	}
 }
