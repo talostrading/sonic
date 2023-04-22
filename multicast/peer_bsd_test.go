@@ -10,6 +10,7 @@ import (
 
 // IPv6 is not available on CircleCI, so we don't make these tests available unless you're
 // running on a MacOS machine.
+// TODO just check if IPv6 is available in main and then test these based on that
 
 func TestUDPPeer_IPv6Addresses(t *testing.T) {
 	ioc := sonic.MustIO()

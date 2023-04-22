@@ -291,6 +291,14 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
 				"%s GetMulticastInterface_IPMreq4Addr interface_addr=%s multicast_addr=%s\n",
 				iff.Name, interfaceAddr.String(), multicastAddr.String())
 		}
+
+		{
+			interfaceIndex, err := ipv4.GetMulticastInterfaceIndex(peer.NextLayer())
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("%s GetMulticastInterface_Index interface_index=%d\n", iff.Name, interfaceIndex)
+		}
 	}
 }
 
@@ -330,6 +338,14 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 			fmt.Printf(
 				"%s GetMulticastInterface_IPMreq4Addr interface_addr=%s multicast_addr=%s\n",
 				iff.Name, interfaceAddr.String(), multicastAddr.String())
+		}
+
+		{
+			interfaceIndex, err := ipv4.GetMulticastInterfaceIndex(peer.NextLayer())
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("%s GetMulticastInterface_Index interface_index=%d\n", iff.Name, interfaceIndex)
 		}
 	}
 }
