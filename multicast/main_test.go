@@ -30,7 +30,7 @@ func TestMain(m *testing.M) {
 			panic(err)
 		}
 		for _, addr := range addrs {
-			fmt.Printf("interface name=%s address=%s ip=%s", iff.Name, addr.String(), addr.Network())
+			fmt.Printf("addresses:: interface name=%s address=%s ip=%s\n", iff.Name, addr.String(), addr.Network())
 		}
 		if iff.Flags&net.FlagMulticast != 0 {
 			testInterfaces = append(testInterfaces, iff)
