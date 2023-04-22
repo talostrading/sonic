@@ -5,3 +5,6 @@ tests/autobahn/reports/
 .idea/
 temp/
 .vscode/
+examples/multicast_peer/udp_rate_reader
+examples/multicast_peer/udp_rate_writer
+
