@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/multicast"
@@ -42,20 +43,23 @@ func main() {
 		addr)
 
 	b := make([]byte, *payloadSize)
-	for i := 0; i < len(b); i++ {
-		b[i] = 'a'
-	}
 
 	start := time.Now()
 	nBytes := 0
+	var seq uint64 = 1
 	for {
-		n, _ := peer.Write(b, addr)
-		nBytes += n
-		time.Sleep(*period)
-		if now := time.Now(); now.Sub(start).Seconds() >= 1 {
-			start = now
-			log.Printf("rate = %s/s", util.ByteCountSI(int64(nBytes)))
-			nBytes = 0
+		binary.BigEndian.PutUint64(b, seq)
+		n, err := peer.Write(b, addr)
+		if err == nil {
+			seq++
+
+			nBytes += n
+			if now := time.Now(); now.Sub(start).Seconds() >= 1 {
+				start = now
+				log.Printf("rate = %s/s", util.ByteCountSI(int64(nBytes)))
+				nBytes = 0
+			}
 		}
+		time.Sleep(*period)
 	}
 }
