@@ -349,3 +349,34 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 		}
 	}
 }
+
+func TestUDPPeer_TTL(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	peer, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	actualTTL, err := ipv4.GetMulticastTTL(peer.NextLayer())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if actualTTL != peer.TTL() {
+		t.Fatalf("wrong TTL expected=%d given=%d", actualTTL, peer.TTL())
+	}
+
+	if peer.TTL() != 1 {
+		t.Fatalf("peer TTL should be 1 by default")
+	}
+
+	if err := peer.SetTTL(32); err != nil {
+		t.Fatal(err)
+	}
+
+	if peer.TTL() != 32 {
+		t.Fatalf("peer TTL should be 32")
+	}
+}

@@ -23,6 +23,7 @@ type UDPPeer struct {
 	outbound   *net.Interface
 	outboundIP netip.Addr
 	loop       bool
+	ttl        int
 
 	slot internal.PollData
 
@@ -96,6 +97,7 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		localAddr: localAddr,
 		ipv:       ipv,
 		stats:     &Stats{},
+		ttl:       1,
 	}
 	p.read = &readReactor{peer: p}
 	p.write = &writeReactor{peer: p}
@@ -138,6 +140,10 @@ func (p *UDPPeer) SetOutboundIPv4(interfaceName string) error {
 	return nil
 }
 
+func (p *UDPPeer) SetOutboundIPv6(interfaceName string) error {
+	panic("IPv6 not supported")
+}
+
 func (p *UDPPeer) Outbound() (*net.Interface, netip.Addr) {
 	return p.outbound, p.outboundIP
 }
@@ -153,6 +159,19 @@ func (p *UDPPeer) SetLoop(loop bool) error {
 
 func (p *UDPPeer) Loop() bool {
 	return p.loop
+}
+
+func (p *UDPPeer) SetTTL(ttl int) error {
+	if err := ipv4.SetMulticastTTL(p.socket, ttl); err != nil {
+		return err
+	} else {
+		p.ttl = ttl
+		return nil
+	}
+}
+
+func (p *UDPPeer) TTL() int {
+	return p.ttl
 }
 
 func (p *UDPPeer) Join(multicastIP string) error {
