@@ -273,6 +273,24 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
 
 		outboundInterface, outboundIP := peer.Outbound()
 		fmt.Println("outbound for", iff.Name, outboundInterface, outboundIP)
+
+		{
+			addr, err := ipv4.GetMulticastInterface(peer.NextLayer())
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("%s GetMulticastInterface_Inet4Addr addr=%s\n", iff.Name, addr.String())
+		}
+
+		{
+			interfaceAddr, multicastAddr, err := ipv4.GetMulticastInterface2(peer.NextLayer())
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf(
+				"%s GetMulticastInterface_IPMreq4Addr interface_addr=%s multicast_addr=%s\n",
+				iff.Name, interfaceAddr.String(), multicastAddr.String())
+		}
 	}
 }
 
@@ -295,5 +313,23 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 
 		outboundInterface, outboundIP := peer.Outbound()
 		fmt.Println("outbound for", iff.Name, outboundInterface, outboundIP)
+
+		{
+			addr, err := ipv4.GetMulticastInterface(peer.NextLayer())
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf("%s GetMulticastInterface_Inet4Addr addr=%s\n", iff.Name, addr.String())
+		}
+
+		{
+			interfaceAddr, multicastAddr, err := ipv4.GetMulticastInterface2(peer.NextLayer())
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Printf(
+				"%s GetMulticastInterface_IPMreq4Addr interface_addr=%s multicast_addr=%s\n",
+				iff.Name, interfaceAddr.String(), multicastAddr.String())
+		}
 	}
 }
