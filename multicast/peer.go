@@ -23,7 +23,7 @@ type UDPPeer struct {
 	outbound   *net.Interface
 	outboundIP netip.Addr
 	loop       bool
-	ttl        int
+	ttl        uint8
 
 	slot internal.PollData
 
@@ -161,7 +161,7 @@ func (p *UDPPeer) Loop() bool {
 	return p.loop
 }
 
-func (p *UDPPeer) SetTTL(ttl int) error {
+func (p *UDPPeer) SetTTL(ttl uint8) error {
 	if err := ipv4.SetMulticastTTL(p.socket, ttl); err != nil {
 		return err
 	} else {
@@ -170,7 +170,7 @@ func (p *UDPPeer) SetTTL(ttl int) error {
 	}
 }
 
-func (p *UDPPeer) TTL() int {
+func (p *UDPPeer) TTL() uint8 {
 	return p.ttl
 }
 
