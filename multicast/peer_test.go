@@ -372,11 +372,17 @@ func TestUDPPeer_TTL(t *testing.T) {
 		t.Fatalf("peer TTL should be 1 by default")
 	}
 
-	if err := peer.SetTTL(32); err != nil {
-		t.Fatal(err)
+	setAndCheck := func(ttl uint8) {
+		if err := peer.SetTTL(ttl); err != nil {
+			t.Fatal(err)
+		}
+
+		if peer.TTL() != ttl {
+			t.Fatalf("peer TTL should be %d", ttl)
+		}
 	}
 
-	if peer.TTL() != 32 {
-		t.Fatalf("peer TTL should be 32")
+	for i := 0; i <= 255; i++ {
+		setAndCheck(uint8(i))
 	}
 }
