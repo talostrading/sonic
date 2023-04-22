@@ -14,7 +14,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(fmt.Errorf("cannot get interfaces err=%v", err))
 	}
-	fmt.Println("found", len(iffs), "interfaces")
+	fmt.Println("found", len(iffs), "network interfaces")
 	for _, iff := range iffs {
 		fmt.Printf(
 			"interface name=%s index=%d mac=%s up=%v loopback=%v multicast=%v\n",
