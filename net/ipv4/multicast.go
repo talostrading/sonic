@@ -27,6 +27,10 @@ func GetMulticastInterface2(socket *sonic.Socket) (interfaceAddr, multicastAddr 
 	}
 }
 
+func GetMulticastInterfaceIndex(socket *sonic.Socket) (int, error) {
+	return syscall.GetsockoptInt(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF)
+}
+
 func SetMulticastInterface(socket *sonic.Socket, iff *net.Interface) (netip.Addr, error) {
 	if iff.Flags&net.FlagMulticast == 0 {
 		return netip.Addr{}, fmt.Errorf("interface=%s does not support multicast", iff.Name)
