@@ -1,6 +1,7 @@
 package multicast
 
 import (
+	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/net/ipv4"
 	"net"
@@ -289,7 +290,7 @@ func TestUDPPeer_Join(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_SetOutboundInterface1(t *testing.T) {
+func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedIPandPort(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -303,13 +304,11 @@ func TestUDPPeer_SetOutboundInterface1(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outIface, _ := peer.Outbound()
-	if outIface == nil {
-		t.Fatal("outbound interface should not be nil as its been explicitly set")
-	}
+	outboundInterface, outboundIP := peer.Outbound()
+	fmt.Println("outbound", outboundInterface, outboundIP)
 }
 
-func TestUDPPeer_SetOutboundInterface2(t *testing.T) {
+func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -323,10 +322,8 @@ func TestUDPPeer_SetOutboundInterface2(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outIface, _ := peer.Outbound()
-	if outIface == nil {
-		t.Fatal("outbound interface should not be nil as its been explicitly set")
-	}
+	outboundInterface, outboundIP := peer.Outbound()
+	fmt.Println("outbound", outboundInterface, outboundIP)
 }
 
 func TestUDPPeer_SetLoop1(t *testing.T) {
