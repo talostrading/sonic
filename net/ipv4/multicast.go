@@ -104,6 +104,23 @@ func GetMulticastLoop(socket *sonic.Socket) (bool, error) {
 	}
 }
 
+func SetMulticastTTL(socket *sonic.Socket, ttl int) error {
+	return syscall.SetsockoptInt(
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_MULTICAST_TTL,
+		ttl,
+	)
+}
+
+func GetMulticastTTL(socket *sonic.Socket) (int, error) {
+	return syscall.GetsockoptInt(
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_MULTICAST_TTL,
+	)
+}
+
 // AddMembership makes the given socket a member of the specified multicast IP.
 func AddMembership(socket *sonic.Socket, ip netip.Addr) error {
 	if !ip.Is4() && !ip.Is4In6() {
