@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/binary"
 	"flag"
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/talostrading/sonic"
@@ -56,6 +57,7 @@ func main() {
 
 	log.Printf("joined multicast address")
 
+	var expectedSeq uint64 = 0
 	nBytes := 0
 	b := make([]byte, 128)
 	var onRead func(error, int, netip.AddrPort)
@@ -64,7 +66,22 @@ func main() {
 			panic(err)
 		} else {
 			b = b[:n]
+
+			seq := binary.BigEndian.Uint64(b)
+			if expectedSeq == 0 {
+				// handles reader starting after writer
+				expectedSeq = seq + 1
+			} else if seq != expectedSeq {
+				// either writer restarted or a packet got lost
+				log.Printf("expected seq=%d but got seq=%d", expectedSeq, seq)
+				expectedSeq = seq + 1
+			} else {
+				// all good
+				expectedSeq++
+			}
+
 			nBytes += n
+
 			b = b[:cap(b)]
 			peer.AsyncRead(b, onRead)
 		}
