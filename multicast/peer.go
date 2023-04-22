@@ -101,6 +101,7 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	}
 	p.read = &readReactor{peer: p}
 	p.write = &writeReactor{peer: p}
+	p.slot.Fd = p.socket.RawFd()
 
 	if ipv == 4 {
 		p.outboundIP, err = ipv4.GetMulticastInterface(p.socket)
