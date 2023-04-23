@@ -2,6 +2,7 @@ package multicast
 
 import (
 	"github.com/talostrading/sonic"
+	"log"
 	"net"
 	"testing"
 )
@@ -80,4 +81,6 @@ func TestUDPPeerIPv6_Addresses(t *testing.T) {
 			t.Fatal("port should not be 0")
 		}
 	}
+
+	log.Println("ran")
 }
