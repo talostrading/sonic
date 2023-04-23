@@ -98,7 +98,7 @@ func main() {
 
 	tracker := util.NewTrackerWithSamples(*ns)
 	for {
-		// I would use util.GetMonoNanos() but cross-compiling is a mess,
+		// I would use util.GetMonoTimeNanos() but cross-compiling is a mess,
 		// because we link against the local glibc which might not be the glibc
 		// on the remote.
 		start := time.Now()
