@@ -6,10 +6,9 @@ import (
 	"net"
 	"net/netip"
 	"syscall"
-	"unsafe"
 )
 
-func GetMulticastInterface(socket *sonic.Socket) (netip.Addr, error) {
+func GetMulticastInterfaceAddr(socket *sonic.Socket) (netip.Addr, error) {
 	addr, err := syscall.GetsockoptInet4Addr(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF)
 	if err != nil {
 		return netip.Addr{}, err
@@ -18,7 +17,7 @@ func GetMulticastInterface(socket *sonic.Socket) (netip.Addr, error) {
 	}
 }
 
-func GetMulticastInterface2(socket *sonic.Socket) (interfaceAddr, multicastAddr netip.Addr, err error) {
+func GetMulticastInterfaceAddrAndGroup(socket *sonic.Socket) (interfaceAddr, multicastAddr netip.Addr, err error) {
 	addr, err := syscall.GetsockoptIPMreq(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF)
 	if err != nil {
 		return netip.Addr{}, netip.Addr{}, err
@@ -122,32 +121,40 @@ func GetMulticastTTL(socket *sonic.Socket) (uint8, error) {
 	return uint8(ttl), err
 }
 
+func ValidateMulticastIP(ip netip.Addr) error {
+	if !ip.Is4() && !ip.Is4In6() {
+		return fmt.Errorf("expected an IPv4 address=%s", ip)
+	}
+	if !ip.IsMulticast() {
+		return fmt.Errorf("expected a multicast address=%s", ip)
+	}
+	return nil
+}
+
 // AddMembership makes the given socket a member of the specified multicast IP.
 func AddMembership(socket *sonic.Socket, multicastIP netip.Addr) error {
-	if !multicastIP.Is4() && !multicastIP.Is4In6() {
-		return fmt.Errorf("expected an IPv4 address=%s", multicastIP)
+	return AddMembershipOnInterface(socket, multicastIP, 0 /* any interface */)
+}
+
+func AddMembershipOnInterface(socket *sonic.Socket, multicastIP netip.Addr, interfaceIndex int) error {
+	if err := ValidateMulticastIP(multicastIP); err != nil {
+		return err
 	}
 
-	if !multicastIP.IsMulticast() {
-		return fmt.Errorf("expected a multicast address=%s", multicastIP)
+	mreq := &syscall.IPMreqn{}
+	copy(mreq.Multiaddr[:], multicastIP.AsSlice())
+	mreq.Ifindex = int32(interfaceIndex)
+
+	return syscall.SetsockoptIPMreqn(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_ADD_MEMBERSHIP, mreq)
+}
+
+func DropMembership(socket *sonic.Socket, multicastIP netip.Addr) error {
+	if err := ValidateMulticastIP(multicastIP); err != nil {
+		return err
 	}
 
-	req := syscall.IPMreqn{}
-	copy(req.Multiaddr[:], multicastIP.AsSlice())
+	mreq := &syscall.IPMreqn{}
+	copy(mreq.Multiaddr[:], multicastIP.AsSlice())
 
-	_, _, errno := syscall.Syscall6(
-		syscall.SYS_SETSOCKOPT,
-		uintptr(socket.RawFd()),
-		uintptr(syscall.IPPROTO_IP),
-		uintptr(syscall.IP_ADD_MEMBERSHIP),
-		uintptr(unsafe.Pointer(&req)),
-		syscall.SizeofIPMreq,
-		0)
-
-	var err error
-	if errno != 0 {
-		err = errno
-	}
-
-	return err
+	return syscall.SetsockoptIPMreqn(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_DROP_MEMBERSHIP, mreq)
 }

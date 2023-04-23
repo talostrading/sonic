@@ -12,19 +12,7 @@ import (
 	"syscall"
 )
 
-// To test:
-// 1. Binding reader 0.0.0.0:0 and having two writers write to two different groups on the reader's port.
-//    The reader should get packets from both.
-// 2. Binding reader to 224.0.1.0:0 and having two writers writer to two different groups on the reader's port, one of
-//    which should be 224.0.1.0. The reader should only get packets from one writer.
-// 3. Binding two reader to 224.0.1.0:5001 and having a writer send packets to 224.0.1.0. Both readers should get those.
-// 4. Binding readers to 224.0.1.0:5001 and having writers write to the address but a different port. Readers
-//    should not get anything.
-// 5. Binding to an explicit interface.
-// 6. Two writers publishing to the same group, reader joining with Join, gets both, with JoinSource, gets only one,
-//    with Join gets two then Block source gets one then Unblock source gets two
-// 7. Reader JoinSourceGroup and LeaveSourceGroup
-// 8. Reader source group.
+var emptyIPv4Addr = [4]byte{0x0, 0x0, 0x0, 0x0}
 
 type UDPPeer struct {
 	ioc        *sonic.IO
@@ -119,7 +107,7 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	p.slot.Fd = p.socket.RawFd()
 
 	if ipv == 4 {
-		p.outboundIP, err = ipv4.GetMulticastInterface(p.socket)
+		p.outboundIP, err = ipv4.GetMulticastInterfaceAddr(p.socket)
 		if err != nil {
 			return nil, err
 		}
