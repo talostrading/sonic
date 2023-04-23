@@ -101,7 +101,7 @@ type testRW struct {
 	seq      uint64
 	b        []byte
 	closed   int32
-	received map[netip.AddrPort]struct{}
+	received map[netip.AddrPort]uint64
 }
 
 func newTestRW(t *testing.T, network, addr string) *testRW {
@@ -116,7 +116,7 @@ func newTestRW(t *testing.T, network, addr string) *testRW {
 		peer:     peer,
 		seq:      1,
 		b:        make([]byte, 8),
-		received: make(map[netip.AddrPort]struct{}),
+		received: make(map[netip.AddrPort]uint64),
 	}
 	return w
 }
@@ -133,16 +133,20 @@ func (rw *testRW) WriteNext(multicastAddr string) error {
 }
 
 func (rw *testRW) ReadLoop(fn func(error, uint64, netip.AddrPort)) {
-	var expectedSeq uint64 = 1
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, from netip.AddrPort) {
 		if err == nil {
+			_, ok := rw.received[from]
+			if !ok {
+				rw.received[from] = 1
+			}
+			expectedSeq := rw.received[from]
+
 			seq := binary.BigEndian.Uint64(rw.b)
 			if seq != expectedSeq {
 				rw.t.Fatalf("expected %d but got %d", expectedSeq, seq)
 			}
-			expectedSeq++
-			rw.received[from] = struct{}{}
+			rw.received[from] = expectedSeq + 1
 			fn(err, binary.BigEndian.Uint64(rw.b), from)
 		}
 
