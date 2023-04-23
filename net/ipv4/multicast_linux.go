@@ -2,6 +2,12 @@
 
 package ipv4
 
+import (
+	"github.com/talostrading/sonic"
+	"net/netip"
+	"syscall"
+)
+
 func AddMembershipOnInterface(socket *sonic.Socket, multicastIP netip.Addr, interfaceIndex int) error {
 	if err := ValidateMulticastIP(multicastIP); err != nil {
 		return err
