@@ -1,5 +1,3 @@
-//go:build darwin || netbsd || freebsd || openbsd || dragonfly
-
 package multicast
 
 import (
@@ -8,11 +6,11 @@ import (
 	"testing"
 )
 
-// IPv6 is not available on CircleCI, so we don't make these tests available unless you're
-// running on a MacOS machine.
-// TODO just check if IPv6 is available in main and then test these based on that
+func TestUDPPeerIPv6_Addresses(t *testing.T) {
+	if len(testInterfacesIPv6) == 0 {
+		return
+	}
 
-func TestUDPPeer_IPv6Addresses(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
