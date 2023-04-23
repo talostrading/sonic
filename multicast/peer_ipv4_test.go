@@ -495,4 +495,57 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	if len(r.ReceivedFrom()) != 1 {
 		t.Fatal("should have received from exactly one source")
 	}
+
+	fmt.Println(r.received)
 }
+
+//func TestUDPPeerIPv4_Reader2(t *testing.T) {
+//	// 1 reader, 2 writers
+//
+//	r := newTestRW(t, "udp", "")
+//	defer r.Close()
+//
+//	multicastIP := "224.0.1.0"
+//	multicastPort := r.peer.LocalAddr().Port
+//	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, multicastPort)
+//	if err := r.peer.Join(multicastIP); err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	w1 := newTestRW(t, "udp", "")
+//	defer w1.Close()
+//
+//	var wg sync.WaitGroup
+//	wg.Add(2)
+//
+//	start := time.Now()
+//	go func() {
+//		defer wg.Done()
+//
+//		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+//			if err != nil {
+//				t.Fatal(err)
+//			} else {
+//				if seq == 10 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+//					r.Close()
+//				}
+//			}
+//		})
+//	}()
+//
+//	go func() {
+//		defer wg.Done()
+//		for i := 0; i < 10; i++ {
+//			if err := w.WriteNext(multicastAddr); err != nil {
+//				t.Fatal(err)
+//			}
+//			time.Sleep(time.Millisecond)
+//		}
+//	}()
+//
+//	wg.Wait()
+//
+//	if len(r.ReceivedFrom()) != 1 {
+//		t.Fatal("should have received from exactly one source")
+//	}
+//}
