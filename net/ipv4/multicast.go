@@ -123,17 +123,17 @@ func GetMulticastTTL(socket *sonic.Socket) (uint8, error) {
 }
 
 // AddMembership makes the given socket a member of the specified multicast IP.
-func AddMembership(socket *sonic.Socket, ip netip.Addr) error {
-	if !ip.Is4() && !ip.Is4In6() {
-		return fmt.Errorf("expected an IPv4 address=%s", ip)
+func AddMembership(socket *sonic.Socket, multicastIP netip.Addr) error {
+	if !multicastIP.Is4() && !multicastIP.Is4In6() {
+		return fmt.Errorf("expected an IPv4 address=%s", multicastIP)
 	}
 
-	if !ip.IsMulticast() {
-		return fmt.Errorf("expected a multicast address=%s", ip)
+	if !multicastIP.IsMulticast() {
+		return fmt.Errorf("expected a multicast address=%s", multicastIP)
 	}
 
-	req := syscall.IPMreq{}
-	copy(req.Multiaddr[:], ip.AsSlice())
+	req := syscall.IPMreqn{}
+	copy(req.Multiaddr[:], multicastIP.AsSlice())
 
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_SETSOCKOPT,
