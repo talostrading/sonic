@@ -30,7 +30,7 @@ func DecodeNanos(from []byte) int64 {
 }
 
 func EncodeNanos(into []byte) {
-	binary.LittleEndian.PutUint64(into, uint64(util.GetMonoNanos()))
+	binary.LittleEndian.PutUint64(into, uint64(util.GetMonoTimeNanos()))
 }
 
 func Record(id int, hist *hdrhistogram.Histogram, diff int64) {
@@ -100,7 +100,7 @@ func handle(conn net.Conn) {
 					panic(err)
 				}
 
-				diff := util.GetMonoNanos() - DecodeNanos(b)
+				diff := util.GetMonoTimeNanos() - DecodeNanos(b)
 				if *shareHist {
 					lck.Lock()
 					Record(id, globalHist, diff)
@@ -126,7 +126,7 @@ func handle(conn net.Conn) {
 				panic(err)
 			}
 
-			diff := util.GetMonoNanos() - DecodeNanos(b)
+			diff := util.GetMonoTimeNanos() - DecodeNanos(b)
 			if *shareHist {
 				lck.Lock()
 				Record(id, globalHist, diff)

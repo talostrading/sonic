@@ -1,3 +1,5 @@
+//go:build linux
+
 package util
 
 import (
@@ -10,7 +12,7 @@ import (
 func BenchmarkGetMonoNanos(b *testing.B) {
 	var s int64 = 0
 	for i := 0; i < b.N; i++ {
-		s += GetMonoNanos()
+		s += GetMonoTimeNanos()
 	}
 	b.ReportAllocs()
 	fmt.Println(s)
@@ -27,7 +29,7 @@ func BenchmarkTimeNow(b *testing.B) {
 
 func TestMono(t *testing.T) {
 	for i := 0; i < 100; i++ {
-		startMono := GetMonoNanos()
+		startMono := GetMonoTimeNanos()
 
 		sleepingFor := time.Duration(rand.Intn(100_000)) * time.Microsecond
 
@@ -40,7 +42,7 @@ func TestMono(t *testing.T) {
 			}
 		}
 
-		diffMono := GetMonoNanos() - startMono
+		diffMono := GetMonoTimeNanos() - startMono
 		if diffMono < sleepingFor.Nanoseconds() {
 			t.Fatalf(
 				"did not sleep long enough sleeping_for=%s diff=%d",

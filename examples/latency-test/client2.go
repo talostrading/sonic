@@ -22,7 +22,7 @@ func DecodeNanos(from []byte) int64 {
 }
 
 func EncodeNanos(into []byte) {
-	binary.LittleEndian.PutUint64(into, uint64(util.GetMonoNanos()))
+	binary.LittleEndian.PutUint64(into, uint64(util.GetMonoTimeNanos()))
 }
 
 func Record(diff int64) {
@@ -79,7 +79,7 @@ func main() {
 		if err != nil {
 			panic(err)
 		} else {
-			Record(util.GetMonoNanos() - DecodeNanos(b))
+			Record(util.GetMonoTimeNanos() - DecodeNanos(b))
 			EncodeNanos(b)
 			conn.AsyncWrite(b, onWrite)
 		}

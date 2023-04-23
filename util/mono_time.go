@@ -10,6 +10,6 @@ static unsigned long long get_nanos(void) {
 */
 import "C"
 
-func GetMonoNanos() int64 {
+func GetMonoTimeNanos() int64 {
 	return int64(C.get_nanos())
 }
