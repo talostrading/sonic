@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/net/ipv4"
+	"log"
 	"net"
 	"testing"
 )
@@ -182,6 +183,8 @@ func TestUDPPeerIPv4_Addresses(t *testing.T) {
 			t.Fatal("not explicit outbound interface should have been set")
 		}
 	}
+
+	log.Println("ran")
 }
 
 func TestUDPPeerIPv4_JoinInvalidGroup(t *testing.T) {
@@ -201,6 +204,8 @@ func TestUDPPeerIPv4_JoinInvalidGroup(t *testing.T) {
 	if err := peer.Join("0.0.0.0:4555"); err == nil {
 		t.Fatal("should not have joined")
 	}
+
+	log.Println("ran")
 }
 
 func TestUDPPeerIPv4_Join(t *testing.T) {
@@ -228,6 +233,8 @@ func TestUDPPeerIPv4_Join(t *testing.T) {
 	if !addr.IsUnspecified() {
 		t.Fatal("multicast address should be unspecified")
 	}
+
+	log.Println("ran")
 }
 
 func TestUDPPeerIPv4_SetLoop1(t *testing.T) {
@@ -268,6 +275,8 @@ func TestUDPPeerIPv4_SetLoop1(t *testing.T) {
 	if peer.Loop() {
 		t.Fatal("peer should not loop packets")
 	}
+
+	log.Println("ran")
 }
 
 func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
@@ -320,6 +329,8 @@ func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
 			fmt.Printf("%s GetMulticastInterface_Index interface_index=%d\n", iff.Name, interfaceIndex)
 		}
 	}
+
+	log.Println("ran")
 }
 
 func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
@@ -372,6 +383,8 @@ func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 			fmt.Printf("%s GetMulticastInterface_Index interface_index=%d\n", iff.Name, interfaceIndex)
 		}
 	}
+
+	log.Println("ran")
 }
 
 func TestUDPPeerIPv4_TTL(t *testing.T) {
@@ -413,4 +426,6 @@ func TestUDPPeerIPv4_TTL(t *testing.T) {
 	for i := 0; i <= 255; i++ {
 		setAndCheck(uint8(i))
 	}
+
+	log.Println("ran")
 }
