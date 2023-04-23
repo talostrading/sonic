@@ -10,7 +10,11 @@ import (
 
 // Listing multicast group memberships: netstat -gsv
 
-func TestUDPPeer_IPv4Addresses(t *testing.T) {
+func TestUDPPeerIPv4_Addresses(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -180,7 +184,11 @@ func TestUDPPeer_IPv4Addresses(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_JoinInvalidGroup(t *testing.T) {
+func TestUDPPeerIPv4_JoinInvalidGroup(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -195,7 +203,11 @@ func TestUDPPeer_JoinInvalidGroup(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_Join(t *testing.T) {
+func TestUDPPeerIPv4_Join(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -218,7 +230,11 @@ func TestUDPPeer_Join(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_SetLoop1(t *testing.T) {
+func TestUDPPeerIPv4_SetLoop1(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -254,7 +270,11 @@ func TestUDPPeer_SetLoop1(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
+func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -264,7 +284,7 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
 	}
 	defer peer.Close()
 
-	for _, iff := range testInterfaces {
+	for _, iff := range testInterfacesIPv4 {
 		fmt.Println("setting", iff.Name, "as outbound")
 
 		if err := peer.SetOutboundIPv4(iff.Name); err != nil {
@@ -302,7 +322,11 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
+func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -312,7 +336,7 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 	}
 	defer peer.Close()
 
-	for _, iff := range testInterfaces {
+	for _, iff := range testInterfacesIPv4 {
 		fmt.Println("setting", iff.Name, "as outbound")
 
 		if err := peer.SetOutboundIPv4(iff.Name); err != nil {
@@ -350,7 +374,11 @@ func TestUDPPeer_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 	}
 }
 
-func TestUDPPeer_TTL(t *testing.T) {
+func TestUDPPeerIPv4_TTL(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 

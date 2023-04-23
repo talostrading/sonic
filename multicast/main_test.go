@@ -70,5 +70,9 @@ func TestMain(m *testing.M) {
 		}
 	}
 
-	os.Exit(m.Run())
+	ret := m.Run()
+	if len(testInterfacesIPv4) == 0 && len(testInterfacesIPv6) == 0 {
+		ret = 1
+	}
+	os.Exit(ret)
 }
