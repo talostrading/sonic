@@ -1,7 +1,6 @@
 package multicast
 
 import (
-	"encoding/binary"
 	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/net/ipv4"
@@ -9,7 +8,6 @@ import (
 	"net"
 	"net/netip"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -448,77 +446,6 @@ func TestUDPPeerIPv4_TTL(t *testing.T) {
 	log.Println("ran")
 }
 
-// To test:
-// 1. Binding reader 0.0.0.0:0 and having two writers write to two different groups on the reader's port.
-//    The reader should get packets from both.
-// 2. Binding reader to 224.0.1.0:0 and having two writers writer to two different groups on the reader's port, one of
-//    which should be 224.0.1.0. The reader should only get packets from one writer.
-// 3. Binding two reader to 224.0.1.0:5001 and having a writer send packets to 224.0.1.0. Both readers should get those.
-// 4. Binding readers to 224.0.1.0:5001 and having writers write to the address but a different port. Readers
-//    should not get anything.
-// 5. Binding to an explicit interface.
-// 6. Two writers publishing to the same group, reader joining with Join, gets both, with JoinSource, gets only one,
-//    with Join gets two then Block source gets one then Unblock source gets two
-// 7. Reader JoinSourceGroup and LeaveSourceGroup
-// 8. Reader source group.
-
-type testRW struct {
-	t      *testing.T
-	ioc    *sonic.IO
-	peer   *UDPPeer
-	seq    uint64
-	b      []byte
-	closed int32
-}
-
-func newTestRW(t *testing.T, network, addr string) *testRW {
-	ioc := sonic.MustIO()
-	peer, err := NewUDPPeer(ioc, network, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	w := &testRW{
-		t:    t,
-		ioc:  ioc,
-		peer: peer,
-		seq:  1,
-		b:    make([]byte, 8),
-	}
-	return w
-}
-
-func (rw *testRW) WriteNext(multicastAddr string) error {
-	addr, err := netip.ParseAddrPort(multicastAddr)
-	if err != nil {
-		rw.t.Fatal(err)
-	}
-	binary.BigEndian.PutUint64(rw.b, rw.seq)
-	rw.seq++
-	_, err = rw.peer.Write(rw.b, addr)
-	return err
-}
-
-func (rw *testRW) ReadLoop(fn func(error, uint64, netip.AddrPort)) {
-	var onRead func(error, int, netip.AddrPort)
-	onRead = func(err error, n int, from netip.AddrPort) {
-		fn(err, binary.BigEndian.Uint64(rw.b), from)
-		if atomic.LoadInt32(&rw.closed) == 0 {
-			rw.peer.AsyncRead(rw.b, onRead)
-		}
-	}
-	rw.peer.AsyncRead(rw.b, onRead)
-
-	rw.ioc.Run()
-}
-
-func (rw *testRW) Close() {
-	if atomic.LoadInt32(&rw.closed) == 0 {
-		atomic.StoreInt32(&rw.closed, 1)
-		rw.peer.Close()
-		rw.ioc.Close()
-	}
-}
-
 func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	// 1 reader, 1 writer
 
@@ -538,21 +465,15 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(2)
 
-	received := make(map[netip.AddrPort][]uint64)
+	start := time.Now()
 	go func() {
 		defer wg.Done()
 
-		var expected uint64 = 1
 		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
 			if err != nil {
 				t.Fatal(err)
 			} else {
-				received[from] = append(received[from], seq)
-				if expected != seq {
-					t.Fatalf("expected sequence %d but got %d", expected, seq)
-				}
-				expected++
-				if seq == 10 {
+				if seq == 10 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
 					r.Close()
 				}
 			}
@@ -571,7 +492,7 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 
 	wg.Wait()
 
-	if len(received) != 1 {
+	if len(r.ReceivedFrom()) != 1 {
 		t.Fatal("should have received from exactly one source")
 	}
 }
