@@ -29,7 +29,7 @@ var (
 )
 
 type WebsocketStream struct {
-	// Async operations executor.
+	// async operations executor.
 	ioc *sonic.IO
 
 	// User provided TLS config; nil if we don't use TLS

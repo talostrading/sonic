@@ -225,7 +225,7 @@ func (p *UDPPeer) asyncReadNow(b []byte, fn func(error, int, netip.AddrPort)) {
 	n, addr, err := p.Read(b)
 
 	if err == nil {
-		p.stats.AsyncImmediateReads++
+		p.stats.async.immediateReads++
 		fn(err, n, addr)
 		return
 	}
@@ -246,7 +246,7 @@ func (p *UDPPeer) scheduleRead(fn func(error, int, netip.AddrPort)) {
 		if err := p.setRead(); err != nil {
 			fn(err, 0, netip.AddrPort{})
 		} else {
-			p.stats.AsyncScheduledReads++
+			p.stats.async.scheduledReads++
 			p.ioc.RegisterRead(&p.slot)
 		}
 	}

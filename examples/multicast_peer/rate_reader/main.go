@@ -89,6 +89,7 @@ func main() {
 	peer.AsyncRead(b, onRead)
 
 	log.Printf("starting event loop busy=%v", *busy)
+	nPolled := 0
 	if *busy {
 		hist := hdrhistogram.New(0, 10_00_000_000, 1)
 
@@ -100,6 +101,7 @@ func main() {
 				panic(err)
 			}
 			if n > 0 {
+				nPolled += n
 				hist.RecordValue(time.Now().Sub(start).Nanoseconds())
 				if hist.TotalCount() >= *nSamples {
 					log.Printf("-------------------------------------------------------------------------------")
@@ -116,20 +118,12 @@ func main() {
 					)
 					hist.Reset()
 
-					totalAsync := peer.Stats().AsyncImmediateReads + peer.Stats().AsyncScheduledReads
-					pollRate := float64(peer.Stats().AsyncScheduledReads) / float64(totalAsync) * 100.0
-					log.Printf(
-						"async stats immediate=%d scheduled=%d total=%d poll_rate=%.2f%%",
-						peer.Stats().AsyncImmediateReads,
-						peer.Stats().AsyncScheduledReads,
-						totalAsync,
-						pollRate,
-					)
+					log.Printf("async read perf=%.2f", peer.Stats().AsyncReadPerf())
 					peer.Stats().Reset()
+					nPolled = 0
 
 					log.Printf("read %s", util.ByteCountSI(int64(nBytes)))
 					nBytes = 0
-
 				}
 			}
 		}
