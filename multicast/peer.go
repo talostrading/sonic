@@ -267,6 +267,11 @@ func (p *UDPPeer) joinIPv6(ip netip.Addr, iff *net.Interface, sourceIP netip.Add
 	panic("IPv6 multicast peer not yet supported")
 }
 
+// Leave the multicast group.
+//
+// Note that this operation might take some time, potentially minutes, to be fulfilled. This is all NIC/switch/router
+// dependent, there is nothing you can do about it on the application layer.
+// TODO offer BlockSource as an alternative?
 func (p *UDPPeer) Leave(multicastIP IP) error {
 	return p.LeaveSource(multicastIP, "")
 }
