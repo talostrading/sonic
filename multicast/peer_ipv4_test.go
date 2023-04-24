@@ -880,54 +880,6 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 }
 
 func TestUDPPeerIPv4_Reader5(t *testing.T) {
-	// 1 reader bound to 224.0.1.0:0(so random port). Joins nothing.
-	// 1 writer on 224.0.1.0:<reader_port>.
-	// Reader should get nothing.
-
-	multicastIP := "224.0.1.0"
-
-	r := newTestRW(t, "udp", fmt.Sprintf("%s:0", multicastIP))
-	defer r.Close()
-
-	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, r.peer.LocalAddr().Port)
-
-	w := newTestRW(t, "udp", "")
-	defer w.Close()
-
-	readerGot := 0
-	go func() {
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
-			if err != nil {
-				t.Fatal(err)
-			} else {
-				readerGot += 1
-			}
-		})
-	}()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil {
-				t.Fatal(err)
-			}
-			time.Sleep(time.Millisecond)
-		}
-	}()
-	wg.Wait()
-
-	r.ioc.Close()
-
-	if len(r.ReceivedFrom()) != 0 {
-		t.Fatal("should have received from none")
-	}
-
-	fmt.Println(r.received)
-}
-
-func TestUDPPeerIPv4_Reader6(t *testing.T) {
 	// Counterpart to TestReader2.
 	//
 	// 1 reader on 224.0.3.0:0(so random port). Joins both 224.0.3.0 and 224.0.4.0.
@@ -1013,7 +965,7 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 	fmt.Println(r.received)
 }
 
-func TestUDPPeerIPv4_Reader7(t *testing.T) {
+func TestUDPPeerIPv4_Reader6(t *testing.T) {
 	// 1 reader on localhost:0(so random port). Joins 224.0.1.0.
 	// 1 writer bound to 0.0.0.0:0 and sending on 224.0.1.0:<reader_port>.
 	// Reader should not receive anything.
