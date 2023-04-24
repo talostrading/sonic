@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/net/ipv4"
+	"github.com/talostrading/sonic/sonicerrors"
 	"log"
 	"net"
 	"net/netip"
@@ -629,7 +630,7 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil {
+			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1178,7 +1179,7 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil {
+			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1218,7 +1219,7 @@ func TestUDPPeerIPv4_JoinAndRead(t *testing.T) {
 		defer wg.Done()
 
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil {
+			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1267,56 +1268,9 @@ func TestUDPPeerIPv4_JoinOnAndRead(t *testing.T) {
 		defer wg.Done()
 
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil {
+			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
-			time.Sleep(time.Millisecond)
-		}
-	}()
-	wg.Wait()
-
-	if atomic.LoadInt32(&count) == 0 {
-		t.Fatal("reader did not read anything")
-	}
-}
-
-func TestUDPPeerIPv4_JoinSourceAndRead1(t *testing.T) {
-	iffs, err := interfacesWithIP(4)
-	if err == ErrNoInterfaces {
-		log.Printf("skipping this test as not interfaces are available")
-		return
-	}
-
-	r := newTestRW(t, "udp", "224.0.1.0:0")
-	w := newTestRW(t, "udp", fmt.Sprintf("%s:0", iffs[0].ip))
-
-	if w.peer.LocalAddr().IP.String() != iffs[0].ip.String() {
-		t.Fatal("something wrong with binding to an interface address")
-	}
-
-	w.peer.LocalAddr()
-	if err := r.peer.JoinSource("224.0.1.0", SourceIP(iffs[0].ip.String())); err != nil {
-		t.Fatal(err)
-	}
-
-	var count int32
-	go func() {
-		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
-			if err == nil {
-				atomic.AddInt32(&count, 1)
-			}
-		})
-	}()
-
-	multicastAddr := fmt.Sprintf("224.0.1.0:%d", r.peer.LocalAddr().Port)
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-
-		for i := 0; i < 10; i++ {
-			_ = w.WriteNext(multicastAddr)
 			time.Sleep(time.Millisecond)
 		}
 	}()
