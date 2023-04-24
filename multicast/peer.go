@@ -196,46 +196,68 @@ func (p *UDPPeer) TTL() uint8 {
 	return p.ttl
 }
 
+type MulticastIP string
+type SourceIP string
+type InterfaceName string
+
 // Join a multicast group IP in order to receive data. Since no interface is specified, the system uses a default.
 // To receive multicast packets from a group on a specific interface, use JoinOn.
 //
 // Joining an already joined IP will return EADDRINUSE.
-func (p *UDPPeer) Join(multicastIP string) error {
+func (p *UDPPeer) Join(multicastIP MulticastIP) error {
 	return p.JoinOn(multicastIP, "")
 }
 
-func (p *UDPPeer) JoinOn(multicastIP, interfaceName string) error {
-	ip, err := parseMulticastIP(multicastIP)
+func (p *UDPPeer) JoinOn(multicastIP MulticastIP, interfaceName InterfaceName) error {
+	return p.JoinSourceOn(multicastIP, "", interfaceName)
+}
+
+func (p *UDPPeer) JoinSource(multicastIP MulticastIP, sourceIP SourceIP) error {
+	return p.JoinSourceOn(multicastIP, sourceIP, "")
+}
+
+func (p *UDPPeer) JoinSourceOn(multicastIP MulticastIP, sourceIP SourceIP, interfaceName InterfaceName) error {
+	mip, err := parseMulticastIP(string(multicastIP))
 	if err != nil {
 		return err
 	}
 
-	var iff *net.Interface
-	if interfaceName != "" {
-		iff, err = resolveMulticastInterface(interfaceName)
+	sip := netip.Addr{}
+	if len(string(sourceIP)) > 0 {
+		sip, err = parseIP(string(sourceIP))
 		if err != nil {
 			return err
 		}
 	}
 
-	if ip.Is4() || ip.Is4In6() {
-		return p.joinIPv4(ip, iff)
-	} else if ip.Is6() {
-		return p.joinIPv6(ip, iff)
+	var iff *net.Interface
+	if string(interfaceName) != "" {
+		iff, err = resolveMulticastInterface(string(interfaceName))
+		if err != nil {
+			return err
+		}
+	}
+
+	if mip.Is4() || mip.Is4In6() {
+		return p.joinIPv4(mip, iff, sip)
+	} else if mip.Is6() {
+		return p.joinIPv6(mip, iff, sip)
 	} else {
 		return fmt.Errorf("unknown IP addressing scheme for addr=%s", multicastIP)
 	}
 }
 
-func (p *UDPPeer) joinIPv4(ip netip.Addr, iff *net.Interface) error {
-	if err := ipv4.AddMembership(p.socket, ip, iff); err != nil {
-		return err
+func (p *UDPPeer) joinIPv4(multicastIP netip.Addr, iff *net.Interface, sourceIP netip.Addr) (err error) {
+	empty := netip.Addr{}
+	if sourceIP == empty {
+		err = ipv4.AddMembership(p.socket, multicastIP, iff)
+	} else {
+		err = ipv4.AddSourceMembership(p.socket, multicastIP, sourceIP, iff)
 	}
-
-	return nil
+	return
 }
 
-func (p *UDPPeer) joinIPv6(ip netip.Addr, iff *net.Interface) error {
+func (p *UDPPeer) joinIPv6(ip netip.Addr, iff *net.Interface, sourceIP netip.Addr) error {
 	panic("IPv6 multicast peer not yet supported")
 }
 
