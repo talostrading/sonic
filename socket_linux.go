@@ -13,5 +13,15 @@ func (s *Socket) BindToDevice(name string) error {
 		return err
 	}
 
-	return syscall.SetsockoptString(s.fd, syscall.SOL_SOCKET, syscall.SO_BINDTODEVICE, iff.Name)
+	if err := syscall.SetsockoptString(
+		s.fd,
+		syscall.SOL_SOCKET,
+		syscall.SO_BINDTODEVICE,
+		iff.Name,
+	); err != nil {
+		return err
+	} else {
+		s.boundInterface = iff
+		return nil
+	}
 }

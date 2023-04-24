@@ -110,6 +110,7 @@ type Socket struct {
 	readSockAddr      syscall.Sockaddr
 	writeSockAddrIpv4 *syscall.SockaddrInet4
 	fd                int
+	boundInterface    *net.Interface
 }
 
 func NewSocket(
@@ -262,6 +263,10 @@ func (s *Socket) Close() (err error) {
 		s.fd = -1
 	}
 	return err
+}
+
+func (s *Socket) BoundInterface() *net.Interface {
+	return s.boundInterface
 }
 
 func (s *Socket) RawFd() int {
