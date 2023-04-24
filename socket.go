@@ -265,7 +265,7 @@ func (s *Socket) Close() (err error) {
 	return err
 }
 
-func (s *Socket) BoundInterface() *net.Interface {
+func (s *Socket) BoundDevice() *net.Interface {
 	return s.boundInterface
 }
 
