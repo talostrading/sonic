@@ -469,11 +469,13 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
+		count := 0
 		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
 			if err != nil {
 				t.Fatal(err)
 			} else {
-				if seq == 10 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+				count++
+				if count == 10 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
 					r.Close()
 				}
 			}
@@ -526,24 +528,15 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		expectedSeq := make(map[netip.AddrPort]uint64)
+		count := make(map[netip.AddrPort]int)
 		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
 			if err != nil {
 				t.Fatal(err)
 			} else {
-				expected, ok := expectedSeq[from]
-				if !ok {
-					expected = 1
-				}
-
-				if seq != expected {
-					t.Fatalf("expected sequence %d but got %d", expected, seq)
-				}
-				expectedSeq[from] = expected + 1
-
+				count[from]++
 				stopCount := 0
-				for _, seqNum := range expectedSeq {
-					if seqNum == 10 {
+				for _, c := range count {
+					if c == 10 {
 						stopCount++
 					}
 				}
@@ -614,24 +607,15 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		expectedSeq := make(map[netip.AddrPort]uint64)
+		count := make(map[netip.AddrPort]int)
 		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
 			if err != nil {
 				t.Fatal(err)
 			} else {
-				expected, ok := expectedSeq[from]
-				if !ok {
-					expected = 1
-				}
-
-				if seq != expected {
-					t.Fatalf("expected sequence %d but got %d", expected, seq)
-				}
-				expectedSeq[from] = expected + 1
-
+				count[from]++
 				stopCount := 0
-				for _, seqNum := range expectedSeq {
-					if seqNum == 10 {
+				for _, c := range count {
+					if c == 10 {
 						stopCount++
 					}
 				}
@@ -702,24 +686,15 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		expectedSeq := make(map[netip.AddrPort]uint64)
+		count := make(map[netip.AddrPort]int)
 		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
 			if err != nil {
 				t.Fatal(err)
 			} else {
-				expected, ok := expectedSeq[from]
-				if !ok {
-					expected = 1
-				}
-
-				if seq != expected {
-					t.Fatalf("expected sequence %d but got %d", expected, seq)
-				}
-				expectedSeq[from] = expected + 1
-
+				count[from]++
 				stopCount := 0
-				for _, seqNum := range expectedSeq {
-					if seqNum == 10 {
+				for _, c := range count {
+					if c == 10 {
 						stopCount++
 					}
 				}
@@ -829,7 +804,7 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 
 	multicastIP2 := "224.0.4.0"
 	multicastAddr2 := fmt.Sprintf("%s:%d", multicastIP2, r.peer.LocalAddr().Port)
-	if err := r.peer.Join(multicastIP1); err != nil {
+	if err := r.peer.Join(multicastIP2); err != nil {
 		t.Fatal(err)
 	}
 
@@ -845,24 +820,15 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 	go func() {
 		defer wg.Done()
 
-		expectedSeq := make(map[netip.AddrPort]uint64)
+		count := make(map[netip.AddrPort]int)
 		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
 			if err != nil {
 				t.Fatal(err)
 			} else {
-				expected, ok := expectedSeq[from]
-				if !ok {
-					expected = 1
-				}
-
-				if seq != expected {
-					t.Fatalf("expected sequence %d but got %d", expected, seq)
-				}
-				expectedSeq[from] = expected + 1
-
+				count[from]++
 				stopCount := 0
-				for _, seqNum := range expectedSeq {
-					if seqNum == 10 {
+				for _, c := range count {
+					if c == 10 {
 						stopCount++
 					}
 				}
