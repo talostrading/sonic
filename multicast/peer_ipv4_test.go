@@ -1281,3 +1281,95 @@ func TestUDPPeerIPv4_JoinSourceAndRead(t *testing.T) {
 		t.Fatal("reader did not read anything")
 	}
 }
+
+func TestUDPPeerIPv4_JoinReadLeave(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastIP := "224.0.1.0"
+	r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:0", multicastIP))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	log.Printf("reader local_addr=%s", r.LocalAddr())
+
+	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Join(IP(multicastIP)); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		onRead             func(error, int, netip.AddrPort)
+		rb                 = make([]byte, 128)
+		nReadBeforeLeave   = 0
+		nReadAfterLeave    = 0
+		lastReadAfterLeave time.Time
+		left               = false
+	)
+	onRead = func(err error, n int, from netip.AddrPort) {
+		if err == nil {
+			if !left {
+				if nReadBeforeLeave == 0 {
+					log.Printf("reader receiving from %s", from)
+				}
+				nReadBeforeLeave++
+			} else {
+				nReadAfterLeave++
+				lastReadAfterLeave = time.Now()
+			}
+
+			if !left && nReadBeforeLeave >= 5 {
+				log.Printf("leaving multicast group")
+				if err := r.Leave(IP(multicastIP)); err != nil {
+					t.Fatal(err)
+				}
+				left = true
+			}
+		} else {
+			log.Printf("err=%v", err)
+		}
+		r.AsyncRead(rb, onRead)
+	}
+	r.AsyncRead(rb, onRead)
+
+	w, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:0", multicastIP))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	var (
+		onWrite func(error, int)
+		wb      = []byte("hello")
+	)
+	onWrite = func(err error, n int) {
+		if err == nil {
+			w.AsyncWrite(wb, multicastAddr, onWrite)
+		} else {
+			log.Printf("err=%v", err)
+		}
+	}
+	w.AsyncWrite(wb, multicastAddr, onWrite)
+
+	log.Printf("writer local_addr=%s", w.LocalAddr())
+
+	start := time.Now()
+	var now time.Time
+	for {
+		now = time.Now()
+		if now.Sub(start).Seconds() < 5 {
+			ioc.PollOne()
+		} else {
+			break
+		}
+	}
+	log.Printf(
+		"done before=%d after=%d now-last_read_after_leave=%s",
+		nReadBeforeLeave, nReadAfterLeave, now.Sub(lastReadAfterLeave))
+}
