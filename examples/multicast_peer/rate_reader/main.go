@@ -25,6 +25,7 @@ var (
 	busy     = flag.Bool("busy", false, "if true, busy-wait for events")
 	nSamples = flag.Int64("n", 128, "latency histogram samples, only relevant if busy == true")
 	profile  = flag.Bool("profile", false, "")
+	sequence = flag.Bool("seq", false, "check sequence numbers received from server")
 )
 
 func main() {
@@ -67,17 +68,19 @@ func main() {
 		} else {
 			b = b[:n]
 
-			seq := binary.BigEndian.Uint64(b)
-			if expectedSeq == 0 {
-				// handles reader starting after writer
-				expectedSeq = seq + 1
-			} else if seq != expectedSeq {
-				// either writer restarted or a packet got lost
-				log.Printf("expected seq=%d but got seq=%d", expectedSeq, seq)
-				expectedSeq = seq + 1
-			} else {
-				// all good
-				expectedSeq++
+			if *sequence {
+				seq := binary.BigEndian.Uint64(b)
+				if expectedSeq == 0 {
+					// handles reader starting after writer
+					expectedSeq = seq + 1
+				} else if seq != expectedSeq {
+					// either writer restarted or a packet got lost
+					log.Printf("expected seq=%d but got seq=%d", expectedSeq, seq)
+					expectedSeq = seq + 1
+				} else {
+					// all good
+					expectedSeq++
+				}
 			}
 
 			nBytes += n
