@@ -221,6 +221,8 @@ func AddSourceMembership(
 	copy(mreqSource.Interface[:], mreq.Interface[:])
 	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
 
+	fmt.Println(mreqSource)
+
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_SETSOCKOPT,
 		uintptr(socket.RawFd()),
