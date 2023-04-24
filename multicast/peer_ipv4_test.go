@@ -447,7 +447,7 @@ func TestUDPPeerIPv4_TTL(t *testing.T) {
 }
 
 func TestUDPPeerIPv4_Reader1(t *testing.T) {
-	// 1 reader, 1 writer
+	// 1 reader on INADDR_ANY joining 224.0.1.0, 1 writer on 224.0.1.0:<reader_port>
 
 	r := newTestRW(t, "udp", "")
 	defer r.Close()
@@ -499,53 +499,405 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	fmt.Println(r.received)
 }
 
-//func TestUDPPeerIPv4_Reader2(t *testing.T) {
-//	// 1 reader, 2 writers
-//
-//	r := newTestRW(t, "udp", "")
-//	defer r.Close()
-//
-//	multicastIP := "224.0.1.0"
-//	multicastPort := r.peer.LocalAddr().Port
-//	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, multicastPort)
-//	if err := r.peer.Join(multicastIP); err != nil {
-//		t.Fatal(err)
-//	}
-//
-//	w1 := newTestRW(t, "udp", "")
-//	defer w1.Close()
-//
-//	var wg sync.WaitGroup
-//	wg.Add(2)
-//
-//	start := time.Now()
-//	go func() {
-//		defer wg.Done()
-//
-//		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
-//			if err != nil {
-//				t.Fatal(err)
-//			} else {
-//				if seq == 10 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
-//					r.Close()
-//				}
-//			}
-//		})
-//	}()
-//
-//	go func() {
-//		defer wg.Done()
-//		for i := 0; i < 10; i++ {
-//			if err := w.WriteNext(multicastAddr); err != nil {
-//				t.Fatal(err)
-//			}
-//			time.Sleep(time.Millisecond)
-//		}
-//	}()
-//
-//	wg.Wait()
-//
-//	if len(r.ReceivedFrom()) != 1 {
-//		t.Fatal("should have received from exactly one source")
-//	}
-//}
+func TestUDPPeerIPv4_Reader2(t *testing.T) {
+	// 1 reader on INADDR_ANY.
+	// 2 writers on multicastAddr: 224.0.1.0:<reader_port>.
+	// reader joins 224.0.1.0. Reader should get from both.
+
+	r := newTestRW(t, "udp", "")
+	defer r.Close()
+
+	multicastIP := "224.0.1.0"
+	multicastPort := r.peer.LocalAddr().Port
+	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, multicastPort)
+	if err := r.peer.Join(multicastIP); err != nil {
+		t.Fatal(err)
+	}
+
+	w1 := newTestRW(t, "udp", "")
+	defer w1.Close()
+	w2 := newTestRW(t, "udp", "")
+	defer w2.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	start := time.Now()
+	go func() {
+		defer wg.Done()
+
+		expectedSeq := make(map[netip.AddrPort]uint64)
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			if err != nil {
+				t.Fatal(err)
+			} else {
+				expected, ok := expectedSeq[from]
+				if !ok {
+					expected = 1
+				}
+
+				if seq != expected {
+					t.Fatalf("expected sequence %d but got %d", expected, seq)
+				}
+				expectedSeq[from] = expected + 1
+
+				stopCount := 0
+				for _, seqNum := range expectedSeq {
+					if seqNum == 10 {
+						stopCount++
+					}
+				}
+
+				if stopCount == 2 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+					r.Close()
+				}
+			}
+		})
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w1.WriteNext(multicastAddr); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w2.WriteNext(multicastAddr); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	if len(r.ReceivedFrom()) != 2 {
+		t.Fatal("should have received from exactly two sources")
+	}
+
+	fmt.Println(r.received)
+}
+
+func TestUDPPeerIPv4_Reader3(t *testing.T) {
+	// 1 reader on INADDR_ANY.
+	// 2 writers:
+	// - one on 224.0.1.0:<reader_port>
+	// - two on 224.0.2.0:<reader_port>
+	// The reader only joins 224.0.1.0. Should only get from writer 1.
+
+	r := newTestRW(t, "udp", "")
+	defer r.Close()
+
+	multicastIP1 := "224.0.1.0"
+	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
+	if err := r.peer.Join(multicastIP1); err != nil {
+		t.Fatal(err)
+	}
+
+	multicastIP2 := "224.0.2.0"
+	multicastAddr2 := fmt.Sprintf("%s:%d", multicastIP2, r.peer.LocalAddr().Port)
+
+	w1 := newTestRW(t, "udp", "")
+	defer w1.Close()
+	w2 := newTestRW(t, "udp", "")
+	defer w2.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	start := time.Now()
+	go func() {
+		defer wg.Done()
+
+		expectedSeq := make(map[netip.AddrPort]uint64)
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			if err != nil {
+				t.Fatal(err)
+			} else {
+				expected, ok := expectedSeq[from]
+				if !ok {
+					expected = 1
+				}
+
+				if seq != expected {
+					t.Fatalf("expected sequence %d but got %d", expected, seq)
+				}
+				expectedSeq[from] = expected + 1
+
+				stopCount := 0
+				for _, seqNum := range expectedSeq {
+					if seqNum == 10 {
+						stopCount++
+					}
+				}
+
+				if stopCount == 1 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+					r.Close()
+				}
+			}
+		})
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w1.WriteNext(multicastAddr1); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w2.WriteNext(multicastAddr2); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	if len(r.ReceivedFrom()) != 1 {
+		t.Fatal("should have received from exactly one source")
+	}
+
+	fmt.Println(r.received)
+}
+
+func TestUDPPeerIPv4_Reader4(t *testing.T) {
+	// 1 reader on INADDR_ANY.
+	// 2 writers:
+	// - one on 224.0.1.0:<reader_port>
+	// - two on 224.0.1.0:<not_reader_port>
+	// The reader only joins 224.0.1.0. Should only get from writer 1 since writer 2 does not publish on the reader's
+	// port.
+
+	r := newTestRW(t, "udp", "")
+	defer r.Close()
+
+	multicastIP1 := "224.0.1.0"
+	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
+	if err := r.peer.Join(multicastIP1); err != nil {
+		t.Fatal(err)
+	}
+
+	multicastAddr2 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port+1)
+
+	w1 := newTestRW(t, "udp", "")
+	defer w1.Close()
+	w2 := newTestRW(t, "udp", "")
+	defer w2.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	start := time.Now()
+	go func() {
+		defer wg.Done()
+
+		expectedSeq := make(map[netip.AddrPort]uint64)
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			if err != nil {
+				t.Fatal(err)
+			} else {
+				expected, ok := expectedSeq[from]
+				if !ok {
+					expected = 1
+				}
+
+				if seq != expected {
+					t.Fatalf("expected sequence %d but got %d", expected, seq)
+				}
+				expectedSeq[from] = expected + 1
+
+				stopCount := 0
+				for _, seqNum := range expectedSeq {
+					if seqNum == 10 {
+						stopCount++
+					}
+				}
+
+				if stopCount == 1 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+					r.Close()
+				}
+			}
+		})
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w1.WriteNext(multicastAddr1); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w2.WriteNext(multicastAddr2); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	if len(r.ReceivedFrom()) != 1 {
+		t.Fatal("should have received from exactly one source")
+	}
+
+	fmt.Println(r.received)
+}
+
+func TestUDPPeerIPv4_Reader5(t *testing.T) {
+	// 1 reader bound to 224.0.1.0:0(so random port). Joins nothing.
+	// 1 writer on 224.0.1.0:<reader_port>.
+	// Reader should get nothing.
+
+	multicastIP := "224.0.1.0"
+
+	r := newTestRW(t, "udp", fmt.Sprintf("%s:0", multicastIP))
+	defer r.Close()
+
+	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, r.peer.LocalAddr().Port)
+
+	w := newTestRW(t, "udp", "")
+	defer w.Close()
+
+	readerGot := 0
+	go func() {
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			if err != nil {
+				t.Fatal(err)
+			} else {
+				readerGot += 1
+			}
+		})
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w.WriteNext(multicastAddr); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	wg.Wait()
+
+	r.ioc.Close()
+
+	if len(r.ReceivedFrom()) != 0 {
+		t.Fatal("should have received from none")
+	}
+
+	fmt.Println(r.received)
+}
+
+func TestUDPPeerIPv4_Reader6(t *testing.T) {
+	// Counterpart to TestReader2.
+	//
+	// 1 reader on 224.0.3.0:0(so random port). Joins both 224.0.3.0 and 224.0.4.0.
+	// 2 writers:
+	// - one on 224.0.3.0:<reader_port>
+	// - two on 224.0.4.0:<not_reader_port>
+	//
+	// The reader joins both groups, but it's bound to 224.0.3.0, which has a filtering role, meaning that it should
+	// only get from 224.0.3.0 and not also from 224.0.4.0.
+
+	r := newTestRW(t, "udp", "224.0.3.0:0")
+	defer r.Close()
+
+	multicastIP1 := "224.0.3.0"
+	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
+	if err := r.peer.Join(multicastIP1); err != nil {
+		t.Fatal(err)
+	}
+
+	multicastIP2 := "224.0.4.0"
+	multicastAddr2 := fmt.Sprintf("%s:%d", multicastIP2, r.peer.LocalAddr().Port)
+	if err := r.peer.Join(multicastIP1); err != nil {
+		t.Fatal(err)
+	}
+
+	w1 := newTestRW(t, "udp", "")
+	defer w1.Close()
+	w2 := newTestRW(t, "udp", "")
+	defer w2.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(3)
+
+	start := time.Now()
+	go func() {
+		defer wg.Done()
+
+		expectedSeq := make(map[netip.AddrPort]uint64)
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			if err != nil {
+				t.Fatal(err)
+			} else {
+				expected, ok := expectedSeq[from]
+				if !ok {
+					expected = 1
+				}
+
+				if seq != expected {
+					t.Fatalf("expected sequence %d but got %d", expected, seq)
+				}
+				expectedSeq[from] = expected + 1
+
+				stopCount := 0
+				for _, seqNum := range expectedSeq {
+					if seqNum == 10 {
+						stopCount++
+					}
+				}
+
+				if stopCount == 1 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+					r.Close()
+				}
+			}
+		})
+	}()
+
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w1.WriteNext(multicastAddr1); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w2.WriteNext(multicastAddr2); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	if len(r.ReceivedFrom()) != 1 {
+		t.Fatal("should have received from exactly one source")
+	}
+
+	fmt.Println(r.received)
+}
