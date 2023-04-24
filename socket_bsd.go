@@ -8,6 +8,10 @@ import (
 	"syscall"
 )
 
+// BindToDevice binds the socket to the device with the given name. The device is a network interface (`ip link` to see
+// all interfaces).
+//
+// This makes it such that only packets from the given device will be processed by the socket.
 func (s *Socket) BindToDevice(name string) error {
 	iff, err := net.InterfaceByName(name)
 	if err != nil {
@@ -31,6 +35,7 @@ func (s *Socket) BindToDevice(name string) error {
 	}
 }
 
+// UnbindFromDevice is not working, and honestly I have no clue why.
 func (s *Socket) UnbindFromDevice() error {
 	if s.boundInterface == nil {
 		return nil

@@ -22,7 +22,7 @@ func TestSocket_BindToDeviceIPv4(t *testing.T) {
 		log.Printf("attempting to bind socket to device=%s", iff.Name)
 		if err := sock.BindToDevice(iff.Name); err != nil {
 			t.Fatalf("could not bind socket to %s err=%v", iff.Name, err)
-		} else if sock.BoundInterface() == nil {
+		} else if sock.BoundDevice() == nil {
 			t.Fatal("should have set bound device")
 		} else {
 			log.Printf("bound socket fd=%d to device=%s", sock.RawFd(), iff.Name)
