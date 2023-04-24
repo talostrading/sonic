@@ -255,7 +255,69 @@ func TestUDPPeerIPv4_JoinOn(t *testing.T) {
 	}
 	defer peer.Close()
 
-	if err := peer.JoinOn("224.0.1.0", testInterfacesIPv4[0].Name); err != nil {
+	if err := peer.JoinOn("224.0.1.0", InterfaceName(testInterfacesIPv4[0].Name)); err != nil {
+		t.Fatal(err)
+	}
+
+	addr, err := ipv4.GetMulticastInterfaceAddr(peer.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !addr.IsUnspecified() {
+		t.Fatal("multicast address should be unspecified")
+	}
+
+	log.Println("ran")
+}
+
+func TestUDPPeerIPv4_JoinSource(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	peer, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+
+	if err := peer.JoinSource("224.0.1.0", "192.168.0.1"); err != nil {
+		t.Fatal(err)
+	}
+
+	addr, err := ipv4.GetMulticastInterfaceAddr(peer.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !addr.IsUnspecified() {
+		t.Fatal("multicast address should be unspecified")
+	}
+
+	log.Println("ran")
+}
+
+func TestUDPPeerIPv4_JoinSourceOn(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	peer, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+
+	if err := peer.JoinSourceOn(
+		"224.0.1.0",
+		"192.168.0.1",
+		InterfaceName(testInterfacesIPv4[0].Name),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -485,7 +547,7 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	multicastIP := "224.0.1.0"
 	multicastPort := r.peer.LocalAddr().Port
 	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, multicastPort)
-	if err := r.peer.Join(multicastIP); err != nil {
+	if err := r.peer.Join(MulticastIP(multicastIP)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -542,7 +604,7 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 	multicastIP := "224.0.1.0"
 	multicastPort := r.peer.LocalAddr().Port
 	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, multicastPort)
-	if err := r.peer.Join(multicastIP); err != nil {
+	if err := r.peer.Join(MulticastIP(multicastIP)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -618,7 +680,7 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 
 	multicastIP1 := "224.0.1.0"
 	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
-	if err := r.peer.Join(multicastIP1); err != nil {
+	if err := r.peer.Join(MulticastIP(multicastIP1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -698,7 +760,7 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 
 	multicastIP1 := "224.0.1.0"
 	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
-	if err := r.peer.Join(multicastIP1); err != nil {
+	if err := r.peer.Join(MulticastIP(multicastIP1)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -828,13 +890,13 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 
 	multicastIP1 := "224.0.3.0"
 	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
-	if err := r.peer.Join(multicastIP1); err != nil {
+	if err := r.peer.Join(MulticastIP(multicastIP1)); err != nil {
 		t.Fatal(err)
 	}
 
 	multicastIP2 := "224.0.4.0"
 	multicastAddr2 := fmt.Sprintf("%s:%d", multicastIP2, r.peer.LocalAddr().Port)
-	if err := r.peer.Join(multicastIP2); err != nil {
+	if err := r.peer.Join(MulticastIP(multicastIP2)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -909,7 +971,7 @@ func TestUDPPeerIPv4_Reader7(t *testing.T) {
 
 	multicastIP := "224.0.1.0"
 	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, r.peer.LocalAddr().Port)
-	if err := r.peer.Join(multicastIP); err != nil {
+	if err := r.peer.Join(MulticastIP(multicastIP)); err != nil {
 		t.Fatal(err)
 	}
 
