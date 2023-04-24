@@ -926,6 +926,9 @@ func TestUDPPeerIPv4_Reader7(t *testing.T) {
 func TestUDPPeer_SetInbound2(t *testing.T) {
 	if len(testInterfacesIPv4) < 2 {
 		log.Printf("not running this one as we don't have two interfaces")
+		for _, iff := range testInterfacesIPv4 {
+			log.Printf("interface name=%s", iff.Name)
+		}
 		return
 	}
 
