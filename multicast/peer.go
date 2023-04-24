@@ -35,7 +35,13 @@ type UDPPeer struct {
 	dispatched int
 }
 
-// NewUDPPeer TODO if you pass "" as addr then what, the behaviour changes depending whether you also want to read/write.
+// NewUDPPeer creates a new UDPPeer capable of reading/writing multicast packets on the network.
+//
+// `network` must be one of: "udp", "udp4", "udp6". "udp" resolves to "udp4". 4 means IPv4. 6 means IPv6.
+// `addr` can be:
+// - "" (empty): in this case the peer will be bound to all local interfaces.
+// - "<some_multicast_ip>": in this case the peer will be bound to a kernel default interface that can multicast and
+// 	 only traffic originating from <some_multicast_ip> will be received by this peer.
 func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	resolvedAddr, err := net.ResolveUDPAddr(network, addr)
 	if err != nil {
@@ -368,6 +374,7 @@ func (p *UDPPeer) setWrite() error {
 	return p.ioc.SetWrite(p.socket.RawFd(), &p.slot)
 }
 
+// LocalAddr of the peer. Note that the IP can be zero if addr is empty in NewUDPPeer.
 func (p *UDPPeer) LocalAddr() *net.UDPAddr {
 	return p.localAddr
 }

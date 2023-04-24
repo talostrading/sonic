@@ -191,6 +191,28 @@ func TestUDPPeerIPv4_Addresses(t *testing.T) {
 	log.Println("ran")
 }
 
+func TestUDPPeerIPv4_BindToInterfaceIP(t *testing.T) {
+	xs, err := interfacesWithIP(4)
+	if err == ErrNoInterfaces {
+		log.Printf("skipping this test as no interfaces are available")
+		return
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+	for _, x := range xs {
+		peer, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:0", x.ip.String()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		peer.Close()
+		log.Printf("bound peer to %s on %s", x.ip.String(), x.iff.Name)
+	}
+}
+
 func TestUDPPeerIPv4_JoinInvalidGroup(t *testing.T) {
 	if len(testInterfacesIPv4) == 0 {
 		return
