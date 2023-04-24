@@ -24,6 +24,7 @@ type UDPPeer struct {
 	write      *writeReactor
 	outbound   *net.Interface
 	outboundIP netip.Addr
+	inbound    *net.Interface
 	loop       bool
 	ttl        uint8
 
@@ -155,6 +156,15 @@ func (p *UDPPeer) SetOutboundIPv6(interfaceName string) error {
 
 func (p *UDPPeer) Outbound() (*net.Interface, netip.Addr) {
 	return p.outbound, p.outboundIP
+}
+
+func (p *UDPPeer) SetInbound(interfaceName string) (err error) {
+	p.inbound, err = p.socket.BindToDevice(interfaceName)
+	return err
+}
+
+func (p *UDPPeer) Inbound() *net.Interface {
+	return p.inbound
 }
 
 func (p *UDPPeer) SetLoop(loop bool) error {
