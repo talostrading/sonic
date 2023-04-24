@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -920,4 +921,53 @@ func TestUDPPeerIPv4_Reader7(t *testing.T) {
 	}
 
 	fmt.Println(r.received)
+}
+
+func TestUDPPeer_SetInbound2(t *testing.T) {
+	if len(testInterfacesIPv4) < 2 {
+		log.Printf("not running this one as we don't have two interfaces")
+		return
+	}
+
+	readerInterface := testInterfacesIPv4[0]
+	writerInterface := testInterfacesIPv4[1]
+	log.Printf("reader_interface=%s writer_interface=%s", readerInterface.Name, writerInterface.Name)
+
+	r := newTestRW(t, "udp", "")
+	defer r.Close()
+	if err := r.peer.SetInbound(readerInterface.Name); err != nil {
+		t.Fatal(err)
+	}
+
+	w := newTestRW(t, "udp", "")
+	defer w.Close()
+	if err := r.peer.SetOutboundIPv4(writerInterface.Name); err != nil {
+		t.Fatal(err)
+	}
+
+	multicastAddr := fmt.Sprintf("224.0.1.0:%d", r.peer.LocalAddr().Port)
+
+	var count int32 = 0
+	go func() {
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			atomic.AddInt32(&count, 1)
+		})
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w.WriteNext(multicastAddr); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}()
+
+	wg.Wait()
+
+	if atomic.LoadInt32(&count) != 0 {
+		t.Fatal("reader should have not received anything")
+	}
 }
