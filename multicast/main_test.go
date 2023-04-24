@@ -2,6 +2,7 @@ package multicast
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/talostrading/sonic"
 	"log"
@@ -162,4 +163,62 @@ func (rw *testRW) ReceivedFrom() (xs []netip.AddrPort) {
 		xs = append(xs, addr)
 	}
 	return xs
+}
+
+var ErrNoInterfaces = errors.New("no interfaces available")
+
+type interfaceWithIP struct {
+	iff net.Interface
+	ip  netip.Addr
+}
+
+func interfacesWithIP(v int) (ret []interfaceWithIP, err error) {
+	iffs, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	if len(iffs) == 0 {
+		return nil, ErrNoInterfaces
+	}
+
+	for _, iff := range iffs {
+		if iff.Flags&net.FlagUp != net.FlagUp {
+			continue
+		}
+		if iff.Flags&net.FlagMulticast != net.FlagMulticast {
+			continue
+		}
+
+		addrs, err := iff.Addrs()
+		if err != nil {
+			continue
+		}
+
+		for _, a := range addrs {
+			ip, _, err := net.ParseCIDR(a.String())
+			if err != nil {
+				continue
+			}
+			addr, err := netip.ParseAddr(ip.String())
+			if err != nil {
+				continue
+			}
+			if !addr.IsValid() {
+				continue
+			}
+
+			if v == 4 {
+				if addr.Is4() || addr.Is4In6() {
+					ret = append(ret, interfaceWithIP{
+						iff: iff,
+						ip:  addr,
+					})
+				}
+			} else {
+				panic("not supported")
+			}
+		}
+	}
+	return ret, nil
 }
