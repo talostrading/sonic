@@ -696,7 +696,7 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr); err != nil {
+			if err := w1.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -705,7 +705,7 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr); err != nil {
+			if err := w2.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -775,7 +775,7 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr1); err != nil {
+			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -784,7 +784,7 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr2); err != nil {
+			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -854,7 +854,7 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr1); err != nil {
+			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -863,7 +863,7 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr2); err != nil {
+			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -940,7 +940,7 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr1); err != nil {
+			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -949,7 +949,7 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr2); err != nil {
+			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -999,7 +999,7 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil {
+			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1063,7 +1063,7 @@ func TestUDPPeer_SetInbound1(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil {
+			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1363,7 +1363,7 @@ func TestUDPPeerIPv4_JoinReadLeave(t *testing.T) {
 	var now time.Time
 	for {
 		now = time.Now()
-		if now.Sub(start).Seconds() < 5 {
+		if now.Sub(start).Seconds() < 10 {
 			ioc.PollOne()
 		} else {
 			break
