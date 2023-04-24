@@ -923,9 +923,9 @@ func TestUDPPeerIPv4_Reader7(t *testing.T) {
 	fmt.Println(r.received)
 }
 
-func TestUDPPeer_SetInbound2(t *testing.T) {
-	if len(testInterfacesIPv4) < 2 {
-		log.Printf("not running this one as we don't have two interfaces")
+func TestUDPPeer_SetInbound1(t *testing.T) {
+	if len(testInterfacesIPv4) < 1 {
+		log.Printf("not running this one as we don't have enough multicast interfaces")
 		for _, iff := range testInterfacesIPv4 {
 			log.Printf("interface name=%s", iff.Name)
 		}
@@ -933,12 +933,15 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 	}
 
 	readerInterface := testInterfacesIPv4[0]
-	writerInterface := testInterfacesIPv4[1]
+	writerInterface := testInterfacesIPv4[0]
 	log.Printf("reader_interface=%s writer_interface=%s", readerInterface.Name, writerInterface.Name)
 
 	r := newTestRW(t, "udp", "")
 	defer r.Close()
 	if err := r.peer.SetInbound(readerInterface.Name); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.peer.Join("224.0.1.0"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -957,14 +960,76 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 		})
 	}()
 
+	time.Sleep(time.Millisecond)
+
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for i := 0; i < 10; i++ {
+		for i := 0; i < 50; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil {
 				t.Fatal(err)
 			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	if atomic.LoadInt32(&count) == 0 {
+		t.Fatal("reader should have received something")
+	}
+	log.Printf("reader received %d", count)
+}
+
+func TestUDPPeer_SetInbound2(t *testing.T) {
+	if len(testInterfacesIPv4) < 2 {
+		log.Printf("not running this one as we don't have enough multicast interfaces")
+		for _, iff := range testInterfacesIPv4 {
+			log.Printf("interface name=%s", iff.Name)
+		}
+		return
+	}
+
+	readerInterface := testInterfacesIPv4[0]
+	writerInterface := testInterfacesIPv4[1]
+	log.Printf("reader_interface=%s writer_interface=%s", readerInterface.Name, writerInterface.Name)
+
+	r := newTestRW(t, "udp", "")
+	defer r.Close()
+	if err := r.peer.SetInbound(readerInterface.Name); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.peer.Join("224.0.1.0"); err != nil {
+		t.Fatal(err)
+	}
+
+	w := newTestRW(t, "udp", "")
+	defer w.Close()
+	if err := r.peer.SetOutboundIPv4(writerInterface.Name); err != nil {
+		t.Fatal(err)
+	}
+
+	multicastAddr := fmt.Sprintf("224.0.1.0:%d", r.peer.LocalAddr().Port)
+
+	var count int32 = 0
+	go func() {
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			atomic.AddInt32(&count, 1)
+		})
+	}()
+
+	time.Sleep(time.Millisecond)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			if err := w.WriteNext(multicastAddr); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
 		}
 	}()
 
