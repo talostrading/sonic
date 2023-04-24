@@ -867,3 +867,57 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 
 	fmt.Println(r.received)
 }
+
+func TestUDPPeerIPv4_Reader7(t *testing.T) {
+	// 1 reader on localhost:0(so random port). Joins 224.0.1.0.
+	// 1 writer bound to 0.0.0.0:0 and sending on 224.0.1.0:<reader_port>.
+	// Reader should not receive anything.
+	// TODO still not entirely sure what happens when binding the writer to a unicast address.
+
+	r := newTestRW(t, "udp", "localhost:0")
+	defer r.Close()
+
+	multicastIP := "224.0.1.0"
+	multicastAddr := fmt.Sprintf("%s:%d", multicastIP, r.peer.LocalAddr().Port)
+	if err := r.peer.Join(multicastIP); err != nil {
+		t.Fatal(err)
+	}
+
+	w := newTestRW(t, "udp", "")
+	defer w.Close()
+
+	readerGot := 0
+	go func() {
+		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+			if err != nil {
+				t.Fatal(err)
+			} else {
+				readerGot++
+			}
+		})
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			if err := w.WriteNext(multicastAddr); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	if readerGot != 0 {
+		t.Fatal("reader should have not received anything")
+	}
+
+	if len(r.ReceivedFrom()) != 0 {
+		t.Fatal("should have received from no sources")
+	}
+
+	fmt.Println(r.received)
+}
