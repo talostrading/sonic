@@ -22,6 +22,8 @@ type IPMreqSource struct {
 
 // TODO this is defined on Linux but not on BSD even though it should so PR in golang to introduce this
 
+// TODO i think everything here should just take the fd as first arg.
+
 func GetMulticastInterfaceAddr(socket *sonic.Socket) (netip.Addr, error) {
 	addr, err := syscall.GetsockoptInet4Addr(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF)
 	if err != nil {
@@ -261,6 +263,26 @@ func DropSourceMembership(socket *sonic.Socket, multicastIP, sourceIP netip.Addr
 		uintptr(socket.RawFd()),
 		uintptr(syscall.IPPROTO_IP),
 		uintptr(syscall.IP_DROP_SOURCE_MEMBERSHIP),
+		uintptr(unsafe.Pointer(mreqSource)),
+		uintptr(SizeofIPMreqSource),
+		0,
+	)
+	if errno != 0 {
+		err = errno
+	}
+	return err
+}
+
+func BlockSource(socket *sonic.Socket, multicastIP, sourceIP netip.Addr) (err error) {
+	mreqSource := &IPMreqSource{}
+	copy(mreqSource.Multiaddr[:], multicastIP.AsSlice())
+	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
+
+	_, _, errno := syscall.Syscall6(
+		uintptr(syscall.SYS_SETSOCKOPT),
+		uintptr(socket.RawFd()),
+		uintptr(syscall.IPPROTO_IP),
+		uintptr(syscall.IP_BLOCK_SOURCE),
 		uintptr(unsafe.Pointer(mreqSource)),
 		uintptr(SizeofIPMreqSource),
 		0,
