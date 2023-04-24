@@ -983,6 +983,9 @@ func TestUDPPeer_SetInbound1(t *testing.T) {
 }
 
 func TestUDPPeer_SetInbound2(t *testing.T) {
+	// TODO warning - this test is not correct. We explicitly tell the kernel to not loopback multicast packets.
+	// SetInbound might not be correct but I need a proper setup to test that.
+
 	if len(testInterfacesIPv4) < 2 {
 		log.Printf("not running this one as we don't have enough multicast interfaces")
 		for _, iff := range testInterfacesIPv4 {
@@ -1003,10 +1006,16 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 	if err := r.peer.Join("224.0.1.0"); err != nil {
 		t.Fatal(err)
 	}
+	if err := r.peer.SetLoop(false); err != nil {
+		t.Fatal(err)
+	}
 
 	w := newTestRW(t, "udp", "")
 	defer w.Close()
 	if err := r.peer.SetOutboundIPv4(writerInterface.Name); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.peer.SetLoop(false); err != nil {
 		t.Fatal(err)
 	}
 
