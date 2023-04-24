@@ -200,6 +200,9 @@ func interfacesWithIP(v int) (ret []interfaceWithIP, err error) {
 			if err != nil {
 				continue
 			}
+			if ip.IsLoopback() {
+				continue
+			}
 			addr, err := netip.ParseAddr(ip.String())
 			if err != nil {
 				continue
