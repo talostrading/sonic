@@ -256,11 +256,12 @@ func (s *Socket) SendTo(
 	}
 }
 
-func (s *Socket) Close() error {
+func (s *Socket) Close() (err error) {
 	if s.fd >= 0 {
-		return syscall.Close(s.fd)
+		err = syscall.Close(s.fd)
+		s.fd = -1
 	}
-	return nil
+	return err
 }
 
 func (s *Socket) RawFd() int {
