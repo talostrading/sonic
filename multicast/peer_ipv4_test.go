@@ -1239,7 +1239,11 @@ func TestUDPPeerIPv4_JoinOnAndRead(t *testing.T) {
 	}
 
 	r := newTestRW(t, "udp", "224.0.1.0:0")
-	w := newTestRW(t, "udp", "")
+	w := newTestRW(t, "udp", fmt.Sprintf("%s:0", iffs[0].ip))
+
+	if w.peer.LocalAddr().IP.String() != iffs[0].ip.String() {
+		t.Fatal("something wrong with binding to an interface address")
+	}
 
 	w.peer.LocalAddr()
 	if err := r.peer.JoinOn("224.0.1.0", InterfaceName(iffs[0].iff.Name)); err != nil {
