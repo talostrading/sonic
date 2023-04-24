@@ -12,10 +12,10 @@ import (
 // all interfaces).
 //
 // This makes it such that only packets from the given device will be processed by the socket.
-func (s *Socket) BindToDevice(name string) error {
+func (s *Socket) BindToDevice(name string) (*net.Interface, error) {
 	iff, err := net.InterfaceByName(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if s.domain == SocketDomainIPv4 {
@@ -25,13 +25,13 @@ func (s *Socket) BindToDevice(name string) error {
 			syscall.IP_BOUND_IF,
 			iff.Index,
 		); err != nil {
-			return err
+			return nil, err
 		} else {
 			s.boundInterface = iff
-			return nil
+			return iff, nil
 		}
 	} else {
-		return fmt.Errorf("cannot yet bind to device when domain is ipv6")
+		return nil, fmt.Errorf("cannot yet bind to device when domain is ipv6")
 	}
 }
 

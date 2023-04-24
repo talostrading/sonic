@@ -12,10 +12,10 @@ import (
 // all interfaces).
 //
 // This makes it such that only packets from the given device will be processed by the socket.
-func (s *Socket) BindToDevice(name string) error {
+func (s *Socket) BindToDevice(name string) (*net.Interface, error) {
 	iff, err := net.InterfaceByName(name)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if err := syscall.SetsockoptString(
@@ -24,10 +24,10 @@ func (s *Socket) BindToDevice(name string) error {
 		syscall.SO_BINDTODEVICE,
 		iff.Name,
 	); err != nil {
-		return err
+		return nil, err
 	} else {
 		s.boundInterface = iff
-		return nil
+		return iff, nil
 	}
 }
 
