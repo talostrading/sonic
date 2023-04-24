@@ -9,6 +9,19 @@ import (
 	"unsafe"
 )
 
+// SizeofIPMreqSource I would love to do unsafe.SizeOf  but for a struct with 3 4-byte arrays, it returns 8 on my Mac.
+// It should return 12 :). So we add 4 bytes instead which is enough for the source IP.
+const SizeofIPMreqSource = syscall.SizeofIPMreq + 4
+
+// IPMreqSource adds Sourceaddr to net.IPMreq
+type IPMreqSource struct {
+	Multiaddr  [4]byte /* in_addr */
+	Interface  [4]byte /* in_addr */
+	Sourceaddr [4]byte /* in_addr */
+}
+
+// TODO this is defined on Linux but not on BSD even though it should so PR in golang to introduce this
+
 func GetMulticastInterfaceAddr(socket *sonic.Socket) (netip.Addr, error) {
 	addr, err := syscall.GetsockoptInet4Addr(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_MULTICAST_IF)
 	if err != nil {
@@ -194,17 +207,6 @@ func AddMembership(
 	return syscall.SetsockoptIPMreq(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_ADD_MEMBERSHIP, mreq)
 }
 
-// SizeofIPMreqSource I would love to do unsafe.SizeOf  but for a struct with 3 4-byte arrays, it returns 8 on my Mac.
-// It should return 12 :). So we add 4 bytes instead which is enough for the source IP.
-const SizeofIPMreqSource = syscall.SizeofIPMreq + 4
-
-// IPMreqSource adds Sourceaddr to net.IPMreq
-type IPMreqSource struct {
-	Multiaddr  [4]byte /* in_addr */
-	Interface  [4]byte /* in_addr */
-	Sourceaddr [4]byte /* in_addr */
-}
-
 func AddSourceMembership(
 	socket *sonic.Socket,
 	multicastIP netip.Addr,
@@ -221,16 +223,48 @@ func AddSourceMembership(
 	copy(mreqSource.Interface[:], mreq.Interface[:])
 	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
 
-	fmt.Println(mreqSource)
-
 	_, _, errno := syscall.Syscall6(
-		syscall.SYS_SETSOCKOPT,
+		uintptr(syscall.SYS_SETSOCKOPT),
 		uintptr(socket.RawFd()),
 		uintptr(syscall.IPPROTO_IP),
 		uintptr(syscall.IP_ADD_SOURCE_MEMBERSHIP),
 		uintptr(unsafe.Pointer(mreqSource)),
-		SizeofIPMreqSource,
+		uintptr(SizeofIPMreqSource),
 		0)
+	if errno != 0 {
+		err = errno
+	}
+	return err
+}
+
+func prepareDropMembership(multicastIP netip.Addr) *syscall.IPMreq {
+	mreq := &syscall.IPMreq{}
+	copy(mreq.Multiaddr[:], multicastIP.AsSlice())
+
+	return mreq
+}
+
+func DropMembership(socket *sonic.Socket, multicastIP netip.Addr) error {
+	mreq := prepareDropMembership(multicastIP)
+
+	return syscall.SetsockoptIPMreq(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_DROP_MEMBERSHIP, mreq)
+}
+
+func DropSourceMembership(socket *sonic.Socket, multicastIP, sourceIP netip.Addr) (err error) {
+	mreq := prepareDropMembership(multicastIP)
+	mreqSource := &IPMreqSource{}
+	copy(mreqSource.Multiaddr[:], mreq.Multiaddr[:])
+	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
+
+	_, _, errno := syscall.Syscall6(
+		uintptr(syscall.SYS_SETSOCKOPT),
+		uintptr(socket.RawFd()),
+		uintptr(syscall.IPPROTO_IP),
+		uintptr(syscall.IP_DROP_SOURCE_MEMBERSHIP),
+		uintptr(unsafe.Pointer(mreqSource)),
+		uintptr(SizeofIPMreqSource),
+		0,
+	)
 	if errno != 0 {
 		err = errno
 	}

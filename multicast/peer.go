@@ -267,6 +267,47 @@ func (p *UDPPeer) joinIPv6(ip netip.Addr, iff *net.Interface, sourceIP netip.Add
 	panic("IPv6 multicast peer not yet supported")
 }
 
+func (p *UDPPeer) Leave(multicastIP IP) error {
+	return p.LeaveSource(multicastIP, "")
+}
+
+func (p *UDPPeer) LeaveSource(multicastIP IP, sourceIP SourceIP) error {
+	mip, err := parseMulticastIP(string(multicastIP))
+	if err != nil {
+		return err
+	}
+
+	sip := netip.Addr{}
+	if len(string(sourceIP)) > 0 {
+		sip, err = parseIP(string(sourceIP))
+		if err != nil {
+			return err
+		}
+	}
+
+	if mip.Is4() || mip.Is4In6() {
+		return p.leaveIPv4(mip, sip)
+	} else if mip.Is6() {
+		return p.leaveIPv6(mip, sip)
+	} else {
+		return fmt.Errorf("unknown IP addressing scheme for addr=%s", multicastIP)
+	}
+}
+
+func (p *UDPPeer) leaveIPv4(multicastIP, sourceIP netip.Addr) (err error) {
+	empty := netip.Addr{}
+	if sourceIP == empty {
+		err = ipv4.DropMembership(p.socket, multicastIP)
+	} else {
+		err = ipv4.DropSourceMembership(p.socket, multicastIP, sourceIP)
+	}
+	return
+}
+
+func (p *UDPPeer) leaveIPv6(multicastIP, sourceIP netip.Addr) error {
+	panic("IPv6 multicast peer not yet supported")
+}
+
 func (p *UDPPeer) Read(b []byte) (int, netip.AddrPort, error) {
 	return p.socket.RecvFrom(b, 0)
 }
