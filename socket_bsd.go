@@ -15,7 +15,17 @@ func (s *Socket) BindToDevice(name string) error {
 	}
 
 	if s.domain == SocketDomainIPv4 {
-		return syscall.SetsockoptInt(s.fd, syscall.IPPROTO_IP, syscall.IP_BOUND_IF, iff.Index)
+		if err := syscall.SetsockoptInt(
+			s.fd,
+			syscall.IPPROTO_IP,
+			syscall.IP_BOUND_IF,
+			iff.Index,
+		); err != nil {
+			return err
+		} else {
+			s.boundInterface = iff
+			return nil
+		}
 	} else {
 		return fmt.Errorf("cannot yet bind to device when domain is ipv6")
 	}
