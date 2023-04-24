@@ -128,10 +128,6 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		if err := ipv4.SetMulticastAll(p.socket, false); err != nil {
-			return nil, err
-		}
 	} else {
 		// TODO
 	}
