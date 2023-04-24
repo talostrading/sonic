@@ -202,7 +202,7 @@ func (p *UDPPeer) TTL() uint8 {
 	return p.ttl
 }
 
-type MulticastIP string
+type IP string
 type SourceIP string
 type InterfaceName string
 
@@ -210,19 +210,19 @@ type InterfaceName string
 // To receive multicast packets from a group on a specific interface, use JoinOn.
 //
 // Joining an already joined IP will return EADDRINUSE.
-func (p *UDPPeer) Join(multicastIP MulticastIP) error {
+func (p *UDPPeer) Join(multicastIP IP) error {
 	return p.JoinOn(multicastIP, "")
 }
 
-func (p *UDPPeer) JoinOn(multicastIP MulticastIP, interfaceName InterfaceName) error {
+func (p *UDPPeer) JoinOn(multicastIP IP, interfaceName InterfaceName) error {
 	return p.JoinSourceOn(multicastIP, "", interfaceName)
 }
 
-func (p *UDPPeer) JoinSource(multicastIP MulticastIP, sourceIP SourceIP) error {
+func (p *UDPPeer) JoinSource(multicastIP IP, sourceIP SourceIP) error {
 	return p.JoinSourceOn(multicastIP, sourceIP, "")
 }
 
-func (p *UDPPeer) JoinSourceOn(multicastIP MulticastIP, sourceIP SourceIP, interfaceName InterfaceName) error {
+func (p *UDPPeer) JoinSourceOn(multicastIP IP, sourceIP SourceIP, interfaceName InterfaceName) error {
 	mip, err := parseMulticastIP(string(multicastIP))
 	if err != nil {
 		return err

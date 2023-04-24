@@ -51,7 +51,7 @@ func main() {
 
 	log.Printf("peer online local_addr=%s", peer.LocalAddr())
 
-	if err := peer.Join(*multicastIP); err != nil {
+	if err := peer.Join(multicast.IP(*multicastIP)); err != nil {
 		panic(err)
 	}
 
