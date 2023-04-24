@@ -30,7 +30,7 @@ func parseMulticastIP(addr string) (netip.Addr, error) {
 	return ip, err
 }
 
-func resolveInterface(name string) (*net.Interface, error) {
+func resolveMulticastInterface(name string) (*net.Interface, error) {
 	iff, err := net.InterfaceByName(name)
 	if err != nil {
 		return nil, err

@@ -132,9 +132,55 @@ func ValidateMulticastIP(ip netip.Addr) error {
 }
 
 // AddMembership makes the given socket a member of the specified multicast IP.
-func AddMembership(socket *sonic.Socket, multicastIP netip.Addr) error {
+func AddMembership(
+	socket *sonic.Socket,
+	multicastIP netip.Addr,
+	iff *net.Interface,
+) error {
 	mreq := &syscall.IPMreq{}
 	copy(mreq.Multiaddr[:], multicastIP.AsSlice())
+
+	if iff != nil {
+		addrs, err := iff.Addrs()
+		if err != nil {
+			return err
+		}
+
+		set := false
+		for _, addr := range addrs {
+			var (
+				ip    net.IP
+				parse = false
+			)
+
+			switch a := addr.(type) {
+			case *net.IPAddr:
+				ip = a.IP
+				parse = true
+			case *net.IPNet:
+				ip = a.IP
+				parse = true
+			case *net.UDPAddr:
+				ip = a.IP
+				parse = true
+			}
+
+			if parse {
+				parsedIP, err := netip.ParseAddr(ip.String())
+				if err != nil {
+					return err
+				}
+				if parsedIP.Is4() || parsedIP.Is4In6() {
+					copy(mreq.Interface[:], parsedIP.AsSlice())
+					set = true
+					break
+				}
+			}
+		}
+		if !set {
+			return fmt.Errorf("cannot add membership on interface %s as there is no IPv4 address on it", iff.Name)
+		}
+	}
 
 	return syscall.SetsockoptIPMreq(socket.RawFd(), syscall.IPPROTO_IP, syscall.IP_ADD_MEMBERSHIP, mreq)
 }

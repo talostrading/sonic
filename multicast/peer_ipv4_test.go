@@ -226,7 +226,36 @@ func TestUDPPeerIPv4_Join(t *testing.T) {
 	}
 	defer peer.Close()
 
-	if err := peer.Join("224.0.0.0"); err != nil {
+	if err := peer.Join("224.0.1.0"); err != nil {
+		t.Fatal(err)
+	}
+
+	addr, err := ipv4.GetMulticastInterfaceAddr(peer.socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !addr.IsUnspecified() {
+		t.Fatal("multicast address should be unspecified")
+	}
+
+	log.Println("ran")
+}
+
+func TestUDPPeerIPv4_JoinOn(t *testing.T) {
+	if len(testInterfacesIPv4) == 0 {
+		return
+	}
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	peer, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+
+	if err := peer.JoinOn("224.0.1.0", testInterfacesIPv4[0].Name); err != nil {
 		t.Fatal(err)
 	}
 
