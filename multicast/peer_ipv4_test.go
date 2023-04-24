@@ -213,6 +213,26 @@ func TestUDPPeerIPv4_BindToInterfaceIP(t *testing.T) {
 	}
 }
 
+func TestUDPPeerIPv4_BindToMulticastIP(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ip, err := netip.ParseAddr("224.0.1.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ip.IsMulticast() {
+		t.Fatal("ip should be multicast")
+	}
+
+	peer, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:0", ip.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	peer.Close()
+	log.Printf("bound peer to %s", ip.String())
+}
+
 func TestUDPPeerIPv4_JoinInvalidGroup(t *testing.T) {
 	if len(testInterfacesIPv4) == 0 {
 		return
