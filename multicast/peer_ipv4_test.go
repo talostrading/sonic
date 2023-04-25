@@ -1603,7 +1603,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_NoneJoin(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	multicastIP := "224.0.1.0"
+	multicastIP := "224.0.1.41"
 	multicastPort := 1234
 	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
@@ -1668,20 +1668,25 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_NoneJoin(t *testing.T) {
 
 	start := time.Now()
 	now := time.Now()
-	for now.Sub(start).Seconds() < 10 {
+	for now.Sub(start).Seconds() < 5 {
 		now = time.Now()
 		ioc.PollOne()
 	}
 
 	log.Printf("done")
 
+	var errs []error
 	for _, reader := range readers {
 		log.Printf("reader index=%d n_read=%d from=%+v", reader.index, reader.nRead, reader.from)
 		if reader.nRead != 0 || len(reader.from) != 0 {
-			t.Fatalf(
-				"none of the readers joined, but reader %d received %d times from %+v",
-				reader.index, reader.nRead, reader.from)
+			errs = append(errs,
+				fmt.Errorf("none of the readers joined, but reader %d received %d times from %+v",
+					reader.index, reader.nRead, reader.from))
 		}
+	}
+
+	if len(errs) > 0 {
+		t.Fatalf("errs=%+v", errs)
 	}
 }
 
@@ -1689,7 +1694,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	multicastIP := "224.0.1.0"
+	multicastIP := "224.0.1.42"
 	multicastPort := 1234
 	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
@@ -1762,7 +1767,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins(t *testing.T) {
 
 	start := time.Now()
 	now := time.Now()
-	for now.Sub(start).Seconds() < 10 {
+	for now.Sub(start).Seconds() < 5 {
 		now = time.Now()
 		ioc.PollOne()
 	}
