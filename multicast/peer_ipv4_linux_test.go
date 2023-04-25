@@ -101,12 +101,6 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins1(t *testing.T) {
 		}
 		defer r.Close()
 
-		isAll, err := ipv4.GetMulticastAll(r.socket)
-		if err != nil {
-			t.Fatal(err)
-		}
-		log.Printf("reader all=%v", isAll)
-
 		if !r.LocalAddr().IP.IsUnspecified() {
 			t.Fatal("reader should be on INADDR_ANY")
 		}
@@ -180,7 +174,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins2(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	multicastIP := "224.0.1.42"
+	multicastIP := "224.0.1.43"
 	multicastPort := 1234
 	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
@@ -201,12 +195,6 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins2(t *testing.T) {
 		if err := ipv4.SetMulticastAll(r.socket, false); err != nil {
 			t.Fatal(err)
 		}
-
-		isAll, err := ipv4.GetMulticastAll(r.socket)
-		if err != nil {
-			t.Fatal(err)
-		}
-		log.Printf("reader all=%v", isAll)
 
 		if !r.LocalAddr().IP.IsUnspecified() {
 			t.Fatal("reader should be on INADDR_ANY")
