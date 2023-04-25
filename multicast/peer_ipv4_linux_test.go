@@ -101,6 +101,12 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins1(t *testing.T) {
 		}
 		defer r.Close()
 
+		isAll, err := ipv4.GetMulticastAll(r.socket)
+		if err != nil {
+			t.Fatal(err)
+		}
+		log.Printf("reader all=%v", isAll)
+
 		if !r.LocalAddr().IP.IsUnspecified() {
 			t.Fatal("reader should be on INADDR_ANY")
 		}
@@ -196,6 +202,12 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins2(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		isAll, err := ipv4.GetMulticastAll(r.socket)
+		if err != nil {
+			t.Fatal(err)
+		}
+		log.Printf("reader all=%v", isAll)
+
 		if !r.LocalAddr().IP.IsUnspecified() {
 			t.Fatal("reader should be on INADDR_ANY")
 		}
@@ -259,5 +271,8 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins2(t *testing.T) {
 
 	for _, reader := range readers {
 		log.Printf("reader index=%d n_read=%d from=%+v", reader.index, reader.nRead, reader.from)
+		if reader.index != 0 /* the one that joined */ && reader.nRead != 0 {
+			t.Fatal("only one the reader who joined should have read something")
+		}
 	}
 }
