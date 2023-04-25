@@ -27,6 +27,7 @@ type UDPPeer struct {
 	inbound    *net.Interface
 	loop       bool
 	ttl        uint8
+	all        bool
 
 	slot internal.PollData
 
@@ -200,6 +201,19 @@ func (p *UDPPeer) SetTTL(ttl uint8) error {
 
 func (p *UDPPeer) TTL() uint8 {
 	return p.ttl
+}
+
+func (p *UDPPeer) SetAll(all bool) error {
+	if err := ipv4.SetMulticastAll(p.socket, all); err != nil {
+		return err
+	} else {
+		p.all = all
+		return nil
+	}
+}
+
+func (p *UDPPeer) All() bool {
+	return p.all
 }
 
 type IP string
