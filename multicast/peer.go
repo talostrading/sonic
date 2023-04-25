@@ -66,6 +66,10 @@ type UDPPeer struct {
 // - if there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you want to receive data from all
 // 	 but not the one with IP 192.168.1.1, then:
 //   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234"), then Join("224.0.1.0"), BlockSource("192.168.1.1").
+//
+// The above examples should cover everything you need to write a decent multicast app.
+//
+// Note that multiple UDPPeers can share the same addr. We set ReusePort on the socket before binding it.
 func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	resolvedAddr, err := net.ResolveUDPAddr(network, addr)
 	if err != nil {
@@ -170,6 +174,9 @@ func (p *UDPPeer) NextLayer() *sonic.Socket {
 	return p.socket
 }
 
+// SetOutboundIPv4 sets the interface on which packets are sent by this peer to an IPv4 multicast group.
+//
+// This means Write(...) and AsyncWrite(...)  will use the specified interface to send packets to the multicast group.
 func (p *UDPPeer) SetOutboundIPv4(interfaceName string) error {
 	iff, err := resolveMulticastInterface(interfaceName)
 	if err != nil {
@@ -187,26 +194,40 @@ func (p *UDPPeer) SetOutboundIPv4(interfaceName string) error {
 	return nil
 }
 
+// SetOutboundIPv6 sets the interface on which packets are sent by this peer to an IPv6 multicast group.
+//
+// This means Write(...) and AsyncWrite(...)  will use the specified interface to send packets to the multicast group.
 func (p *UDPPeer) SetOutboundIPv6(interfaceName string) error {
 	panic("IPv6 not supported")
 }
 
+// Outbound returns the interface with which packets are sent to a multicast group in calls to Write(...) or
+// AsyncWrite(...).
+//
+// If SetOutboundIPv4 or SetOuboundIPv6 have not been called before Outbound(), the returned interface will be nil
+// and the IP will be 0.0.0.0.
 func (p *UDPPeer) Outbound() (*net.Interface, netip.Addr) {
 	return p.outbound, p.outboundIP
 }
 
 // SetInbound Specify that you only want to receive data from the specified interface.
 //
-// Warning: this might not work. Instead, you should use JoinOn(multicastGroup, interfaceName).
+// Warning: this might not work on all hosts and interfaces. Instead, you should use
+// JoinOn(multicastGroup, interfaceName).
 func (p *UDPPeer) SetInbound(interfaceName string) (err error) {
 	p.inbound, err = p.socket.BindToDevice(interfaceName)
 	return err
 }
 
+// Inbound returns the interface set with SetInbound(...). If none was set, it returns nil.
 func (p *UDPPeer) Inbound() *net.Interface {
 	return p.inbound
 }
 
+// SetLoop If true, multicast packets sent on one host are looped back to readers on the same host. This is the default.
+//
+// Having this set to true, which is the default, makes it easy to write multicast tests on a single host. Anything
+// you write to a multicast group will be made available to receivers that joined that multicast group.
 func (p *UDPPeer) SetLoop(loop bool) error {
 	if err := ipv4.SetMulticastLoop(p.socket, loop); err != nil {
 		return err
@@ -220,6 +241,10 @@ func (p *UDPPeer) Loop() bool {
 	return p.loop
 }
 
+// SetTTL Sets the time-to-live of udp multicast datagrams. The TTL is 1 by default.
+//
+// A TTL of 1 prevents datagrams from being forwarded beyond the local network. Acceptable values are in the range
+// [0, 255]. It is up to the caller to make sure the uint8 arg does not overflow.
 func (p *UDPPeer) SetTTL(ttl uint8) error {
 	if err := ipv4.SetMulticastTTL(p.socket, ttl); err != nil {
 		return err
@@ -233,6 +258,13 @@ func (p *UDPPeer) TTL() uint8 {
 	return p.ttl
 }
 
+// SetAll Linux only. If true, all UDPPeer's bound to IP 0.0.0.0 i.e. INADDR_ANY will receive all multicast packets from
+// a group that was joined by another UDPPeer. Even though this is true in Linux by default, we set it to false in
+// NewUDPPeer. Multicast should be opt-in, not opt-out. This flag does not exist on BSD systems.
+//
+// Example: two readers, both on 0.0.0.0:1234 (Note that binding two sockets on the same addr+port is allowed since
+// we mark sockets with ReusePort in NewUDPPeer). Reader 1 joins 224.0.1.0. Now you would expect only reader 1 to get
+// datagrams, but reader 2 gets datagrams as well. This is only on Linux. On BSD, only reader 1 gets datagrams.
 func (p *UDPPeer) SetAll(all bool) error {
 	if err := ipv4.SetMulticastAll(p.socket, all); err != nil {
 		return err
@@ -258,14 +290,18 @@ func (p *UDPPeer) Join(multicastIP IP) error {
 	return p.JoinOn(multicastIP, "")
 }
 
+// JoinOn a specific interface.
 func (p *UDPPeer) JoinOn(multicastIP IP, interfaceName InterfaceName) error {
 	return p.JoinSourceOn(multicastIP, "", interfaceName)
 }
 
+// JoinSource on any interface. This makes it such that you only receive data from the unicast IP sourceIP, even
+// though multiple sourceIPs can send that to the same group.
 func (p *UDPPeer) JoinSource(multicastIP IP, sourceIP SourceIP) error {
 	return p.JoinSourceOn(multicastIP, sourceIP, "")
 }
 
+// JoinSourceOn combines JoinSource with JoinOn.
 func (p *UDPPeer) JoinSourceOn(multicastIP IP, sourceIP SourceIP, interfaceName InterfaceName) error {
 	mip, err := parseMulticastIP(string(multicastIP))
 	if err != nil {
@@ -311,15 +347,18 @@ func (p *UDPPeer) joinIPv6(ip netip.Addr, iff *net.Interface, sourceIP netip.Add
 	panic("IPv6 multicast peer not yet supported")
 }
 
-// Leave the multicast group.
+// Leave Leaves the multicast group  Join or JoinOn.
 //
 // Note that this operation might take some time, potentially minutes, to be fulfilled. This is all NIC/switch/router
 // dependent, there is nothing you can do about it on the application layer.
-// TODO offer BlockSource as an alternative?
 func (p *UDPPeer) Leave(multicastIP IP) error {
 	return p.LeaveSource(multicastIP, "")
 }
 
+// LeaveSource Leaves the multicast group joined with JoinSource or JoinSourceOn.
+//
+// Note that this operation might take some time, potentially minutes, to be fulfilled. This is all NIC/switch/router
+// dependent, there is nothing you can do about it on the application layer.
 func (p *UDPPeer) LeaveSource(multicastIP IP, sourceIP SourceIP) error {
 	mip, err := parseMulticastIP(string(multicastIP))
 	if err != nil {
@@ -357,6 +396,8 @@ func (p *UDPPeer) leaveIPv6(multicastIP, sourceIP netip.Addr) error {
 	panic("IPv6 multicast peer not yet supported")
 }
 
+// BlockSource Makes it such that any data originating from unicast IP sourceIP is not going to be received anymore
+// after joining the multicastIP with Join, JoinOn, JoinSource or JoinSourceOn.
 func (p *UDPPeer) BlockSource(multicastIP IP, sourceIP SourceIP) error {
 	mip, err := parseMulticastIP(string(multicastIP))
 	if err != nil {
@@ -385,6 +426,7 @@ func (p *UDPPeer) blockIPv6(multicastIP, sourceIP netip.Addr) (err error) {
 	panic("IPv6 multicast peer not yet supported")
 }
 
+// UnblockSource undoes BlockSource.
 func (p *UDPPeer) UnblockSource(multicastIP IP, sourceIP SourceIP) error {
 	mip, err := parseMulticastIP(string(multicastIP))
 	if err != nil {
