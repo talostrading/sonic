@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/net/ipv4"
+	"github.com/talostrading/sonic/sonicerrors"
 	"log"
 	"net/netip"
 	"sync"
@@ -175,5 +176,172 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins_IP_MULTICAST_ALL_is_1_d
 			t.Fatal("all readers should have read something")
 		}
 		log.Printf("reader index=%d n_read=%d from=%+v", reader.index, reader.nRead, reader.from)
+	}
+}
+
+// TODO I don't know why this fails on BSD
+func TestUDPPeerIPv4_JoinSourceAndRead(t *testing.T) {
+	iffs, err := interfacesWithIP(4)
+	if err == ErrNoInterfaces {
+		log.Printf("skipping this test as not interfaces are available")
+		return
+	}
+
+	r := newTestRW(t, "udp", "224.0.2.0:0")
+	w := newTestRW(t, "udp", fmt.Sprintf("%s:0", iffs[0].ip))
+
+	if w.peer.LocalAddr().IP.String() != iffs[0].ip.String() {
+		t.Fatal("something wrong with binding to an interface address")
+	}
+
+	w.peer.LocalAddr()
+	if err := r.peer.JoinSource("224.0.2.0", SourceIP(iffs[0].ip.String())); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int32
+	go func() {
+		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
+			if err == nil {
+				atomic.AddInt32(&count, 1)
+			}
+		})
+	}()
+
+	multicastAddr := fmt.Sprintf("224.0.2.0:%d", r.peer.LocalAddr().Port)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < 10; i++ {
+			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}()
+	wg.Wait()
+
+	if atomic.LoadInt32(&count) == 0 {
+		t.Fatal("reader did not read anything")
+	}
+}
+
+// TODO I don't know why this fails on BSD
+func TestUDPPeerIPv4_JoinReadBlockUnblockRead(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastIP := "224.0.1.0"
+	r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:0", multicastIP))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	log.Printf("reader local_addr=%s", r.LocalAddr())
+
+	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Join(IP(multicastIP)); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		onRead func(error, int, netip.AddrPort)
+		rb     = make([]byte, 128)
+
+		first      = true
+		writerAddr netip.AddrPort
+		nRead      int
+	)
+	onRead = func(err error, n int, from netip.AddrPort) {
+		if err == nil {
+			if first {
+				first = false
+				writerAddr = from
+			}
+			nRead++
+		} else {
+			log.Printf("err=%v", err)
+		}
+		r.AsyncRead(rb, onRead)
+	}
+	r.AsyncRead(rb, onRead)
+
+	w, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:0", multicastIP))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	var (
+		onWrite func(error, int)
+		wb      = []byte("hello")
+		nTotal  = 0
+	)
+	onWrite = func(err error, n int) {
+		if err == nil {
+			nTotal++
+			w.AsyncWrite(wb, multicastAddr, onWrite)
+		} else {
+			log.Printf("err=%v", err)
+		}
+	}
+	w.AsyncWrite(wb, multicastAddr, onWrite)
+
+	log.Printf("writer local_addr=%s", w.LocalAddr())
+
+	blockTimer, err := sonic.NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blockTimer.Close()
+
+	err = blockTimer.ScheduleOnce(2*time.Second, func() {
+		log.Printf("blocking source %s", writerAddr)
+		if err := r.BlockSource(IP(multicastIP), SourceIP(writerAddr.Addr().String())); err != nil {
+			t.Fatal(err)
+		} else {
+			log.Printf("blocked source %s n_read=%d", writerAddr, nRead)
+			nRead = 0
+			err = blockTimer.ScheduleOnce(2*time.Second, func() {
+				log.Printf("unblocking source %s", writerAddr)
+				if err := r.UnblockSource(IP(multicastIP), SourceIP(writerAddr.Addr().String())); err != nil {
+					t.Fatal(err)
+				} else {
+					log.Printf("unblocked source %s n_read=%d", writerAddr, nRead)
+					nRead = 0
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	start := time.Now()
+	var now time.Time
+	for {
+		now = time.Now()
+		if now.Sub(start).Seconds() < 10 {
+			ioc.PollOne()
+		} else {
+			break
+		}
+	}
+
+	log.Printf("done n_read=%d after unblocking", nRead)
+
+	if nRead <= 0 {
+		t.Fatal("did not read anything after unblocking")
 	}
 }
