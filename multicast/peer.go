@@ -341,6 +341,33 @@ func (p *UDPPeer) blockIPv6(multicastIP, sourceIP netip.Addr) (err error) {
 	panic("IPv6 multicast peer not yet supported")
 }
 
+func (p *UDPPeer) UnblockSource(multicastIP IP, sourceIP SourceIP) error {
+	mip, err := parseMulticastIP(string(multicastIP))
+	if err != nil {
+		return err
+	}
+
+	sip, err := parseIP(string(sourceIP))
+	if err != nil {
+		return err
+	}
+
+	if mip.Is4() || mip.Is4In6() {
+		return p.unblockIPv4(mip, sip)
+	} else if mip.Is6() {
+		return p.unblockIPv6(mip, sip)
+	} else {
+		return fmt.Errorf("unknown IP addressing scheme for addr=%s", multicastIP)
+	}
+}
+
+func (p *UDPPeer) unblockIPv4(multicastIP, sourceIP netip.Addr) (err error) {
+	return ipv4.UnblockSource(p.socket, multicastIP, sourceIP)
+}
+
+func (p *UDPPeer) unblockIPv6(multicastIP, sourceIP netip.Addr) (err error) {
+	panic("IPv6 multicast peer not yet supported")
+}
 func (p *UDPPeer) Read(b []byte) (int, netip.AddrPort, error) {
 	return p.socket.RecvFrom(b, 0)
 }

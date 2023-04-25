@@ -292,3 +292,23 @@ func BlockSource(socket *sonic.Socket, multicastIP, sourceIP netip.Addr) (err er
 	}
 	return err
 }
+
+func UnblockSource(socket *sonic.Socket, multicastIP, sourceIP netip.Addr) (err error) {
+	mreqSource := &IPMreqSource{}
+	copy(mreqSource.Multiaddr[:], multicastIP.AsSlice())
+	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
+
+	_, _, errno := syscall.Syscall6(
+		uintptr(syscall.SYS_SETSOCKOPT),
+		uintptr(socket.RawFd()),
+		uintptr(syscall.IPPROTO_IP),
+		uintptr(syscall.IP_UNBLOCK_SOURCE),
+		uintptr(unsafe.Pointer(mreqSource)),
+		uintptr(SizeofIPMreqSource),
+		0,
+	)
+	if errno != 0 {
+		err = errno
+	}
+	return err
+}

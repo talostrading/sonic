@@ -1478,7 +1478,7 @@ func TestUDPPeerIPv4_JoinReadBlock(t *testing.T) {
 		now.Sub(lastReadAfter))
 }
 
-func TestUDPPeerIPv4_JoinReadBlockRead(t *testing.T) {
+func TestUDPPeerIPv4_JoinReadBlockUnblockRead(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -1501,33 +1501,20 @@ func TestUDPPeerIPv4_JoinReadBlockRead(t *testing.T) {
 	}
 
 	var (
-		onRead        func(error, int, netip.AddrPort)
-		rb            = make([]byte, 128)
-		nReadBefore   = 0
-		nReadAfter    = 0
-		nTotal        = 0
-		lastReadAfter time.Time
-		left          = false
+		onRead func(error, int, netip.AddrPort)
+		rb     = make([]byte, 128)
+
+		first      = true
+		writerAddr netip.AddrPort
+		nRead      int
 	)
 	onRead = func(err error, n int, from netip.AddrPort) {
 		if err == nil {
-			if !left {
-				if nReadBefore == 0 {
-					log.Printf("reader receiving from %s", from)
-				}
-				nReadBefore++
-			} else {
-				nReadAfter++
-				lastReadAfter = time.Now()
+			if first {
+				first = false
+				writerAddr = from
 			}
-
-			if !left && nReadBefore >= 5 {
-				log.Printf("blocking source %s", from.Addr())
-				if err := r.BlockSource(IP(multicastIP), SourceIP(from.Addr().String())); err != nil {
-					t.Fatal(err)
-				}
-				left = true
-			}
+			nRead++
 		} else {
 			log.Printf("err=%v", err)
 		}
@@ -1544,6 +1531,7 @@ func TestUDPPeerIPv4_JoinReadBlockRead(t *testing.T) {
 	var (
 		onWrite func(error, int)
 		wb      = []byte("hello")
+		nTotal  = 0
 	)
 	onWrite = func(err error, n int) {
 		if err == nil {
@@ -1557,6 +1545,37 @@ func TestUDPPeerIPv4_JoinReadBlockRead(t *testing.T) {
 
 	log.Printf("writer local_addr=%s", w.LocalAddr())
 
+	blockTimer, err := sonic.NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blockTimer.Close()
+
+	err = blockTimer.ScheduleOnce(time.Second, func() {
+		log.Printf("blocking source %s", writerAddr)
+		if err := r.BlockSource(IP(multicastIP), SourceIP(writerAddr.Addr().String())); err != nil {
+			t.Fatal(err)
+		} else {
+			log.Printf("blocked source %s n_read=%d", writerAddr, nRead)
+			nRead = 0
+			err = blockTimer.ScheduleOnce(time.Second, func() {
+				log.Printf("unblocking source %s", writerAddr)
+				if err := r.UnblockSource(IP(multicastIP), SourceIP(writerAddr.Addr().String())); err != nil {
+					t.Fatal(err)
+				} else {
+					log.Printf("unblocked source %s n_read=%d", writerAddr, nRead)
+					nRead = 0
+				}
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	start := time.Now()
 	var now time.Time
 	for {
@@ -1567,11 +1586,10 @@ func TestUDPPeerIPv4_JoinReadBlockRead(t *testing.T) {
 			break
 		}
 	}
-	log.Printf(
-		"done before=%d after=%d total=%d rem=%d now-last_read_after_block=%s",
-		nReadBefore,
-		nReadAfter,
-		nTotal,
-		nTotal-nReadBefore-nReadAfter,
-		now.Sub(lastReadAfter))
+
+	log.Printf("done n_read=%d after unblocking", nRead)
+
+	if nRead <= 0 {
+		t.Fatal("did not read anything after unblocking")
+	}
 }
