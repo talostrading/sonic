@@ -63,6 +63,127 @@ func TestUDPPeerIPv4_JoinSourceAndRead1(t *testing.T) {
 	}
 }
 
+// TODO not sure why this fails on BSD
+func TestUDPPeerIPv4_JoinSourceAndRead2(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastIP := "224.0.2.51"
+	multicastPort := 1234
+	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		fromAddr    netip.AddrPort
+		setFromAddr = false
+	)
+
+	readers := make(map[*UDPPeer]struct {
+		b     []byte
+		index int
+		nRead int
+		from  map[netip.AddrPort]struct{}
+	})
+	for i := 0; i < 10; i++ {
+		r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf(":%d", multicastPort))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+
+		if i == 0 {
+			if err := r.Join(IP(multicastIP)); err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		init := struct {
+			b     []byte
+			index int
+			nRead int
+			from  map[netip.AddrPort]struct{}
+		}{
+			b:     make([]byte, 128),
+			index: i,
+			nRead: 0,
+			from:  make(map[netip.AddrPort]struct{}),
+		}
+		readers[r] = init
+
+		var onRead func(error, int, netip.AddrPort)
+		onRead = func(err error, n int, from netip.AddrPort) {
+			if err == nil {
+				if !setFromAddr {
+					setFromAddr = true
+					fromAddr = from
+				}
+
+				entry := readers[r]
+				entry.nRead++
+				entry.from[from] = struct{}{}
+				readers[r] = entry
+
+				r.AsyncRead(init.b, onRead)
+			}
+		}
+		r.AsyncRead(init.b, onRead)
+	}
+
+	w, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	var onWrite func(error, int)
+	onWrite = func(err error, n int) {
+		if err == nil {
+			w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
+		}
+	}
+	w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
+
+	start := time.Now()
+	now := time.Now()
+	allJoined := false
+	for now.Sub(start).Seconds() < 5 {
+		now = time.Now()
+
+		if setFromAddr && !allJoined {
+			allJoined = true
+			for reader, info := range readers {
+				if info.index != 0 {
+					if err := reader.JoinSource(IP(multicastIP), SourceIP(fromAddr.Addr().String())); err != nil {
+						t.Fatal(err)
+					} else {
+						log.Printf(
+							"reader %d joined multicast %s source %s",
+							info.index, multicastIP, fromAddr.Addr())
+					}
+				}
+			}
+		}
+
+		ioc.PollOne()
+	}
+
+	log.Printf("done")
+
+	var errs []error
+	for r, reader := range readers {
+		if reader.nRead == 0 {
+			errs = append(errs, fmt.Errorf("reader %d did not read anything", reader.index))
+		}
+		log.Printf("reader index=%d n_read=%d from=%+v local_addr=%s",
+			reader.index, reader.nRead, reader.from, r.LocalAddr())
+	}
+	if len(errs) > 0 {
+		t.Fatal(errs)
+	}
+}
+
 // There is an equivalent test in peer_ipv4_bsd_test. The only difference between them is that on Linux, if one peer
 // joins a group while bound to INADDR_ANY, all other peers bound to INADDR_ANY will also automatically join the same
 // multicast group, even though they have not explicitly joined.
