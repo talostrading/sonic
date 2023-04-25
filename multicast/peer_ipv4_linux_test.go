@@ -4,6 +4,7 @@ package multicast
 
 import (
 	"fmt"
+	"github.com/talostrading/sonic"
 	"log"
 	"net/netip"
 	"sync"
@@ -57,5 +58,113 @@ func TestUDPPeerIPv4_JoinSourceAndRead1(t *testing.T) {
 
 	if atomic.LoadInt32(&count) == 0 {
 		t.Fatal("reader did not read anything")
+	}
+}
+
+// There is an equivalent test in peer_ipv4_bsd_test. The only difference between them is that on Linux, if one peer
+// joins a group while bound to INADDR_ANY, all other peers bound to INADDR_ANY will also automatically join the same
+// multicast group, even though they have not explicitly joined.
+//
+// Why? Because that's the default in Linux. It has to do with the flag IP_MULTICAST_ALL. That is 1 by default and the
+// behaviour is as described above.
+//
+// What do we actually want? We want only one reader to receive datagrams - the one that joined. The rest of them should
+// not receive anything. That is the default behaviour on BSD, so that's why we separate these files. Below this test
+// you'll find the one where we set IP_MULTICAST_ALL to 0 which gives us the desired behaviour, like on BSD.
+//
+// Now IP_MULTICAST_ALL is not defined in syscall on linux/amd64. Grepping torvalds/kernel, I see that IP_MULTICAST_ALL
+// is 49. See ipv4 on how we implement it. What we could've done is use CGO to include <netinet.h> which would've given
+// us access to the defined IP_MULTICAST_ALL. However, that means dynamically linking to glibc, at least until 1.21,
+// which is a not desirable as sonic binaries are run on boomer finance boxes, with old kernels (4.18) and old glibc.
+// So we hope IP_MULTICAST_ALL stays 49 until go1.21 when the dynamic glibc link is not needed anymore.
+func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins1(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastIP := "224.0.1.42"
+	multicastPort := 1234
+	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	readers := make(map[*UDPPeer]struct {
+		index int
+		nRead int
+		from  map[netip.AddrPort]struct{}
+	})
+	for i := 0; i < 10; i++ {
+		r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf(":%d", multicastPort))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+
+		if !r.LocalAddr().IP.IsUnspecified() {
+			t.Fatal("reader should be on INADDR_ANY")
+		}
+
+		if i == 0 {
+			if err := r.Join(IP(multicastIP)); err != nil {
+				t.Fatalf("reader could not join %s", multicastIP)
+			} else {
+				log.Printf("reader %d joined group %s", i, multicastIP)
+			}
+		}
+
+		init := struct {
+			index int
+			nRead int
+			from  map[netip.AddrPort]struct{}
+		}{
+			index: i,
+			nRead: 0,
+			from:  make(map[netip.AddrPort]struct{}),
+		}
+		readers[r] = init
+
+		b := make([]byte, 128)
+		var onRead func(error, int, netip.AddrPort)
+		onRead = func(err error, n int, from netip.AddrPort) {
+			if err == nil {
+				entry := readers[r]
+				entry.nRead++
+				entry.from[from] = struct{}{}
+				readers[r] = entry
+
+				r.AsyncRead(b, onRead)
+			}
+		}
+		r.AsyncRead(b, onRead)
+	}
+
+	w, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	var onWrite func(error, int)
+	onWrite = func(err error, n int) {
+		if err == nil {
+			w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
+		}
+	}
+	w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
+
+	start := time.Now()
+	now := time.Now()
+	for now.Sub(start).Seconds() < 5 {
+		now = time.Now()
+		ioc.PollOne()
+	}
+
+	log.Printf("done")
+
+	for _, reader := range readers {
+		if reader.nRead == 0 {
+			t.Fatal("all readers should have read something")
+		}
+		log.Printf("reader index=%d n_read=%d from=%+v", reader.index, reader.nRead, reader.from)
 	}
 }
