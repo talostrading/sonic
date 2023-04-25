@@ -72,11 +72,13 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	if err := socket.ReusePort(true); err != nil {
 		return nil, fmt.Errorf("error on REUSE_PORT")
 	}
-	//
-	//// Allow address aliasing i.e. can bind to both 0.0.0.0 and 192.168.0.1 on the same device.
-	//if err := socket.ReuseAddr(true); err != nil {
-	//	return nil, fmt.Errorf("error on socket REUSE_ADDR")
-	//}
+
+	// Allow address aliasing i.e. can bind to both 0.0.0.0:1234 and 192.168.0.1:1234 on the same device. If ReuseAddr
+	// is false, the bind on 192.168.0.1:1234 will fail because we already have somebody bound on port 1234 to all
+	// addresses, and 192.168.0.1 is part of those "all" addresses.
+	if err := socket.ReuseAddr(true); err != nil {
+		return nil, fmt.Errorf("error on socket REUSE_ADDR")
+	}
 
 	if err := socket.Bind(resolvedAddr.AddrPort()); err != nil {
 		return nil, fmt.Errorf("cannot bind socket to addr=%s err=%v", resolvedAddr, err)
