@@ -78,6 +78,9 @@ func TestUDPPeerIPv4_JoinSourceAndRead1(t *testing.T) {
 // us access to the defined IP_MULTICAST_ALL. However, that means dynamically linking to glibc, at least until 1.21,
 // which is a not desirable as sonic binaries are run on boomer finance boxes, with old kernels (4.18) and old glibc.
 // So we hope IP_MULTICAST_ALL stays 49 until go1.21 when the dynamic glibc link is not needed anymore.
+//
+// Note that we set IP_MULTICAST_ALL to 0 in the constructor of UDPPeer as that's what we consider correct behaviour:
+// multicast should be opt-in, not opt-out.
 func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins1(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -100,6 +103,11 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins1(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer r.Close()
+
+		// Set to false in the constructor of UDPPeer. By default, it is true. We test the default here.
+		if err := ipv4.SetMulticastAll(r.socket, true); err != nil {
+			t.Fatal(err)
+		}
 
 		if !r.LocalAddr().IP.IsUnspecified() {
 			t.Fatal("reader should be on INADDR_ANY")
@@ -192,9 +200,11 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins2(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer r.Close()
-		if err := ipv4.SetMulticastAll(r.socket, false); err != nil {
-			t.Fatal(err)
-		}
+
+		// No need to set it here as it's done in the constructor.
+		//if err := ipv4.SetMulticastAll(r.socket, false); err != nil {
+		//	t.Fatal(err)
+		//}
 
 		if !r.LocalAddr().IP.IsUnspecified() {
 			t.Fatal("reader should be on INADDR_ANY")

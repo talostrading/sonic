@@ -116,6 +116,7 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		ipv:       ipv,
 		stats:     &Stats{},
 		ttl:       1,
+		all:       false, // this is set in the ipv if-check
 	}
 	p.read = &readReactor{peer: p}
 	p.write = &writeReactor{peer: p}
@@ -129,6 +130,10 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 
 		p.loop, err = ipv4.GetMulticastLoop(p.socket)
 		if err != nil {
+			return nil, err
+		}
+
+		if err := ipv4.SetMulticastAll(p.socket, false); err != nil {
 			return nil, err
 		}
 	} else {
