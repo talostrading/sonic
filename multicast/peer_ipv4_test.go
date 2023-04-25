@@ -1469,13 +1469,18 @@ func TestUDPPeerIPv4_JoinReadBlock(t *testing.T) {
 			break
 		}
 	}
+
+	rem := nTotal - nReadBefore - nReadAfter
 	log.Printf(
 		"done before=%d after=%d total=%d rem=%d now-last_read_after_block=%s",
 		nReadBefore,
 		nReadAfter,
 		nTotal,
-		nTotal-nReadBefore-nReadAfter,
+		rem,
 		now.Sub(lastReadAfter))
+	if rem <= 0 {
+		t.Fatal("read everything after blocking the source")
+	}
 }
 
 func TestUDPPeerIPv4_JoinReadBlockUnblockRead(t *testing.T) {
