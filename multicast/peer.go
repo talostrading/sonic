@@ -70,6 +70,11 @@ type UDPPeer struct {
 // The above examples should cover everything you need to write a decent multicast app.
 //
 // Note that multiple UDPPeers can share the same addr. We set ReusePort on the socket before binding it.
+//
+// Note that a peer's port must match the multicast group ports that it wants to join. In other words, if an exchange
+// tells you it publishes to 224.0.25.108:14326, you must call either NewUDPPeer(ioc, "udp", ":14326") or
+// NewUDPPeer(ioc, "udp", "224.0.25.108:14326"). Putting anything other than "14326" as a port will make it such that
+// your Peer won't receive any data, even though it joined "224.0.25.108".
 func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	resolvedAddr, err := net.ResolveUDPAddr(network, addr)
 	if err != nil {
@@ -284,6 +289,9 @@ type InterfaceName string
 
 // Join a multicast group IP in order to receive data. Since no interface is specified, the system uses a default.
 // To receive multicast packets from a group on a specific interface, use JoinOn.
+//
+// The argument multicastIP must be an IP address. It must not have a port in it. See the Note above NewUDPPeer
+// for more information.
 //
 // Joining an already joined IP will return EADDRINUSE.
 func (p *UDPPeer) Join(multicastIP IP) error {
