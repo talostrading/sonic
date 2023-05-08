@@ -135,7 +135,7 @@ func (rw *testRW) WriteNext(multicastAddr string) error {
 
 func (rw *testRW) ReadLoop(fn func(error, uint64, netip.AddrPort)) {
 	var onRead func(error, int, netip.AddrPort)
-	onRead = func(err error, n int, from netip.AddrPort) {
+	onRead = func(err error, _ int, from netip.AddrPort) {
 		if err == nil {
 			rw.received[from] = struct{}{}
 			fn(err, binary.BigEndian.Uint64(rw.b), from)

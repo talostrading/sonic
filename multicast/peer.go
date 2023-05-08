@@ -41,30 +41,34 @@ type UDPPeer struct {
 // `network` must be one of: "udp", "udp4", "udp6". "udp" resolves to "udp4". 4 means IPv4. 6 means IPv6.
 //
 // `addr` must be `"<ip>:<port>"`. `<ip>` can be one of:
-// - "": in this case the peer will be bound to all local interfaces i.e. `INADDR_ANY`. This means the underlying socket
-//   will receive datagrams from any groups that have been joined with `Join`, `JoinOn`, `JoinSource` and `JoinSourceOn`
-//   and that deliver to `<port>`. This is the most permissive IP address.
 //
-// - "<some_multicast_ip>": only traffic originating from <some_multicast_ip>:<port> will be received by this peer.
-//   Any other traffic originating from another <multicast_ip>:<port> will be ignored, even if you `Join` that other
-//  <multicast_ip>.
+//   - "": in this case the peer will be bound to all local interfaces i.e. `INADDR_ANY`. This means the underlying socket
+//     will receive datagrams from any groups that have been joined with `Join`, `JoinOn`, `JoinSource` and `JoinSourceOn`
+//     and that deliver to `<port>`. This is the most permissive IP address.
 //
-// - "<some_local_unicast_ip>": this binds the underlying socket to the IP address owned by one of the host's network
-//   interfaces. Reads and writer will only be done from that interface.
+//   - "<some_multicast_ip>": only traffic originating from <some_multicast_ip>:<port> will be received by this peer.
+//     Any other traffic originating from another <multicast_ip>:<port> will be ignored, even if you `Join` that other
+//     <multicast_ip>.
+//
+//   - "<some_local_unicast_ip>": this binds the underlying socket to the IP address owned by one of the host's network
+//     interfaces. Reads and writer will only be done from that interface.
 //
 // A few examples:
 // - if you want to only receive data from 224.0.1.0:1234, then:
 //   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234") and then Join("224.0.1.0"). Without the Join, you will get no data.
 //
 // - if you want to only receive data from a specific interface from 224.0.1.0:1234 then:
+//
 //   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234") and then JoinOn("224.0.1.0", "eth0") where "eth0" is the interface name.
 //
-// - if there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you only want to receive data from
-//   the host with IP 192.168.1.1 then:
+//   - if there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you only want to receive data from
+//     the host with IP 192.168.1.1 then:
+//
 //   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234"), then JoinSource("224.0.1.0", "192.168.1.1").
 //
-// - if there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you want to receive data from all
-// 	 but not the one with IP 192.168.1.1, then:
+//   - if there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you want to receive data from all
+//     but not the one with IP 192.168.1.1, then:
+//
 //   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234"), then Join("224.0.1.0"), BlockSource("192.168.1.1").
 //
 // The above examples should cover everything you need to write a decent multicast app.
@@ -81,11 +85,12 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		return nil, fmt.Errorf("could not resolve addr=%s err=%v", addr, err)
 	}
 	if resolvedAddr.IP == nil {
-		if network == "udp" || network == "udp4" {
+		switch network {
+		case "udp", "udp4":
 			resolvedAddr.IP = net.IPv4zero
-		} else if network == "udp6" {
+		case "udp6":
 			resolvedAddr.IP = net.IPv6zero
-		} else {
+		default:
 			return nil, fmt.Errorf("invalid network %s, can only give udp, udp4 or udp6", network)
 		}
 	}
@@ -168,8 +173,6 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		if err := ipv4.SetMulticastAll(p.socket, false); err != nil {
 			return nil, err
 		}
-	} else {
-		// TODO
 	}
 
 	return p, nil

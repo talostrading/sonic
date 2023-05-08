@@ -615,12 +615,12 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 		defer wg.Done()
 
 		count := 0
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, _ netip.AddrPort) {
 			if err != nil {
-				t.Fatal(err)
+                panic(err)
 			} else {
 				count++
-				if count == 10 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+				if count == 10 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
 					r.Close()
 				}
 			}
@@ -631,7 +631,7 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+                panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -674,9 +674,9 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 		defer wg.Done()
 
 		count := make(map[netip.AddrPort]int)
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			} else {
 				count[from]++
 				stopCount := 0
@@ -686,7 +686,7 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 					}
 				}
 
-				if stopCount == 2 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 2 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
 					r.Close()
 				}
 			}
@@ -697,7 +697,7 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w1.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -706,7 +706,7 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w2.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -753,9 +753,9 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 		defer wg.Done()
 
 		count := make(map[netip.AddrPort]int)
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			} else {
 				count[from]++
 				stopCount := 0
@@ -765,7 +765,7 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 					}
 				}
 
-				if stopCount == 1 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 1 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
 					r.Close()
 				}
 			}
@@ -776,7 +776,7 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -785,7 +785,7 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -832,9 +832,9 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 		defer wg.Done()
 
 		count := make(map[netip.AddrPort]int)
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			} else {
 				count[from]++
 				stopCount := 0
@@ -844,7 +844,7 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 					}
 				}
 
-				if stopCount == 1 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 1 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
 					r.Close()
 				}
 			}
@@ -855,7 +855,7 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -864,7 +864,7 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -918,9 +918,9 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 		defer wg.Done()
 
 		count := make(map[netip.AddrPort]int)
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			} else {
 				count[from]++
 				stopCount := 0
@@ -930,7 +930,7 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 					}
 				}
 
-				if stopCount == 1 || time.Now().Sub(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 1 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
 					r.Close()
 				}
 			}
@@ -941,7 +941,7 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -950,7 +950,7 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -985,9 +985,9 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 
 	readerGot := 0
 	go func() {
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, _ netip.AddrPort) {
 			if err != nil {
-				t.Fatal(err)
+				panic(err)
 			} else {
 				readerGot++
 			}
@@ -1000,7 +1000,7 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -1051,7 +1051,7 @@ func TestUDPPeer_SetInbound1(t *testing.T) {
 
 	var count int32 = 0
 	go func() {
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(_ error, _ uint64, _ netip.AddrPort) {
 			atomic.AddInt32(&count, 1)
 		})
 	}()
@@ -1064,7 +1064,7 @@ func TestUDPPeer_SetInbound1(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -1119,7 +1119,7 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 
 	var count int32 = 0
 	go func() {
-		r.ReadLoop(func(err error, seq uint64, from netip.AddrPort) {
+		r.ReadLoop(func(_ error, _ uint64, _ netip.AddrPort) {
 			atomic.AddInt32(&count, 1)
 		})
 	}()
@@ -1132,7 +1132,7 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -1156,7 +1156,7 @@ func TestUDPPeerIPv4_JoinAndRead(t *testing.T) {
 
 	var count int32
 	go func() {
-		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, _ netip.AddrPort) {
 			if err == nil {
 				atomic.AddInt32(&count, 1)
 			}
@@ -1172,7 +1172,7 @@ func TestUDPPeerIPv4_JoinAndRead(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -1205,7 +1205,7 @@ func TestUDPPeerIPv4_JoinOnAndRead(t *testing.T) {
 
 	var count int32
 	go func() {
-		r.ReadLoop(func(err error, _ uint64, from netip.AddrPort) {
+		r.ReadLoop(func(err error, _ uint64, _ netip.AddrPort) {
 			if err == nil {
 				atomic.AddInt32(&count, 1)
 			}
@@ -1221,7 +1221,7 @@ func TestUDPPeerIPv4_JoinOnAndRead(t *testing.T) {
 
 		for i := 0; i < 10; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-				t.Fatal(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -1264,7 +1264,7 @@ func TestUDPPeerIPv4_JoinReadLeave(t *testing.T) {
 		lastReadAfter time.Time
 		left          = false
 	)
-	onRead = func(err error, n int, from netip.AddrPort) {
+	onRead = func(err error, _ int, from netip.AddrPort) {
 		if err == nil {
 			nTotal++
 			if !left {
@@ -1301,7 +1301,7 @@ func TestUDPPeerIPv4_JoinReadLeave(t *testing.T) {
 		onWrite func(error, int)
 		wb      = []byte("hello")
 	)
-	onWrite = func(err error, n int) {
+	onWrite = func(err error, _ int) {
 		if err == nil {
 			w.AsyncWrite(wb, multicastAddr, onWrite)
 		} else {
@@ -1362,7 +1362,7 @@ func TestUDPPeerIPv4_JoinReadBlock(t *testing.T) {
 		lastReadAfter time.Time
 		left          = false
 	)
-	onRead = func(err error, n int, from netip.AddrPort) {
+	onRead = func(err error, _ int, from netip.AddrPort) {
 		if err == nil {
 			if !left {
 				if nReadBefore == 0 {
@@ -1398,7 +1398,7 @@ func TestUDPPeerIPv4_JoinReadBlock(t *testing.T) {
 		onWrite func(error, int)
 		wb      = []byte("hello")
 	)
-	onWrite = func(err error, n int) {
+	onWrite = func(err error, _ int) {
 		if err == nil {
 			nTotal++
 			w.AsyncWrite(wb, multicastAddr, onWrite)
@@ -1474,7 +1474,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_NoneJoin(t *testing.T) {
 
 		b := make([]byte, 128)
 		var onRead func(error, int, netip.AddrPort)
-		onRead = func(err error, n int, from netip.AddrPort) {
+		onRead = func(err error, _ int, from netip.AddrPort) {
 			if err == nil {
 				entry := readers[r]
 				entry.nRead++
@@ -1494,7 +1494,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_NoneJoin(t *testing.T) {
 	defer w.Close()
 
 	var onWrite func(error, int)
-	onWrite = func(err error, n int) {
+	onWrite = func(err error, _ int) {
 		if err == nil {
 			w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
 		}
@@ -1575,7 +1575,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins(t *testing.T) {
 
 		b := make([]byte, 128)
 		var onRead func(error, int, netip.AddrPort)
-		onRead = func(err error, n int, from netip.AddrPort) {
+		onRead = func(err error, _ int, from netip.AddrPort) {
 			if err == nil {
 				entry := readers[r]
 				entry.nRead++
@@ -1595,7 +1595,7 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins(t *testing.T) {
 	defer w.Close()
 
 	var onWrite func(error, int)
-	onWrite = func(err error, n int) {
+	onWrite = func(err error, _ int) {
 		if err == nil {
 			w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
 		}
@@ -1667,7 +1667,7 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_OneJoins(t *testing.T) {
 
 		b := make([]byte, 128)
 		var onRead func(error, int, netip.AddrPort)
-		onRead = func(err error, n int, from netip.AddrPort) {
+		onRead = func(err error, _ int, from netip.AddrPort) {
 			if err == nil {
 				entry := readers[r]
 				entry.nRead++
@@ -1687,7 +1687,7 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_OneJoins(t *testing.T) {
 	defer w.Close()
 
 	var onWrite func(error, int)
-	onWrite = func(err error, n int) {
+	onWrite = func(err error, _ int) {
 		if err == nil {
 			w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
 		}
@@ -1758,7 +1758,7 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 
 		b := make([]byte, 128)
 		var onRead func(error, int, netip.AddrPort)
-		onRead = func(err error, n int, from netip.AddrPort) {
+		onRead = func(err error, _ int, from netip.AddrPort) {
 			if err == nil {
 				entry := readers[r]
 				entry.nRead++
@@ -1778,7 +1778,7 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 	defer w.Close()
 
 	var onWrite func(error, int)
-	onWrite = func(err error, n int) {
+	onWrite = func(err error, _ int) {
 		if err == nil {
 			w.AsyncWrite([]byte("hello"), multicastAddr, onWrite)
 		}
