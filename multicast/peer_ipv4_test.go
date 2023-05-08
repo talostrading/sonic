@@ -1,6 +1,7 @@
 package multicast
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/net/ipv4"
@@ -617,7 +618,7 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 		count := 0
 		r.ReadLoop(func(err error, _ uint64, _ netip.AddrPort) {
 			if err != nil {
-                panic(err)
+				panic(err)
 			} else {
 				count++
 				if count == 10 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
@@ -631,7 +632,7 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
 			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
-                panic(err)
+				panic(err)
 			}
 			time.Sleep(time.Millisecond)
 		}
@@ -1801,4 +1802,89 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 			t.Fatal("all readers should have read something since they all joined")
 		}
 	}
+}
+
+func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
+	multicastIP := "224.0.2.51"
+	multicastPort := 1234
+	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+
+	if err := r.Join(IP(multicastIP)); err != nil {
+		t.Fatalf("reader could not join %s", multicastIP)
+	} else {
+		log.Printf("reader joined group %s", multicastIP)
+	}
+
+	received := make(map[uint64]int)
+
+	rb := make([]byte, 8)
+	var onRead func(error, int, netip.AddrPort)
+	onRead = func(err error, n int, _ netip.AddrPort) {
+		if err == nil {
+            seq := binary.BigEndian.Uint64(rb[:n])
+			received[seq]++
+            for i := 0; i < len(rb); i++ {
+                rb[i] = 0
+            }
+			r.AsyncRead(rb, onRead)
+		}
+	}
+	r.AsyncRead(rb, onRead)
+
+	w, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+    if addr, err := ipv4.GetMulticastInterfaceAddr(w.NextLayer()); err != nil {
+        t.Fatal(err)
+    } else {
+        fmt.Println("writer interface address", addr)
+    }
+
+    /*
+    if err := w.SetLoop(false); err != nil {
+        t.Fatal(err)
+    }
+    */
+
+	wb := make([]byte, 8)
+	var seq uint64 = 1
+
+	for i := 0; i < 100; i++ {
+		time.Sleep(time.Millisecond)
+
+		binary.BigEndian.PutUint64(wb, seq)
+		seq++
+		_, err = w.Write(wb, multicastAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for j := 0; j < 100; j++ {
+			ioc.PollOne()
+		}
+	}
+
+    for j := 0; j < 100000; j++ {
+        ioc.PollOne()
+    }
+
+	if len(received) == 0 {
+		t.Fatal("reader did not receive anything")
+	}
+	fmt.Println(received)
 }

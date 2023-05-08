@@ -232,7 +232,10 @@ func (p *UDPPeer) Inbound() *net.Interface {
 	return p.inbound
 }
 
-// SetLoop If true, multicast packets sent on one host are looped back to readers on the same host. This is the default.
+// SetLoop If true, multicast packets sent on one host are looped back to
+// readers on the same host. This should be the default.
+//
+// Use `sysctl net.inet.ip.mcast.loop` to see what is the default on BSD/Linux.
 //
 // Having this set to true, which is the default, makes it easy to write multicast tests on a single host. Anything
 // you write to a multicast group will be made available to receivers that joined that multicast group.
@@ -266,7 +269,7 @@ func (p *UDPPeer) TTL() uint8 {
 	return p.ttl
 }
 
-// SetAll Linux only. If true, all UDPPeer's bound to IP 0.0.0.0 i.e. INADDR_ANY will receive all multicast packets from
+// SetAll is Linux only. If true, all UDPPeer's bound to IP 0.0.0.0 i.e. INADDR_ANY will receive all multicast packets from
 // a group that was joined by another UDPPeer. Even though this is true in Linux by default, we set it to false in
 // NewUDPPeer. Multicast should be opt-in, not opt-out. This flag does not exist on BSD systems.
 //
