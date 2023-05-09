@@ -189,6 +189,10 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		}
 	}
 
+	if err := SetupPeer(p); err != nil {
+		return nil, err
+	}
+
 	return p, nil
 }
 
@@ -611,50 +615,50 @@ func (p *UDPPeer) Stats() *Stats {
 }
 
 func GetAddressesForInterface(name string) ([]netip.Addr, error) {
-    iff, err := net.InterfaceByName(name)
-    if err != nil {
-        return nil, err
-    }
+	iff, err := net.InterfaceByName(name)
+	if err != nil {
+		return nil, err
+	}
 
-    addrs, err := iff.Addrs()
-    if err != nil {
-        return nil, err
-    }
+	addrs, err := iff.Addrs()
+	if err != nil {
+		return nil, err
+	}
 
-    var ret []netip.Addr
-    for _, addr := range addrs {
-        var ipStr string
-        switch a := addr.(type) {
-        case *net.IPNet:
-            ipStr = a.IP.String()
-        case *net.IPAddr:
-            ipStr = a.IP.String()
-        default:
-            return nil, fmt.Errorf("address is of unsupported type")
-        }
-        parsedAddr, err := netip.ParseAddr(ipStr)
-        if err != nil {
-            return nil, err
-        }
-        ret = append(ret, parsedAddr)
-    }
-    return ret, nil
+	var ret []netip.Addr
+	for _, addr := range addrs {
+		var ipStr string
+		switch a := addr.(type) {
+		case *net.IPNet:
+			ipStr = a.IP.String()
+		case *net.IPAddr:
+			ipStr = a.IP.String()
+		default:
+			return nil, fmt.Errorf("address is of unsupported type")
+		}
+		parsedAddr, err := netip.ParseAddr(ipStr)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, parsedAddr)
+	}
+	return ret, nil
 }
 
 func FilterIPv4(addrs []netip.Addr) (ret []netip.Addr) {
-    for _, addr := range addrs {
-        if addr.Is4() || addr.Is4In6() {
-            ret = append(ret, addr)
-        }
-    }
-    return ret
+	for _, addr := range addrs {
+		if addr.Is4() || addr.Is4In6() {
+			ret = append(ret, addr)
+		}
+	}
+	return ret
 }
 
 func FilterIPv6(addrs []netip.Addr) (ret []netip.Addr) {
-    for _, addr := range addrs {
-        if addr.Is6() {
-            ret = append(ret, addr)
-        }
-    }
-    return ret
+	for _, addr := range addrs {
+		if addr.Is6() {
+			ret = append(ret, addr)
+		}
+	}
+	return ret
 }

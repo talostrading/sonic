@@ -1806,7 +1806,7 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 }
 
 func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
-	multicastIP := "224.0.2.51"
+	multicastIP := "224.0.2.0"
 	multicastPort := 1234
 	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
@@ -1828,14 +1828,16 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 		log.Printf("reader joined group %s", multicastIP)
 	}
 
-	received := make(map[uint64]int)
+	receivedCount := make(map[uint64]int)
+	var received []uint64
 
 	rb := make([]byte, 8)
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, _ netip.AddrPort) {
 		if err == nil {
 			seq := binary.BigEndian.Uint64(rb[:n])
-			received[seq]++
+			receivedCount[seq]++
+			received = append(received, seq)
 			for i := 0; i < len(rb); i++ {
 				rb[i] = 0
 			}
@@ -1854,16 +1856,6 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer w.Close()
-
-    if err := w.SetLoop(false); err != nil {
-        t.Fatal(err)
-    }
-
-	if addr, err := ipv4.GetMulticastInterfaceAddr(w.NextLayer()); err != nil {
-		t.Fatal(err)
-	} else {
-		fmt.Println("writer interface address", addr)
-	}
 
 	wb := make([]byte, 8)
 	var seq uint64 = 1
@@ -1887,8 +1879,22 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 		ioc.PollOne()
 	}
 
-	if len(received) == 0 {
+	if len(received) == 0 || len(receivedCount) == 0 {
 		t.Fatal("reader did not receive anything")
 	}
-	fmt.Println(received)
+
+	for _, count := range receivedCount {
+		if count != 1 {
+			t.Fatal("received duplicates")
+		}
+	}
+
+	last := received[0]
+	for _, recv := range received[1:] {
+		if recv-last != 1 {
+			t.Fatal("did not receive in order")
+		} else {
+			last = recv
+		}
+	}
 }
