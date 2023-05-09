@@ -1855,6 +1855,10 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 	}
 	defer w.Close()
 
+    if err := w.SetLoop(false); err != nil {
+        t.Fatal(err)
+    }
+
 	if addr, err := ipv4.GetMulticastInterfaceAddr(w.NextLayer()); err != nil {
 		t.Fatal(err)
 	} else {
