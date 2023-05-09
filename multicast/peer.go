@@ -92,6 +92,22 @@ type UDPPeer struct {
 // interface's address. That will ensure you don't get weird "No route to host"
 // errors down the line. Binding works 100% of the time,
 // SetOutboundIPv4/SetOutboundIPv6 does not.
+//
+// Note that there are certain semantics tied to certain multicast address
+// ranges (https://www.rfc-editor.org/rfc/rfc5771). For example:
+// - 224.0.0.0 to 224.0.0.255 are not routable, so packets sent to these groups
+// will only reach hosts at most 1 link away. So packets won't be forwarded by
+// routers.
+// - 224.0.1.0 to 224.0.1.255 are fully routable
+// That means that your choice of multicast IP matters, expecially if you're
+// going to write to it. For example, let's assume you make both a writer and a
+// reader in the same process and SetLoop(true) is set (it is by default):
+// - if the multicast IP is in 224.0.0/24 (first case above), the reader will
+// receive the packets once. SetLoop(true) ensures the reader gets the packets.
+// - if the multicast IP is in 224.0.1/24 (second case above), the reader will
+// receive each packet twice. Once from SetLoop(true) and once from the router.
+// Your network router sees the packets sent by the writer and destined to a
+// routable multicast IP coming in and it routes them back to your machine.
 func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	resolvedAddr, err := net.ResolveUDPAddr(network, addr)
 
@@ -187,10 +203,6 @@ func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 		if err := ipv4.SetMulticastAll(p.socket, false); err != nil {
 			return nil, err
 		}
-	}
-
-	if err := SetupPeer(p); err != nil {
-		return nil, err
 	}
 
 	return p, nil

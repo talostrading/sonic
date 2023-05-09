@@ -1806,7 +1806,7 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 }
 
 func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
-	multicastIP := "224.0.2.0"
+	multicastIP := "224.0.0.123"
 	multicastPort := 1234
 	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
@@ -1883,15 +1883,20 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 		t.Fatal("reader did not receive anything")
 	}
 
-	for _, count := range receivedCount {
+	for num, count := range receivedCount {
 		if count != 1 {
-			t.Fatal("received duplicates")
+			if count == 0 {
+				t.Fatalf("did not receive %d", num)
+			} else {
+				t.Fatalf("received duplicate of %d count=%d", num, count)
+			}
 		}
 	}
 
 	last := received[0]
 	for _, recv := range received[1:] {
 		if recv-last != 1 {
+			fmt.Println(received)
 			t.Fatal("did not receive in order")
 		} else {
 			last = recv
