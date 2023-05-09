@@ -1,22 +1,25 @@
 package main
 
 import (
+	"encoding/hex"
 	"flag"
 	"fmt"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/multicast"
-	"github.com/talostrading/sonic/util"
 	"log"
 	"net"
 	"net/netip"
 	"time"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/multicast"
+	"github.com/talostrading/sonic/util"
 )
 
 var (
-	lf    = flag.Bool("lf", false, "list network interfaces and quit")
-	iname = flag.String("iname", "", "interface to multicast with")
-	addr  = flag.String("addr", "224.0.1.0:5001", "multicast group to join")
-	ns    = flag.Int("ns", 128, "number of samples")
+	lf             = flag.Bool("lf", false, "list network interfaces and quit")
+	iname          = flag.String("iname", "", "interface to multicast with")
+	addr           = flag.String("addr", "224.0.1.0:5001", "multicast group to join")
+	ns             = flag.Int("ns", 128, "number of samples")
+	checkDuplicate = flag.Bool("duplicate", false, "if true, check how many times we got a message")
 )
 
 func PrintIff(iff *net.Interface) string {
@@ -88,6 +91,23 @@ func main() {
 
 	log.Println("joined multicast, starting to read")
 
+	received := make(map[string]int)
+	if *checkDuplicate {
+		t, err := sonic.NewTimer(ioc)
+		if err != nil {
+			panic(err)
+		}
+		t.ScheduleRepeating(5*time.Second, func() {
+			fmt.Println("------------------------")
+			for msg, count := range received {
+				if count != 1 {
+					fmt.Printf("received msg %s %d times\n", msg, count)
+				}
+			}
+			fmt.Println("------------------------")
+		})
+	}
+
 	b := make([]byte, iff.MTU)
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, from netip.AddrPort) {
@@ -95,7 +115,15 @@ func main() {
 			panic(err)
 		} else {
 			b = b[:n]
-			log.Printf("received from=%s n_bytes=%d payload=%s", from, n, string(b))
+
+			hexMsg := hex.EncodeToString(b)
+
+			if *checkDuplicate {
+				received[hexMsg]++
+			}
+
+			log.Printf("received from=%s n_bytes=%d payload=%s", from, n, hexMsg)
+
 			b = b[:cap(b)]
 			p.AsyncRead(b, onRead)
 		}
@@ -110,8 +138,7 @@ func main() {
 		start := time.Now()
 		n, _ := ioc.PollOne()
 		if n > 0 {
-			diff := time.Now().Sub(start)
-			if stats := tracker.Record(diff.Nanoseconds()); stats != nil {
+			if stats := tracker.Record(time.Since(start).Nanoseconds()); stats != nil {
 				log.Printf("loop latency (ns): %s\n", stats)
 			}
 		}
