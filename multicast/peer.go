@@ -88,10 +88,8 @@ type UDPPeer struct {
 // TCP/IP stack and into your process. Remember, multicast is an IP thing, ports
 // is a transport (TCP/UDP) thing.
 //
-// When sending multicast traffic, it is recommended to bind the Peer to an
-// interface's address. That will ensure you don't get weird "No route to host"
-// errors down the line. Binding works 100% of the time,
-// SetOutboundIPv4/SetOutboundIPv6 does not.
+// When sending multicast traffic, you should either bind the peer to 0.0.0.0 or
+// to an interface's address. Find those with `ip addr`.
 //
 // Note that there are certain semantics tied to certain multicast address
 // ranges (https://www.rfc-editor.org/rfc/rfc5771). For example:
