@@ -300,7 +300,9 @@ func TestUDPPeerIPv4_JoinOn(t *testing.T) {
 	}
 	defer peer.Close()
 
-	if err := peer.JoinOn("224.0.0.0", InterfaceName(testInterfacesIPv4[0].Name)); err != nil {
+	if err := peer.JoinOn(
+		"224.0.0.0", InterfaceName(testInterfacesIPv4[0].Name),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -334,7 +336,10 @@ func TestUDPPeerIPv4_JoinSource(t *testing.T) {
 	}
 	defer peer.Close()
 
-	if err := peer.JoinSource("224.0.0.0", SourceIP(iffs[0].ip.String())); err != nil {
+	if err := peer.JoinSource(
+		"224.0.0.0",
+		SourceIP(iffs[0].ip.String()),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -471,7 +476,9 @@ func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Printf("%s GetMulticastInterface_Inet4Addr addr=%s\n", iff.Name, addr.String())
+			fmt.Printf(
+				"%s GetMulticastInterface_Inet4Addr addr=%s\n",
+				iff.Name, addr.String())
 		}
 
 		{
@@ -489,7 +496,9 @@ func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedIPAndPort(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Printf("%s GetMulticastInterface_Index interface_index=%d\n", iff.Name, interfaceIndex)
+			fmt.Printf(
+				"%s GetMulticastInterface_Index interface_index=%d\n",
+				iff.Name, interfaceIndex)
 		}
 	}
 
@@ -525,7 +534,9 @@ func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Printf("%s GetMulticastInterface_Inet4Addr addr=%s\n", iff.Name, addr.String())
+			fmt.Printf(
+				"%s GetMulticastInterface_Inet4Addr addr=%s\n",
+				iff.Name, addr.String())
 		}
 
 		{
@@ -543,7 +554,9 @@ func TestUDPPeerIPv4_SetOutboundInterfaceOnUnspecifiedPort(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Printf("%s GetMulticastInterface_Index interface_index=%d\n", iff.Name, interfaceIndex)
+			fmt.Printf(
+				"%s GetMulticastInterface_Index interface_index=%d\n",
+				iff.Name, interfaceIndex)
 		}
 	}
 
@@ -595,7 +608,7 @@ func TestUDPPeerIPv4_TTL(t *testing.T) {
 
 func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	// 1 reader on INADDR_ANY joining 224.0.0.0, 1 writer on
-    // 224.0.0.0:<reader_port>
+	// 224.0.0.0:<reader_port>
 
 	r := newTestRW(t, "udp", "")
 	defer r.Close()
@@ -623,7 +636,9 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 				panic(err)
 			} else {
 				count++
-				if count == 10 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
+				if count == 10 ||
+					// just to not have it hang
+					time.Since(start).Seconds() > 1 {
 					r.Close()
 				}
 			}
@@ -633,7 +648,8 @@ func TestUDPPeerIPv4_Reader1(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -689,7 +705,9 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 					}
 				}
 
-				if stopCount == 2 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 2 ||
+					// just to not have it hang
+					time.Since(start).Seconds() > 1 {
 					r.Close()
 				}
 			}
@@ -699,7 +717,8 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w1.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -708,7 +727,8 @@ func TestUDPPeerIPv4_Reader2(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w2.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -735,13 +755,15 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 	defer r.Close()
 
 	multicastIP1 := "224.0.0.2"
-	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
+	multicastAddr1 := fmt.Sprintf(
+		"%s:%d", multicastIP1, r.peer.LocalAddr().Port)
 	if err := r.peer.Join(IP(multicastIP1)); err != nil {
 		t.Fatal(err)
 	}
 
 	multicastIP2 := "224.0.0.3"
-	multicastAddr2 := fmt.Sprintf("%s:%d", multicastIP2, r.peer.LocalAddr().Port)
+	multicastAddr2 := fmt.Sprintf(
+		"%s:%d", multicastIP2, r.peer.LocalAddr().Port)
 
 	w1 := newTestRW(t, "udp", "")
 	defer w1.Close()
@@ -768,7 +790,9 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 					}
 				}
 
-				if stopCount == 1 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 1 ||
+					// just to not have it hang
+					time.Since(start).Seconds() > 1 {
 					r.Close()
 				}
 			}
@@ -778,7 +802,8 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w1.WriteNext(multicastAddr1); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -787,7 +812,8 @@ func TestUDPPeerIPv4_Reader3(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w2.WriteNext(multicastAddr2); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -808,19 +834,21 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 	// 2 writers:
 	// - one on 224.0.0.4:<reader_port>
 	// - two on 224.0.0.4:<not_reader_port>
-	// The reader only joins 224.0.0.4. Should only get from writer 1 since writer 2 does not publish on the reader's
-	// port.
+	// The reader only joins 224.0.0.4. Should only get from writer 1 since
+	// writer 2 does not publish on the reader's port.
 
 	r := newTestRW(t, "udp", "")
 	defer r.Close()
 
 	multicastIP1 := "224.0.0.4"
-	multicastAddr1 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port)
+	multicastAddr1 := fmt.Sprintf(
+		"%s:%d", multicastIP1, r.peer.LocalAddr().Port)
 	if err := r.peer.Join(IP(multicastIP1)); err != nil {
 		t.Fatal(err)
 	}
 
-	multicastAddr2 := fmt.Sprintf("%s:%d", multicastIP1, r.peer.LocalAddr().Port+1)
+	multicastAddr2 := fmt.Sprintf(
+		"%s:%d", multicastIP1, r.peer.LocalAddr().Port+1)
 
 	w1 := newTestRW(t, "udp", "")
 	defer w1.Close()
@@ -847,7 +875,9 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 					}
 				}
 
-				if stopCount == 1 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 1 ||
+					// just to not have it hang
+					time.Since(start).Seconds() > 1 {
 					r.Close()
 				}
 			}
@@ -857,7 +887,8 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w1.WriteNext(multicastAddr1); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -866,7 +897,8 @@ func TestUDPPeerIPv4_Reader4(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w2.WriteNext(multicastAddr2); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -886,13 +918,15 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 	// Counterpart to TestReader2.
 	//
 	// 1 reader on 224.0.0.5:0(so random port). Joins both 224.0.0.5 and
-    // 224.0.0.6.
+	// 224.0.0.6.
+	//
 	// 2 writers:
 	// - one on 224.0.0.5:<reader_port>
 	// - two on 224.0.0.6:<not_reader_port>
 	//
-	// The reader joins both groups, but it's bound to 224.0.0.5, which has a filtering role, meaning that it should
-	// only get from 224.0.0.5 and not also from 224.0.0.6.
+	// The reader joins both groups, but it's bound to 224.0.0.5, which has a
+	// filtering role, meaning that it should only get from 224.0.0.5 and not
+	// also from 224.0.0.6.
 
 	r := newTestRW(t, "udp", "224.0.0.5:0")
 	defer r.Close()
@@ -934,7 +968,9 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 					}
 				}
 
-				if stopCount == 1 || time.Since(start).Seconds() > 1 /* just to not have it hang */ {
+				if stopCount == 1 ||
+					// just to not have it hang
+					time.Since(start).Seconds() > 1 {
 					r.Close()
 				}
 			}
@@ -944,7 +980,8 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w1.WriteNext(multicastAddr1); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w1.WriteNext(multicastAddr1); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -953,7 +990,8 @@ func TestUDPPeerIPv4_Reader5(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w2.WriteNext(multicastAddr2); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w2.WriteNext(multicastAddr2); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1002,7 +1040,8 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1024,7 +1063,8 @@ func TestUDPPeerIPv4_Reader6(t *testing.T) {
 
 func TestUDPPeer_SetInbound1(t *testing.T) {
 	if len(testInterfacesIPv4) < 1 {
-		log.Printf("not running this one as we don't have enough multicast interfaces")
+		log.Printf(
+			"not running this one as we don't have enough multicast interfaces")
 		for _, iff := range testInterfacesIPv4 {
 			log.Printf("interface name=%s", iff.Name)
 		}
@@ -1033,7 +1073,9 @@ func TestUDPPeer_SetInbound1(t *testing.T) {
 
 	readerInterface := testInterfacesIPv4[0]
 	writerInterface := testInterfacesIPv4[0]
-	log.Printf("reader_interface=%s writer_interface=%s", readerInterface.Name, writerInterface.Name)
+	log.Printf(
+		"reader_interface=%s writer_interface=%s",
+		readerInterface.Name, writerInterface.Name)
 
 	r := newTestRW(t, "udp", "")
 	defer r.Close()
@@ -1066,7 +1108,8 @@ func TestUDPPeer_SetInbound1(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1082,11 +1125,13 @@ func TestUDPPeer_SetInbound1(t *testing.T) {
 }
 
 func TestUDPPeer_SetInbound2(t *testing.T) {
-	// TODO warning - this test is not correct. We explicitly tell the kernel to not loopback multicast packets.
-	// SetInbound might not be correct but I need a proper setup to test that.
+	// TODO warning - this test is not correct. We explicitly tell the kernel to
+	// not loopback multicast packets. SetInbound might not be correct but I
+	// need a proper setup to test that.
 
 	if len(testInterfacesIPv4) < 2 {
-		log.Printf("not running this one as we don't have enough multicast interfaces")
+		log.Printf(
+			"not running this one as we don't have enough multicast interfaces")
 		for _, iff := range testInterfacesIPv4 {
 			log.Printf("interface name=%s", iff.Name)
 		}
@@ -1095,7 +1140,9 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 
 	readerInterface := testInterfacesIPv4[0]
 	writerInterface := testInterfacesIPv4[1]
-	log.Printf("reader_interface=%s writer_interface=%s", readerInterface.Name, writerInterface.Name)
+	log.Printf(
+		"reader_interface=%s writer_interface=%s",
+		readerInterface.Name, writerInterface.Name)
 
 	r := newTestRW(t, "udp", "")
 	defer r.Close()
@@ -1134,7 +1181,8 @@ func TestUDPPeer_SetInbound2(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		for i := 0; i < 50; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1174,7 +1222,8 @@ func TestUDPPeerIPv4_JoinAndRead(t *testing.T) {
 		defer wg.Done()
 
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1202,7 +1251,10 @@ func TestUDPPeerIPv4_JoinOnAndRead(t *testing.T) {
 	}
 
 	w.peer.LocalAddr()
-	if err := r.peer.JoinOn("224.0.0.11", InterfaceName(iffs[0].iff.Name)); err != nil {
+	if err := r.peer.JoinOn(
+		"224.0.0.11",
+		InterfaceName(iffs[0].iff.Name),
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1223,7 +1275,8 @@ func TestUDPPeerIPv4_JoinOnAndRead(t *testing.T) {
 		defer wg.Done()
 
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				panic(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -1249,7 +1302,8 @@ func TestUDPPeerIPv4_JoinReadLeave(t *testing.T) {
 
 	log.Printf("reader local_addr=%s", r.LocalAddr())
 
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1347,7 +1401,8 @@ func TestUDPPeerIPv4_JoinReadBlock(t *testing.T) {
 
 	log.Printf("reader local_addr=%s", r.LocalAddr())
 
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1379,7 +1434,10 @@ func TestUDPPeerIPv4_JoinReadBlock(t *testing.T) {
 
 			if !left && nReadBefore >= 5 {
 				log.Printf("blocking source %s", from.Addr())
-				if err := r.BlockSource(IP(multicastIP), SourceIP(from.Addr().String())); err != nil {
+				if err := r.BlockSource(
+					IP(multicastIP),
+					SourceIP(from.Addr().String()),
+				); err != nil {
 					t.Fatal(err)
 				}
 				left = true
@@ -1443,7 +1501,8 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_NoneJoin(t *testing.T) {
 
 	multicastIP := "224.0.0.14"
 	multicastPort := 1234
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1515,10 +1574,13 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_NoneJoin(t *testing.T) {
 
 	var errs []error
 	for _, reader := range readers {
-		log.Printf("reader index=%d n_read=%d from=%+v", reader.index, reader.nRead, reader.from)
+		log.Printf(
+			"reader index=%d n_read=%d from=%+v",
+			reader.index, reader.nRead, reader.from)
 		if reader.nRead != 0 || len(reader.from) != 0 {
 			errs = append(errs,
-				fmt.Errorf("none of the readers joined, but reader %d received %d times from %+v",
+				fmt.Errorf(
+					"none of the readers joined, but reader %d received %d times from %+v",
 					reader.index, reader.nRead, reader.from))
 		}
 	}
@@ -1528,7 +1590,8 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_NoneJoin(t *testing.T) {
 	}
 }
 
-// See also TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins_IP_MULTICAST_ALL_is_1_default
+// See also
+// TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins_IP_MULTICAST_ALL_is_1_default
 // in peer_ipv4_linux_test.go
 func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins(t *testing.T) {
 	ioc := sonic.MustIO()
@@ -1536,7 +1599,8 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins(t *testing.T) {
 
 	multicastIP := "224.0.0.15"
 	multicastPort := 1234
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1615,7 +1679,9 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins(t *testing.T) {
 	log.Printf("done")
 
 	for _, reader := range readers {
-		log.Printf("reader index=%d n_read=%d from=%+v", reader.index, reader.nRead, reader.from)
+		log.Printf(
+			"reader index=%d n_read=%d from=%+v",
+			reader.index, reader.nRead, reader.from)
 		if reader.index != 0 /* the one that joined */ && reader.nRead != 0 {
 			t.Fatal("only one the reader who joined should have read something")
 		}
@@ -1628,7 +1694,8 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_OneJoins(t *testing.T) {
 
 	multicastIP := "224.0.0.16"
 	multicastPort := 1234
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1639,7 +1706,11 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_OneJoins(t *testing.T) {
 		from  map[netip.AddrPort]struct{}
 	})
 	for i := 0; i < 10; i++ {
-		r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+		r, err := NewUDPPeer(
+			ioc,
+			"udp",
+			fmt.Sprintf("%s:%d", multicastIP, multicastPort),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1721,7 +1792,8 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 
 	multicastIP := "224.0.0.17"
 	multicastPort := 1234
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1732,7 +1804,8 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 		from  map[netip.AddrPort]struct{}
 	})
 	for i := 0; i < 10; i++ {
-		r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+		r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf(
+			"%s:%d", multicastIP, multicastPort))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1801,7 +1874,8 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 		log.Printf("reader index=%d n_read=%d from=%+v local_addr=%s",
 			reader.index, reader.nRead, reader.from, r.LocalAddr())
 		if reader.nRead == 0 {
-			t.Fatal("all readers should have read something since they all joined")
+			t.Fatal(
+				"all readers should have read something since they all joined")
 		}
 	}
 }
@@ -1809,7 +1883,8 @@ func TestUDPPeerIPv4_MultipleReadersOnMulticast_AllJoin(t *testing.T) {
 func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 	multicastIP := "224.0.0.18"
 	multicastPort := 1234
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
 		t.Fatal(err)
 	}

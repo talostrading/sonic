@@ -18,14 +18,17 @@ func (s *Stats) Reset() {
 	s.async.scheduledWrites = 0
 }
 
-// AsyncReadPerf gives an indication of the async read performance of the peer. Higher is better, and indicates
-// that less syscalls have been made.
+// AsyncReadPerf gives an indication of the async read performance of the peer.
+// Higher is better, and indicates that less syscalls have been made.
 //
 // In the limit:
-// - 0.0 means that all reads have passed through the reactor, hence none were done immediately.
-// - 1.0 means that none of the reads have passed through the reactor and were hence done immediately.
+// - 0.0 means that all reads have passed through the reactor, hence none were
+// done immediately.
+// - 1.0 means that none of the reads have passed through the reactor and were
+// hence done immediately.
 func (s *Stats) AsyncReadPerf() float64 {
-	return 1.0 - float64(s.AsyncScheduledReads())/float64(s.AsyncTotalReads())*2.0
+	return 1.0 -
+		float64(s.AsyncScheduledReads())/float64(s.AsyncTotalReads())*2.0
 }
 
 func (s *Stats) AsyncTotalReads() int {

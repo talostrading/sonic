@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// TODO really don't know how to make this run on my mac
+// TODO: really don't know how to make this run on my mac
 func TestUDPPeerIPv4_JoinSourceAndRead1(t *testing.T) {
 	iffs, err := interfacesWithIP(4)
 	if err == ErrNoInterfaces {
@@ -31,7 +31,8 @@ func TestUDPPeerIPv4_JoinSourceAndRead1(t *testing.T) {
 	}
 
 	w.peer.LocalAddr()
-	if err := r.peer.JoinSource("224.0.1.0", SourceIP(iffs[0].ip.String())); err != nil {
+	if err := r.peer.JoinSource(
+		"224.0.1.0", SourceIP(iffs[0].ip.String())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -63,14 +64,15 @@ func TestUDPPeerIPv4_JoinSourceAndRead1(t *testing.T) {
 	}
 }
 
-// TODO not sure why this fails on BSD
+// TODO: not sure why this fails on BSD
 func TestUDPPeerIPv4_JoinSourceAndRead2(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
 	multicastIP := "224.0.2.51"
 	multicastPort := 1234
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +157,8 @@ func TestUDPPeerIPv4_JoinSourceAndRead2(t *testing.T) {
 			allJoined = true
 			for reader, info := range readers {
 				if info.index != 0 {
-					if err := reader.JoinSource(IP(multicastIP), SourceIP(fromAddr.Addr().String())); err != nil {
+					if err := reader.JoinSource(
+						IP(multicastIP), SourceIP(fromAddr.Addr().String())); err != nil {
 						t.Fatal(err)
 					} else {
 						log.Printf(
@@ -184,32 +187,41 @@ func TestUDPPeerIPv4_JoinSourceAndRead2(t *testing.T) {
 	}
 }
 
-// There is an equivalent test in peer_ipv4_bsd_test. The only difference between them is that on Linux, if one peer
-// joins a group while bound to INADDR_ANY, all other peers bound to INADDR_ANY will also automatically join the same
-// multicast group, even though they have not explicitly joined.
+// There is an equivalent test in peer_ipv4_bsd_test. The only difference
+// between them is that on Linux, if one peer joins a group while bound to
+// INADDR_ANY, all other peers bound to INADDR_ANY will also automatically join
+// the same multicast group, even though they have not explicitly joined.
 //
-// Why? Because that's the default in Linux. It has to do with the flag IP_MULTICAST_ALL. That is 1 by default and the
-// behaviour is as described above.
+// Why? Because that's the default in Linux. It has to do with the flag
+// IP_MULTICAST_ALL. That is 1 by default and the behaviour is as described
+// above.
 //
-// What do we actually want? We want only one reader to receive datagrams - the one that joined. The rest of them should
-// not receive anything. That is the default behaviour on BSD, so that's why we separate these files. Below this test
-// you'll find the one where we set IP_MULTICAST_ALL to 0 which gives us the desired behaviour, like on BSD.
+// What do we actually want? We want only one reader to receive datagrams - the
+// one that joined. The rest of them should not receive anything. That is the
+// default behaviour on BSD, so that's why we separate these files. Below this
+// test you'll find the one where we set IP_MULTICAST_ALL to 0 which gives us
+// the desired behaviour, like on BSD.
 //
-// Now IP_MULTICAST_ALL is not defined in syscall on linux/amd64. Grepping torvalds/kernel, I see that IP_MULTICAST_ALL
-// is 49. See ipv4 on how we implement it. What we could've done is use CGO to include <netinet.h> which would've given
-// us access to the defined IP_MULTICAST_ALL. However, that means dynamically linking to glibc, at least until 1.21,
-// which is a not desirable as sonic binaries are run on boomer finance boxes, with old kernels (4.18) and old glibc.
-// So we hope IP_MULTICAST_ALL stays 49 until go1.21 when the dynamic glibc link is not needed anymore.
+// Now IP_MULTICAST_ALL is not defined in syscall on linux/amd64. Grepping
+// torvalds/kernel, I see that IP_MULTICAST_ALL is 49. See ipv4 on how we
+// implement it. What we could've done is use CGO to include <netinet.h> which
+// would've given us access to the defined IP_MULTICAST_ALL. However, that means
+// dynamically linking to glibc, at least until 1.21, which is a not desirable
+// as sonic binaries are run on boomer finance boxes, with old kernels (4.18)
+// and old glibc. So we hope IP_MULTICAST_ALL stays 49 until go1.21 when the
+// dynamic glibc link is not needed anymore.
 //
-// Note that we set IP_MULTICAST_ALL to 0 in the constructor of UDPPeer as that's what we consider correct behaviour:
-// multicast should be opt-in, not opt-out.
+// Note that we set IP_MULTICAST_ALL to 0 in the constructor of UDPPeer as
+// that's what we consider correct behaviour: multicast should be opt-in, not
+// opt-out.
 func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins_IP_MULTICAST_ALL_is_1_default(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
 	multicastIP := "224.0.1.42"
 	multicastPort := 1234
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, multicastPort))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +238,8 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins_IP_MULTICAST_ALL_is_1_d
 		}
 		defer r.Close()
 
-		// Set to false in the constructor of UDPPeer. By default, it is true. We test the default here.
+		// Set to false in the constructor of UDPPeer. By default, it is true.
+		// We test the default here.
 		if err := ipv4.SetMulticastAll(r.socket, true); err != nil {
 			t.Fatal(err)
 		}
@@ -296,7 +309,9 @@ func TestUDPPeerIPv4_MultipleReadersOnINADDRANY_OneJoins_IP_MULTICAST_ALL_is_1_d
 		if reader.nRead == 0 {
 			t.Fatal("all readers should have read something")
 		}
-		log.Printf("reader index=%d n_read=%d from=%+v", reader.index, reader.nRead, reader.from)
+		log.Printf(
+			"reader index=%d n_read=%d from=%+v",
+			reader.index, reader.nRead, reader.from)
 	}
 }
 
@@ -316,7 +331,8 @@ func TestUDPPeerIPv4_JoinSourceAndRead(t *testing.T) {
 	}
 
 	w.peer.LocalAddr()
-	if err := r.peer.JoinSource("224.0.2.0", SourceIP(iffs[0].ip.String())); err != nil {
+	if err := r.peer.JoinSource(
+		"224.0.2.0", SourceIP(iffs[0].ip.String())); err != nil {
 		t.Fatal(err)
 	}
 
@@ -337,7 +353,8 @@ func TestUDPPeerIPv4_JoinSourceAndRead(t *testing.T) {
 		defer wg.Done()
 
 		for i := 0; i < 10; i++ {
-			if err := w.WriteNext(multicastAddr); err != nil && err != sonicerrors.ErrNoBufferSpaceAvailable {
+			if err := w.WriteNext(multicastAddr); err != nil &&
+				err != sonicerrors.ErrNoBufferSpaceAvailable {
 				t.Fatal(err)
 			}
 			time.Sleep(time.Millisecond)
@@ -364,7 +381,8 @@ func TestUDPPeerIPv4_JoinReadBlockUnblockRead(t *testing.T) {
 
 	log.Printf("reader local_addr=%s", r.LocalAddr())
 
-	multicastAddr, err := netip.ParseAddrPort(fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
+	multicastAddr, err := netip.ParseAddrPort(
+		fmt.Sprintf("%s:%d", multicastIP, r.LocalAddr().Port))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,17 +444,22 @@ func TestUDPPeerIPv4_JoinReadBlockUnblockRead(t *testing.T) {
 
 	err = blockTimer.ScheduleOnce(2*time.Second, func() {
 		log.Printf("blocking source %s", writerAddr)
-		if err := r.BlockSource(IP(multicastIP), SourceIP(writerAddr.Addr().String())); err != nil {
+		if err := r.BlockSource(
+			IP(multicastIP), SourceIP(writerAddr.Addr().String())); err != nil {
 			t.Fatal(err)
 		} else {
 			log.Printf("blocked source %s n_read=%d", writerAddr, nRead)
 			nRead = 0
 			err = blockTimer.ScheduleOnce(2*time.Second, func() {
 				log.Printf("unblocking source %s", writerAddr)
-				if err := r.UnblockSource(IP(multicastIP), SourceIP(writerAddr.Addr().String())); err != nil {
+				if err := r.UnblockSource(
+					IP(multicastIP),
+					SourceIP(writerAddr.Addr().String()),
+				); err != nil {
 					t.Fatal(err)
 				} else {
-					log.Printf("unblocked source %s n_read=%d", writerAddr, nRead)
+					log.Printf(
+						"unblocked source %s n_read=%d", writerAddr, nRead)
 					nRead = 0
 				}
 			})

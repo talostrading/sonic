@@ -4,13 +4,14 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/talostrading/sonic"
 	"log"
 	"net"
 	"net/netip"
 	"os"
 	"sync/atomic"
 	"testing"
+
+	"github.com/talostrading/sonic"
 )
 
 var (
@@ -80,20 +81,6 @@ func TestMain(m *testing.M) {
 	}
 	os.Exit(ret)
 }
-
-// To test:
-// 1. Binding reader 0.0.0.0:0 and having two writers write to two different groups on the reader's port.
-//    The reader should get packets from both.
-// 2. Binding reader to 224.0.1.0:0 and having two writers writer to two different groups on the reader's port, one of
-//    which should be 224.0.1.0. The reader should only get packets from one writer.
-// 3. Binding two reader to 224.0.1.0:5001 and having a writer send packets to 224.0.1.0. Both readers should get those.
-// 4. Binding readers to 224.0.1.0:5001 and having writers write to the address but a different port. Readers
-//    should not get anything.
-// 5. Binding to an explicit interface.
-// 6. Two writers publishing to the same group, reader joining with Join, gets both, with JoinSource, gets only one,
-//    with Join gets two then Block source gets one then Unblock source gets two
-// 7. Reader JoinSourceGroup and LeaveSourceGroup
-// 8. Reader source group.
 
 type testRW struct {
 	t        *testing.T

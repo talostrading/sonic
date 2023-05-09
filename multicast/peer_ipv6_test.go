@@ -1,10 +1,11 @@
 package multicast
 
 import (
-	"github.com/talostrading/sonic"
 	"log"
 	"net"
 	"testing"
+
+	"github.com/talostrading/sonic"
 )
 
 func TestUDPPeerIPv6_Addresses(t *testing.T) {
