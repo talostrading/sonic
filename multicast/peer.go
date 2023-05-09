@@ -2,14 +2,15 @@ package multicast
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/net/ipv4"
-	"github.com/talostrading/sonic/sonicerrors"
 	"io"
 	"net"
 	"net/netip"
 	"syscall"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/net/ipv4"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 var emptyIPv4Addr = [4]byte{0x0, 0x0, 0x0, 0x0}
@@ -54,22 +55,14 @@ type UDPPeer struct {
 //     interfaces. Reads and writer will only be done from that interface.
 //
 // A few examples:
-// - if you want to only receive data from 224.0.1.0:1234, then:
-//   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234") and then Join("224.0.1.0"). Without the Join, you will get no data.
+// - If you want to only receive data from 224.0.1.0:1234, then: NewUDPPeer(ioc, "udp", "224:0.1.0:1234") and then Join("224.0.1.0"). Without the Join, you will get no data.
+// - If you want to only receive data from a specific interface from 224.0.1.0:1234 then: NewUDPPeer(ioc, "udp", "224:0.1.0:1234") and then JoinOn("224.0.1.0", "eth0") where "eth0" is the interface name.
 //
-// - if you want to only receive data from a specific interface from 224.0.1.0:1234 then:
+//   - If there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you only want to receive data from
+//     the host with IP 192.168.1.1 then: NewUDPPeer(ioc, "udp", "224:0.1.0:1234"), then JoinSource("224.0.1.0", "192.168.1.1").
 //
-//   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234") and then JoinOn("224.0.1.0", "eth0") where "eth0" is the interface name.
-//
-//   - if there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you only want to receive data from
-//     the host with IP 192.168.1.1 then:
-//
-//   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234"), then JoinSource("224.0.1.0", "192.168.1.1").
-//
-//   - if there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you want to receive data from all
-//     but not the one with IP 192.168.1.1, then:
-//
-//   - NewUDPPeer(ioc, "udp", "224:0.1.0:1234"), then Join("224.0.1.0"), BlockSource("192.168.1.1").
+//   - If there are multiple hosts publishing to multicast group 224.0.1.0:1234, and you want to receive data from all
+//     but not the one with IP 192.168.1.1, then: NewUDPPeer(ioc, "udp", "224:0.1.0:1234"), then Join("224.0.1.0"), BlockSource("192.168.1.1").
 //
 // The above examples should cover everything you need to write a decent multicast app.
 //
@@ -79,8 +72,29 @@ type UDPPeer struct {
 // tells you it publishes to 224.0.25.108:14326, you must call either NewUDPPeer(ioc, "udp", ":14326") or
 // NewUDPPeer(ioc, "udp", "224.0.25.108:14326"). Putting anything other than "14326" as a port will make it such that
 // your Peer won't receive any data, even though it joined "224.0.25.108".
+//
+// General note: binding to 0.0.0.0 means telling the TCP/IP layer to use all
+// available interfaces for listening and choose the best interface for sending.
+//
+// Multicast addresses map directly to MAC addresses. Hence, multicast needs
+// direct hardware support. A network interface usually only listens to ethernet
+// frames destined for its own MAC address. Telling a network interface to join
+// a group means telling it to also listen to frames destined to the unique MAC
+// mapping of that multicast IP.
+//
+// Joining a multicast group means that all multicast traffic for all ports on
+// that multicast IP will be received by your network interface. However, only
+// the traffic destined to your binded listening port will get passed up the
+// TCP/IP stack and into your process. Remember, multicast is an IP thing, ports
+// is a transport (TCP/UDP) thing.
+//
+// When sending multicast traffic, it is recommended to bind the Peer to an
+// interface's address. That will ensure you don't get weird "No route to host"
+// errors down the line. Binding works 100% of the time,
+// SetOutboundIPv4/SetOutboundIPv6 does not.
 func NewUDPPeer(ioc *sonic.IO, network string, addr string) (*UDPPeer, error) {
 	resolvedAddr, err := net.ResolveUDPAddr(network, addr)
+
 	if err != nil {
 		return nil, fmt.Errorf("could not resolve addr=%s err=%v", addr, err)
 	}
@@ -594,4 +608,53 @@ func (p *UDPPeer) Closed() bool {
 
 func (p *UDPPeer) Stats() *Stats {
 	return p.stats
+}
+
+func GetAddressesForInterface(name string) ([]netip.Addr, error) {
+    iff, err := net.InterfaceByName(name)
+    if err != nil {
+        return nil, err
+    }
+
+    addrs, err := iff.Addrs()
+    if err != nil {
+        return nil, err
+    }
+
+    var ret []netip.Addr
+    for _, addr := range addrs {
+        var ipStr string
+        switch a := addr.(type) {
+        case *net.IPNet:
+            ipStr = a.IP.String()
+        case *net.IPAddr:
+            ipStr = a.IP.String()
+        default:
+            return nil, fmt.Errorf("address is of unsupported type")
+        }
+        parsedAddr, err := netip.ParseAddr(ipStr)
+        if err != nil {
+            return nil, err
+        }
+        ret = append(ret, parsedAddr)
+    }
+    return ret, nil
+}
+
+func FilterIPv4(addrs []netip.Addr) (ret []netip.Addr) {
+    for _, addr := range addrs {
+        if addr.Is4() || addr.Is4In6() {
+            ret = append(ret, addr)
+        }
+    }
+    return ret
+}
+
+func FilterIPv6(addrs []netip.Addr) (ret []netip.Addr) {
+    for _, addr := range addrs {
+        if addr.Is6() {
+            ret = append(ret, addr)
+        }
+    }
+    return ret
 }

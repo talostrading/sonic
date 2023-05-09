@@ -3,9 +3,6 @@ package multicast
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/net/ipv4"
-	"github.com/talostrading/sonic/sonicerrors"
 	"log"
 	"net"
 	"net/netip"
@@ -13,6 +10,10 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/net/ipv4"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 // Listing multicast group memberships: netstat -gsv
@@ -1815,7 +1816,7 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	r, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:%d", multicastIP, multicastPort))
+	r, err := NewUDPPeer(ioc, "udp", multicastAddr.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1833,33 +1834,32 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, _ netip.AddrPort) {
 		if err == nil {
-            seq := binary.BigEndian.Uint64(rb[:n])
+			seq := binary.BigEndian.Uint64(rb[:n])
 			received[seq]++
-            for i := 0; i < len(rb); i++ {
-                rb[i] = 0
-            }
+			for i := 0; i < len(rb); i++ {
+				rb[i] = 0
+			}
 			r.AsyncRead(rb, onRead)
 		}
 	}
 	r.AsyncRead(rb, onRead)
 
-	w, err := NewUDPPeer(ioc, "udp", "")
+	interfaceAddrs, err := GetAddressesForInterface("en0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := NewUDPPeer(ioc, "udp", fmt.Sprintf("%s:0", FilterIPv4(interfaceAddrs)[0]))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer w.Close()
 
-    if addr, err := ipv4.GetMulticastInterfaceAddr(w.NextLayer()); err != nil {
-        t.Fatal(err)
-    } else {
-        fmt.Println("writer interface address", addr)
-    }
-
-    /*
-    if err := w.SetLoop(false); err != nil {
-        t.Fatal(err)
-    }
-    */
+	if addr, err := ipv4.GetMulticastInterfaceAddr(w.NextLayer()); err != nil {
+		t.Fatal(err)
+	} else {
+		fmt.Println("writer interface address", addr)
+	}
 
 	wb := make([]byte, 8)
 	var seq uint64 = 1
@@ -1870,8 +1870,8 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 		binary.BigEndian.PutUint64(wb, seq)
 		seq++
 		_, err = w.Write(wb, multicastAddr)
-		if err != nil {
-			t.Fatal(err)
+		if err != nil && err != sonicerrors.ErrWouldBlock {
+			t.Fatalf("on the %d write err=%v", i, err)
 		}
 
 		for j := 0; j < 100; j++ {
@@ -1879,9 +1879,9 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 		}
 	}
 
-    for j := 0; j < 100000; j++ {
-        ioc.PollOne()
-    }
+	for j := 0; j < 100000; j++ {
+		ioc.PollOne()
+	}
 
 	if len(received) == 0 {
 		t.Fatal("reader did not receive anything")
