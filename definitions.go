@@ -8,7 +8,7 @@ import (
 const (
 	// MaxCallbackDispatch is the maximum number of callbacks which can be
 	// placed onto the stack for immediate invocation.
-	MaxCallbackDispatch int = 1024
+	MaxCallbackDispatch int = 128
 )
 
 // TODO this is quite a mess right now. Properly define what a Conn, Stream,
