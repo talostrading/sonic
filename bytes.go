@@ -11,6 +11,8 @@ import (
 // Invariants:
 //   - ri <= wi at all times
 //   - wi = min(len(data), cap(b.data)) after each function call
+//   - everytime wi changes, b.data should grow/shrink accordingly:
+//      - b.data = b.data[:b.wi]
 type ByteBuffer struct {
 	ri int // End index of the read area, always smaller or equal to wi.
 	wi int // End index of the write area.
@@ -273,5 +275,6 @@ func (b *ByteBuffer) Claim(fn func(b []byte) int) {
 	if wi := b.wi + n; n >= 0 && wi <= cap(b.data) {
 		// wi <= cap(b.data) because the invariant is that b.wi = min(len(b.data), cap(b.data)) after each call
 		b.wi = wi
+		b.data = b.data[:b.wi]
 	}
 }
