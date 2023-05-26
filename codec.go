@@ -184,50 +184,18 @@ func NewNonblockingCodecConn[Enc, Dec any](
 }
 
 func (c *NonblockingCodecConn[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
-	c.asyncTryDecode(cb)
-}
-
-func (c *NonblockingCodecConn[Enc, Dec]) asyncTryDecode(cb func(error, Dec)) {
 	item, err := c.codec.Decode(c.src)
 	if errors.Is(err, sonicerrors.ErrNeedMore) {
-		c.asyncReadNext(cb)
+		c.src.AsyncReadFrom(c.stream, func(err error, _ int) {
+			if err != nil {
+				cb(err, c.emptyDec)
+			} else {
+				c.AsyncReadNext(cb)
+			}
+		})
 	} else {
 		cb(err, item)
 	}
-}
-
-func (c *NonblockingCodecConn[Enc, Dec]) asyncReadNext(cb func(error, Dec)) {
-	if c.dispatched < MaxCallbackDispatch {
-		c.asyncReadNow(func(err error, item Dec) {
-			c.dispatched++
-			cb(err, item)
-			c.dispatched--
-		})
-	} else {
-		c.scheduleAsyncRead(cb)
-	}
-}
-
-func (c *NonblockingCodecConn[Enc, Dec]) asyncReadNow(cb func(error, Dec)) {
-	_, err := c.src.ReadFrom(c.stream)
-	switch err {
-	case nil:
-		c.asyncTryDecode(cb)
-	case sonicerrors.ErrWouldBlock:
-		c.scheduleAsyncRead(cb)
-	default:
-		cb(err, c.emptyDec)
-	}
-}
-
-func (c *NonblockingCodecConn[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
-	c.src.AsyncReadFrom(c.stream, func(err error, _ int) {
-		if err != nil {
-			cb(err, c.emptyDec)
-		} else {
-			c.asyncTryDecode(cb)
-		}
-	})
 }
 
 func (c *NonblockingCodecConn[Enc, Dec]) ReadNext() (Dec, error) {
