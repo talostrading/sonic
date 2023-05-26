@@ -20,6 +20,9 @@ func main() {
 	defer ioc.Close()
 
 	ln, err := sonic.Listen(ioc, "tcp", *addr)
+	if err != nil {
+		panic(err)
+	}
 
 	conn, err := ln.Accept()
 	if err != nil {
