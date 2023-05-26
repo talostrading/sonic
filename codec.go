@@ -190,7 +190,7 @@ func (c *NonblockingCodecConn[Enc, Dec]) AsyncReadNext(cb func(error, Dec)) {
 func (c *NonblockingCodecConn[Enc, Dec]) asyncTryDecode(cb func(error, Dec)) {
 	item, err := c.codec.Decode(c.src)
 	if errors.Is(err, sonicerrors.ErrNeedMore) {
-		c.asyncReadNow(cb)
+		c.asyncReadNext(cb)
 	} else {
 		cb(err, item)
 	}
