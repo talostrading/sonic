@@ -3,6 +3,7 @@ package sonic
 import (
 	"errors"
 	"fmt"
+
 	"github.com/talostrading/sonic/internal"
 	"github.com/talostrading/sonic/sonicerrors"
 )
@@ -209,17 +210,18 @@ func (c *NonblockingCodecConn[Enc, Dec]) asyncReadNext(cb func(error, Dec)) {
 
 func (c *NonblockingCodecConn[Enc, Dec]) asyncReadNow(cb func(error, Dec)) {
 	_, err := c.src.ReadFrom(c.stream)
-	if err == nil {
+	switch err {
+	case nil:
 		c.asyncTryDecode(cb)
-	} else if err == sonicerrors.ErrWouldBlock {
+	case sonicerrors.ErrWouldBlock:
 		c.scheduleAsyncRead(cb)
-	} else {
+	default:
 		cb(err, c.emptyDec)
 	}
 }
 
 func (c *NonblockingCodecConn[Enc, Dec]) scheduleAsyncRead(cb func(error, Dec)) {
-	c.src.AsyncReadFrom(c.stream, func(err error, n int) {
+	c.src.AsyncReadFrom(c.stream, func(err error, _ int) {
 		if err != nil {
 			cb(err, c.emptyDec)
 		} else {
