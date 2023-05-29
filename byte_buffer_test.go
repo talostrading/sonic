@@ -363,6 +363,165 @@ func TestByteBufferClaim3(t *testing.T) {
 	}
 }
 
+func TestByteBufferSaveAndDiscard1(t *testing.T) {
+	b := NewByteBuffer()
+	n, err := b.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Fatal("did not write 5")
+	}
+
+	b.Commit(2)
+
+	if b.WriteLen() != 3 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 2 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 0 {
+		t.Fatal("wrong save area")
+	}
+
+	slot := b.Save(1)
+
+	if b.WriteLen() != 3 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 1 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 1 {
+		t.Fatal("wrong save area")
+	}
+	if slot.Index != 0 || slot.Length != 1 {
+		t.Fatalf("wrong slot %+v", slot)
+	}
+	if b := b.SavedSlot(slot); string(b) != "h" {
+		t.Fatal("wrong slot")
+	}
+	if b := b.Saved(); string(b) != "h" {
+		t.Fatal("wrong slot")
+	}
+
+	b.Consume(1)
+
+	if b.WriteLen() != 3 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 0 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 1 {
+		t.Fatal("wrong save area")
+	}
+	if slot.Index != 0 || slot.Length != 1 {
+		t.Fatalf("wrong slot %+v", slot)
+	}
+	if b := b.SavedSlot(slot); string(b) != "h" {
+		t.Fatal("wrong slot")
+	}
+	if b := b.Saved(); string(b) != "h" {
+		t.Fatal("wrong slot")
+	}
+
+	b.Discard(slot)
+
+	if b.WriteLen() != 3 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 0 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 0 {
+		t.Fatal("wrong save area")
+	}
+}
+
+func TestByteBufferDiscardAll(t *testing.T) {
+	b := NewByteBuffer()
+	n, err := b.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Fatal("did not write 5")
+	}
+
+	if b.WriteLen() != 5 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 0 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 0 {
+		t.Fatal("wrong save area")
+	}
+
+	b.Save(10)
+
+	if b.WriteLen() != 5 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 0 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 0 {
+		t.Fatal("wrong save area")
+	}
+
+	b.Commit(10)
+
+	if b.WriteLen() != 0 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 5 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 0 {
+		t.Fatal("wrong save area")
+	}
+
+	var slots []Slot
+	for i := 0; i < 10; i++ {
+		slots = append(slots, b.Save(1))
+	}
+
+	if b.WriteLen() != 0 {
+		t.Fatal("wrong write area")
+	}
+	if b.ReadLen() != 0 {
+		t.Fatal("wrong read area")
+	}
+	if b.SaveLen() != 5 {
+		t.Fatal("wrong save area")
+	}
+
+	var (
+		offset   = 0
+		expected = []byte("hello")
+	)
+	for i, slot := range slots {
+		if i < len(expected) && !bytes.Equal(b.SavedSlot(slot), expected[i:i+1]) {
+			t.Fatal("wrong slot")
+		}
+		offset += b.Discard(OffsetSlot(offset, slot))
+	}
+}
+
+func TestByteBufferSaveAndDiscard2(t *testing.T) {
+	b := NewByteBuffer()
+	n, err := b.Write([]byte("hello"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 5 {
+		t.Fatal("did not write 5")
+	}
+}
+
 func BenchmarkByteBuffer(b *testing.B) {
 	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
