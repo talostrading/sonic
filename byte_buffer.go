@@ -10,9 +10,9 @@ import (
 // networking code.
 //
 // A ByteBuffer has 3 areas. In order:
-// - save area
-// - read area
-// - write area
+// - save area:  [0, si)
+// - read area:  [si, ri)
+// - write area: [ri, wi)
 //
 // A usual workflow is as follows:
 // - Bytes are written to the write area. These bytes cannot be read yet.
@@ -91,29 +91,22 @@ func (b *ByteBuffer) Commit(n int) {
 
 // Data returns the bytes in the read area.
 func (b *ByteBuffer) Data() []byte {
-	return b.data[:b.ri]
+	return b.data[b.si:b.ri]
+}
+
+// SaveLen returns the length of the save area.
+func (b *ByteBuffer) SaveLen() int {
+	return len(b.data[0:b.si])
 }
 
 // ReadLen returns the length of the read area.
 func (b *ByteBuffer) ReadLen() int {
-	return len(b.data[:b.ri])
+	return len(b.data[b.si:b.ri])
 }
 
 // WriteLen returns the length of the write area.
 func (b *ByteBuffer) WriteLen() int {
 	return len(b.data[b.ri:b.wi])
-}
-
-func (b *ByteBuffer) SaveIndex() int {
-	return b.si
-}
-
-func (b *ByteBuffer) ReadIndex() int {
-	return b.ri
-}
-
-func (b *ByteBuffer) WriteIndex() int {
-	return b.wi
 }
 
 // Len returns the length of the underlying byte slice.
@@ -126,35 +119,50 @@ func (b *ByteBuffer) Cap() int {
 	return cap(b.data)
 }
 
-// Consume removes `n` bytes from the read area. The removed bytes cannot be
-// referenced after a call to Consume. If that's desired, use Save.
+// Consume removes the first `n` bytes of the read area. The removed bytes
+// cannot be referenced after a call to Consume. If that's desired, use Save.
 func (b *ByteBuffer) Consume(n int) {
 	if n <= 0 {
 		return
 	}
 
-	if n > b.ri {
-		n = b.ri
+	if readLen := b.ReadLen(); n > readLen {
+		n = readLen
 	}
 
 	if n > 0 {
-		// TODO we should be a bit smarter here and only copy
-		// *sometimes* like when we are at 75% capacity
-		// or some other heuristic maybe based on the committed
-		// bytes.
-		copy(b.data, b.data[n:b.wi])
+		// TODO this can be smarter
+		copy(b.data[b.si:], b.data[b.si+n:b.wi])
 
-		b.wi -= n
 		b.ri -= n
-
+		b.wi -= n
 		b.data = b.data[:b.wi]
 	}
 }
 
 // Slot from the save area. See Save and Discard.
 type Slot struct {
-	Index int
-	Size  int
+	Index  int
+	Length int
+}
+
+// OffsetSlot ...
+//
+// Usually used when we reference a few Slots and Discard one of them. The
+// remaining slots must be offset by the number of discarded bytes.
+func OffsetSlot(offset int, slot Slot) Slot {
+	if offset < 0 {
+		offset = 0
+	}
+
+	if offset > slot.Index {
+		offset = slot.Index
+	}
+
+	return Slot{
+		Index:  slot.Index - offset,
+		Length: slot.Length,
+	}
 }
 
 // Save n bytes from the read area. Save is like Consume, except that the bytes
@@ -162,13 +170,53 @@ type Slot struct {
 //
 // Saved bytes should be discarded at some point with
 // Discard(...).
-func (b *ByteBuffer) Save(n int) Slot {
-	return Slot{}
+func (b *ByteBuffer) Save(n int) (slot Slot) {
+	if readLen := b.ReadLen(); n > readLen {
+		n = readLen
+	}
+	if n <= 0 {
+		return
+	}
+	slot.Length = n
+	slot.Index = b.si
+	b.si += n
+	return
 }
 
-// Discard previously saved bytes, if any.
-func (b *ByteBuffer) Discard(slot Slot) {
+// Saved bytes.
+func (b *ByteBuffer) Saved() []byte {
+	return b.data[:b.si]
+}
 
+// SavedSlot ...
+func (b *ByteBuffer) SavedSlot(slot Slot) []byte {
+	return b.data[slot.Index : slot.Index+slot.Length]
+}
+
+// Discard a previously saved slot.
+//
+// This call reduces the save area by slot.Length.
+func (b *ByteBuffer) Discard(slot Slot) (discarded int) {
+	if slot.Length <= 0 {
+		return 0
+	}
+
+	start := slot.Index
+	end := start + slot.Length
+	copy(b.data[start:end], b.data[end:])
+	b.si -= slot.Length
+	b.ri -= slot.Length
+	b.wi -= slot.Length
+	b.data = b.data[:b.wi]
+
+	return slot.Length
+}
+
+// DiscardAll saved slots.
+//
+// The save area's size will be 0 after this call.
+func (b *ByteBuffer) DiscardAll() {
+	b.Discard(Slot{Index: 0, Length: b.SaveLen()})
 }
 
 func (b *ByteBuffer) Reset() {
@@ -178,7 +226,7 @@ func (b *ByteBuffer) Reset() {
 	b.data = b.data[:0]
 }
 
-// Reads reads and consumes the bytes from the read area into `dst`.
+// Read the bytes from the read area into `dst`. Consume them.
 func (b *ByteBuffer) Read(dst []byte) (int, error) {
 	if len(dst) == 0 {
 		return 0, nil
@@ -188,7 +236,7 @@ func (b *ByteBuffer) Read(dst []byte) (int, error) {
 		return 0, io.EOF
 	}
 
-	n := copy(dst, b.data[:b.ri])
+	n := copy(dst, b.data[b.si:b.ri])
 	b.Consume(n)
 
 	return n, nil
@@ -200,12 +248,11 @@ func (b *ByteBuffer) ReadByte() (byte, error) {
 	return b.oneByte[0], err
 }
 
-// ReadFrom reads the data from the supplied reader into the write area
-// of the buffer.
+// ReadFrom the supplied reader into the write area.
 //
 // The buffer is not automatically grown to accommodate all data from the reader.
-// Instead, the responsibility is left to the caller which can reserve space in
-// the buffer with a call to Reserve.
+// The responsibility is left to the caller which can reserve enough space
+// through Reserve.
 func (b *ByteBuffer) ReadFrom(r io.Reader) (int64, error) {
 	n, err := r.Read(b.data[b.wi:cap(b.data)])
 	if err == nil {
@@ -215,12 +262,9 @@ func (b *ByteBuffer) ReadFrom(r io.Reader) (int64, error) {
 	return int64(n), err
 }
 
-// UnreadByte unreads a single byte from the write area of the buffer.
-//
-// Calling this function means the unread byte might be overwritten
-// by a future write.
+// UnreadByte from the write area.
 func (b *ByteBuffer) UnreadByte() error {
-	if can := b.wi - b.ri; can > 0 {
+	if b.WriteLen() > 0 {
 		b.wi -= 1
 		b.data = b.data[:b.wi]
 		return nil
@@ -228,12 +272,11 @@ func (b *ByteBuffer) UnreadByte() error {
 	return io.EOF
 }
 
-// AsyncReadFrom reads the data from the supplied reader into the write area
-// of the buffer, asynchronously.
+// AsyncReadFrom the supplied asynchronous reader into the write area.
 //
 // The buffer is not automatically grown to accommodate all data from the reader.
-// Instead, the responsibility is left to the caller which can reserve space in
-// the buffer with a call to Reserve.
+// The responsibility is left to the caller which can reserve enough space
+// through Reserve.
 func (b *ByteBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
 	r.AsyncRead(b.data[b.wi:cap(b.data)], func(err error, n int) {
 		if err == nil {
@@ -244,8 +287,7 @@ func (b *ByteBuffer) AsyncReadFrom(r AsyncReader, cb AsyncCallback) {
 	})
 }
 
-// Write writes the supplied slice into the buffer, growing the buffer
-// as needed to accommodate the new data.
+// Write the supplied slice into the write area. Grow the write area if needed.
 func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	b.data = append(b.data, bb...)
 	n := len(bb)
@@ -254,8 +296,7 @@ func (b *ByteBuffer) Write(bb []byte) (int, error) {
 	return n, nil
 }
 
-// WriteByte writes the supplied byte into the buffer, growing the buffer
-// as needed to accommodate the new data.
+// WriteByte into the write area. Grow the write area if needed.
 func (b *ByteBuffer) WriteByte(bb byte) error {
 	b.data = append(b.data, bb)
 	b.wi += 1
@@ -263,8 +304,7 @@ func (b *ByteBuffer) WriteByte(bb byte) error {
 	return nil
 }
 
-// WriteString writes the supplied string into the buffer, growing the buffer
-// as needed to accommodate the new data.
+// WriteString into the write area. Grow the write area if needed.
 func (b *ByteBuffer) WriteString(s string) (int, error) {
 	b.data = append(b.data, s...)
 	n := len(s)
@@ -273,7 +313,8 @@ func (b *ByteBuffer) WriteString(s string) (int, error) {
 	return n, nil
 }
 
-// WriteTo consumes and writes the bytes from the read area to the provided writer.
+// WriteTo the provided writer bytes from the read area. Consume them if no
+// error occurred.
 func (b *ByteBuffer) WriteTo(w io.Writer) (int64, error) {
 	var (
 		n            int
@@ -281,32 +322,31 @@ func (b *ByteBuffer) WriteTo(w io.Writer) (int64, error) {
 		writtenBytes = 0
 	)
 
-	for {
-		if writtenBytes >= b.ri {
-			break
-		}
-
-		n, err = w.Write(b.data[writtenBytes:b.ri])
-		writtenBytes += n
+	for b.si+writtenBytes < b.ri {
+		n, err = w.Write(b.data[b.si+writtenBytes : b.ri])
 		if err != nil {
 			break
 		}
+		writtenBytes += n
 	}
 	b.Consume(writtenBytes)
 	return int64(writtenBytes), err
 }
 
-// AsyncWriteTo writes all the bytes from the read area to the
-// provided writer asynchronously.
+// AsyncWriteTo the provided asynchronous writer bytes from the read area.
+// Consume them if no error occurred.
 func (b *ByteBuffer) AsyncWriteTo(w AsyncWriter, cb AsyncCallback) {
-	w.AsyncWriteAll(b.data[:b.ri], func(err error, n int) {
-		b.Consume(n)
+	w.AsyncWriteAll(b.data[b.si:b.ri], func(err error, n int) {
+		if err == nil {
+			b.Consume(n)
+		}
 		cb(err, n)
 	})
 }
 
-// PrepareRead prepares n bytes to be read from the read area. If less than n bytes are
-// available, ErrNeedMore is returned and no bytes are committed to the read area.
+// PrepareRead prepares n bytes to be read from the read area. If less than n
+// bytes are available, ErrNeedMore is returned and no bytes are committed to
+// the read area, hence made available for reading.
 func (b *ByteBuffer) PrepareRead(n int) (err error) {
 	if need := n - b.ReadLen(); need > 0 {
 		if b.WriteLen() >= need {
@@ -318,9 +358,12 @@ func (b *ByteBuffer) PrepareRead(n int) (err error) {
 	return
 }
 
-// Claim allows clients to write directly into the write area of the buffer.
+// Claim a byte slice of the write area.
 //
-// `fn` implementations should return the number of bytes written into the provided slice.
+// Claim allows callers to write directly into the write area of the buffer.
+//
+// `fn` implementations should return the number of bytes written into the
+// provided byte slice.
 func (b *ByteBuffer) Claim(fn func(b []byte) int) {
 	n := fn(b.data[b.wi:cap(b.data)])
 	if wi := b.wi + n; n >= 0 && wi <= cap(b.data) {
