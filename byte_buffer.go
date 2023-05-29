@@ -6,14 +6,28 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-// ByteBuffer provides operations that make it easier to handle byte slices in networking code.
+// ByteBuffer provides operations that make it easier to handle byte slices in
+// networking code.
+//
+// A ByteBuffer has 3 areas. In order:
+// - save area
+// - read area
+// - write area
+//
+// A usual workflow is as follows:
+// - Bytes are written to the write area. These bytes cannot be read yet.
+// - Bytes from the write area are made available for reading in the read area,
+//   by calling Commit.
+// - Bytes from the read area can be either Saved or Consumed. If Saved, the
+//   bytes are kept in the save area. If Consumed, the bytes' lifetime ends,
+//   they are automatically discarded. Saved bytes must be discarded later.
 //
 // Invariants:
-//   - ri <= wi at all times
-//   - wi = min(len(data), cap(b.data)) after each function call
-//   - everytime wi changes, b.data should grow/shrink accordingly:
-//      - b.data = b.data[:b.wi]
+// - 0 <= si <= ri <= wi <= min(len(data), cap(b.data)) <= cap(b.data)
+// - everytime wi changes, b.data should grow/shrink accordingly:
+//   - b.data = b.data[:b.wi]
 type ByteBuffer struct {
+	si int // End index of the save area, always smaller or equal to ri.
 	ri int // End index of the read area, always smaller or equal to wi.
 	wi int // End index of the write area.
 
@@ -22,7 +36,6 @@ type ByteBuffer struct {
 	data []byte
 }
 
-// Interfaces which ByteBuffer implements.
 var (
 	_ io.Reader      = &ByteBuffer{}
 	_ io.ByteReader  = &ByteBuffer{}
@@ -46,9 +59,9 @@ func NewByteBuffer() *ByteBuffer {
 }
 
 // Reserve capacity for at least `n` more bytes to be written
-// into the ByteBuffer.
+// into the ByteBuffer's write area.
 //
-// This call grows the write area by at least `n` bytes.
+// This call grows the write area by at least `n` bytes. This might allocate.
 func (b *ByteBuffer) Reserve(n int) {
 	existing := cap(b.data) - b.wi
 	if need := n - existing; need > 0 {
@@ -66,8 +79,8 @@ func (b *ByteBuffer) Reserved() int {
 
 // Commit moves `n` bytes from the write area to the read area.
 func (b *ByteBuffer) Commit(n int) {
-	if n < 0 {
-		n = 0
+	if n <= 0 {
+		return
 	}
 
 	b.ri += n
@@ -91,40 +104,78 @@ func (b *ByteBuffer) WriteLen() int {
 	return len(b.data[b.ri:b.wi])
 }
 
-// Len returns the length of the whole buffer.
+func (b *ByteBuffer) SaveIndex() int {
+	return b.si
+}
+
+func (b *ByteBuffer) ReadIndex() int {
+	return b.ri
+}
+
+func (b *ByteBuffer) WriteIndex() int {
+	return b.wi
+}
+
+// Len returns the length of the underlying byte slice.
 func (b *ByteBuffer) Len() int {
 	return len(b.data)
 }
 
-// Cap returns the capacity of the underlying byte slice.
+// Cap returns the length of the underlying byte slice.
 func (b *ByteBuffer) Cap() int {
 	return cap(b.data)
 }
 
-// Consume removes `n` bytes from the read area.
+// Consume removes `n` bytes from the read area. The removed bytes cannot be
+// referenced after a call to Consume. If that's desired, use Save.
 func (b *ByteBuffer) Consume(n int) {
+	if n <= 0 {
+		return
+	}
+
 	if n > b.ri {
 		n = b.ri
 	}
 
-	if n != 0 {
-		// we should be a bit smarter here and only copy
+	if n > 0 {
+		// TODO we should be a bit smarter here and only copy
 		// *sometimes* like when we are at 75% capacity
 		// or some other heuristic maybe based on the committed
 		// bytes.
 		copy(b.data, b.data[n:b.wi])
+
+		b.wi -= n
+		b.ri -= n
+
+		b.data = b.data[:b.wi]
 	}
+}
 
-	b.wi -= n
-	b.ri -= n
+// Slot from the save area. See Save and Discard.
+type Slot struct {
+	Index int
+	Size  int
+}
 
-	b.data = b.data[:b.wi]
+// Save n bytes from the read area. Save is like Consume, except that the bytes
+// can still be referenced after the read area is updated.
+//
+// Saved bytes should be discarded at some point with
+// Discard(...).
+func (b *ByteBuffer) Save(n int) Slot {
+	return Slot{}
+}
+
+// Discard previously saved bytes, if any.
+func (b *ByteBuffer) Discard(slot Slot) {
+
 }
 
 func (b *ByteBuffer) Reset() {
-	b.data = b.data[:0]
-	b.wi = 0
+	b.si = 0
 	b.ri = 0
+	b.wi = 0
+	b.data = b.data[:0]
 }
 
 // Reads reads and consumes the bytes from the read area into `dst`.
