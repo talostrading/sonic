@@ -148,8 +148,9 @@ type Slot struct {
 
 // OffsetSlot ...
 //
-// Usually used when we reference a few Slots and Discard one of them. The
-// remaining slots must be offset by the number of discarded bytes.
+// Usually used when we reference a few Slots and Discard several of them.
+// - Slots that precede a discarded Slot must be offset
+// - Slots that follow a discarded Slot must not be offset
 func OffsetSlot(offset int, slot Slot) Slot {
 	if offset < 0 {
 		offset = 0
@@ -195,7 +196,7 @@ func (b *ByteBuffer) SavedSlot(slot Slot) []byte {
 
 // Discard a previously saved slot.
 //
-// This call reduces the save area by slot.Length.
+// This call reduces the save area by slot.Length. Returns slot.Length.
 func (b *ByteBuffer) Discard(slot Slot) (discarded int) {
 	if slot.Length <= 0 {
 		return 0

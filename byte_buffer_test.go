@@ -440,7 +440,7 @@ func TestByteBufferSaveAndDiscard1(t *testing.T) {
 	}
 }
 
-func TestByteBufferDiscardAll(t *testing.T) {
+func TestByteBufferSaveAndDiscard2(t *testing.T) {
 	b := NewByteBuffer()
 	n, err := b.Write([]byte("hello"))
 	if err != nil {
@@ -511,7 +511,7 @@ func TestByteBufferDiscardAll(t *testing.T) {
 	}
 }
 
-func TestByteBufferSaveAndDiscard2(t *testing.T) {
+func TestByteBufferSaveAndDiscard3(t *testing.T) {
 	b := NewByteBuffer()
 	n, err := b.Write([]byte("hello"))
 	if err != nil {
@@ -519,6 +519,21 @@ func TestByteBufferSaveAndDiscard2(t *testing.T) {
 	}
 	if n != 5 {
 		t.Fatal("did not write 5")
+	}
+	b.Commit(5)
+	var (
+		slots    []Slot
+		expected = []byte("hello")
+	)
+	for i := 0; i < 5; i++ {
+		slots = append(slots, b.Save(1))
+	}
+	for i := len(slots) - 1; i >= 0; i-- {
+		// no need to offset here
+		if !bytes.Equal(b.SavedSlot(slots[i]), expected[i:i+1]) {
+			t.Fatal("wrong slot")
+		}
+		b.Discard(slots[i])
 	}
 }
 
