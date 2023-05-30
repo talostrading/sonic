@@ -1,33 +1,39 @@
 package sonic
 
 import (
+	"fmt"
 	"github.com/talostrading/sonic/util"
 	"sort"
 )
 
 type sequencedSlot struct {
 	Slot
+
+	// Sequence number of this slot.
 	seq int
+
+	nth int
+}
+
+func (s sequencedSlot) String() string {
+	return fmt.Sprintf(
+		"[index=%d length=%d seq=%d nth=%d]", s.Index,
+		s.Length, s.seq, s.nth,
+	)
 }
 
 type SlotSequencer struct {
 	slots   []sequencedSlot // debatable if this is the best data structure
-	offsets []int
+	offsets *util.FenwickTree
 }
 
-func NewSlotSequencer() (*SlotSequencer, error) {
-	s := &SlotSequencer{}
-	return s, nil
-}
-
-func NewSlotSequencerWith(n int) (*SlotSequencer, error) {
+func NewSlotSequencer(n int) (*SlotSequencer, error) {
 	s := &SlotSequencer{}
 
 	s.slots = util.ExtendSlice(s.slots, n)
 	s.slots = s.slots[:0]
 
-	s.offsets = util.ExtendSlice(s.offsets, n)
-	s.offsets = s.offsets[:0]
+	s.offsets = util.NewFenwickTree(n)
 
 	return s, nil
 }
@@ -40,6 +46,7 @@ func (s *SlotSequencer) Push(seq int, slot Slot) bool {
 		s.slots = append(s.slots, sequencedSlot{
 			Slot: slot,
 			seq:  seq,
+			nth:  len(s.slots),
 		})
 		return true
 	} else if s.slots[ix].seq != seq {
@@ -47,12 +54,21 @@ func (s *SlotSequencer) Push(seq int, slot Slot) bool {
 		s.slots[ix] = sequencedSlot{
 			Slot: slot,
 			seq:  seq,
+			nth:  ix,
 		}
 		return true
 	}
 	return false
 }
 
+func (s *SlotSequencer) offset(nth int, slot Slot) Slot {
+	slot = OffsetSlot(s.offsets.SumUntil(nth), slot)
+	s.offsets.Add(nth, slot.Length)
+	return slot
+}
+
+// Pop a slot. The returned Slot must be discarded with ByteBuffer.Discard
+// before calling Pop(...) again.
 func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
 	ix := sort.Search(len(s.slots), func(i int) bool {
 		return s.slots[i].seq >= seq
@@ -60,7 +76,7 @@ func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
 	if ix < len(s.slots) && s.slots[ix].seq == seq {
 		slot := s.slots[ix]
 		s.slots = append(s.slots[:ix], s.slots[ix+1:]...)
-		return slot.Slot, true
+		return s.offset(slot.nth, slot.Slot), true
 	}
 	return Slot{}, false
 }
