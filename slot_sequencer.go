@@ -8,7 +8,7 @@ type sequencedSlot struct {
 }
 
 type SlotSequencer struct {
-	slots   []sequencedSlot
+	slots   []sequencedSlot // debatable if this is the best data structure
 	offsets []int
 }
 
@@ -39,10 +39,22 @@ func (s *SlotSequencer) Push(seq int, slot Slot) bool {
 	}
 }
 
-func (s *SlotSequencer) Pop(sequenceNumber int) Slot {
-	return Slot{}
+func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
+	ix := sort.Search(len(s.slots), func(i int) bool {
+		return s.slots[i].seq >= seq
+	})
+	if ix < len(s.slots) && s.slots[ix].seq == seq {
+		slot := s.slots[ix]
+		s.slots = append(s.slots[:ix], s.slots[ix+1:]...)
+		return slot.Slot, true
+	}
+	return Slot{}, false
 }
 
 func (s *SlotSequencer) PopRange(sequenceNumber, n int) []Slot {
 	return nil
+}
+
+func (s *SlotSequencer) Size() int {
+	return len(s.slots)
 }

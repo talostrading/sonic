@@ -1,6 +1,8 @@
 package sonic
 
-import "testing"
+import (
+	"testing"
+)
 
 func setupSlotSequencerTest(
 	t *testing.T, xs []byte,
@@ -25,19 +27,22 @@ func setupSlotSequencerTest(
 	return s, b
 }
 
-func checkSlotSequencer(t *testing.T, s *SlotSequencer) {
+func checkSlotSequencer(t *testing.T, s *SlotSequencer, n int) {
 	last := s.slots[0].seq
 	for i := 1; i < len(s.slots); i++ {
 		if s.slots[i].seq <= last {
 			t.Fatal("wrong sequencing")
 		}
 	}
+	if s.Size() != n {
+		t.Fatal("wrong size")
+	}
 }
 
-func TestSlotSequencer0(t *testing.T) {
+func TestSlotSequencerPush0(t *testing.T) {
 	permutation := []byte{0}
 	s, b := setupSlotSequencerTest(t, permutation)
-	defer checkSlotSequencer(t, s)
+	defer checkSlotSequencer(t, s, len(permutation))
 
 	for i := 0; i < len(permutation); i++ {
 		pushed := s.Push(int(permutation[i]), b.Save(1))
@@ -47,10 +52,10 @@ func TestSlotSequencer0(t *testing.T) {
 	}
 }
 
-func TestSlotSequencer1(t *testing.T) {
+func TestSlotSequencerPush1(t *testing.T) {
 	permutation := []byte{0, 1, 2, 3, 4}
 	s, b := setupSlotSequencerTest(t, permutation)
-	defer checkSlotSequencer(t, s)
+	defer checkSlotSequencer(t, s, len(permutation))
 
 	for i := 0; i < len(permutation); i++ {
 		pushed := s.Push(int(permutation[i]), b.Save(1))
@@ -60,10 +65,10 @@ func TestSlotSequencer1(t *testing.T) {
 	}
 }
 
-func TestSlotSequencer2(t *testing.T) {
+func TestSlotSequencerPush2(t *testing.T) {
 	permutation := []byte{4, 2, 0, 1, 3}
 	s, b := setupSlotSequencerTest(t, permutation)
-	defer checkSlotSequencer(t, s)
+	defer checkSlotSequencer(t, s, len(permutation))
 
 	for i := 0; i < len(permutation); i++ {
 		pushed := s.Push(int(permutation[i]), b.Save(1))
@@ -71,12 +76,13 @@ func TestSlotSequencer2(t *testing.T) {
 			t.Fatal("not pushed")
 		}
 	}
+
 }
 
-func TestSlotSequencer3(t *testing.T) {
+func TestSlotSequencerPush3(t *testing.T) {
 	permutation := []byte{4, 2, 0, 1, 3}
 	s, b := setupSlotSequencerTest(t, permutation)
-	defer checkSlotSequencer(t, s)
+	defer checkSlotSequencer(t, s, len(permutation))
 
 	var slots []Slot
 
@@ -96,5 +102,30 @@ func TestSlotSequencer3(t *testing.T) {
 				t.Fatal("pushed")
 			}
 		}
+	}
+
+	if s.Size() != len(permutation) {
+		t.Fatal("wrong size")
+	}
+}
+
+func TestSlotSequencerPop0(t *testing.T) {
+	s, b := setupSlotSequencerTest(t, []byte{0, 1, 2, 3, 4})
+	for i := 0; i < 5; i++ {
+		s.Push(i, b.Save(1))
+	}
+
+	for i := 0; i < 5; i++ {
+		slot, ok := s.Pop(i)
+		if !ok {
+			t.Fatal("not popped")
+		}
+		if slot.Length != 1 || slot.Index != i {
+			t.Fatal("wrong slot")
+		}
+	}
+
+	if s.Size() != 0 {
+		t.Fatal("wrong size")
 	}
 }
