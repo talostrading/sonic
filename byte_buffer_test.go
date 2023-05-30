@@ -503,11 +503,16 @@ func TestByteBufferSaveAndDiscard2(t *testing.T) {
 		offset   = 0
 		expected = []byte("hello")
 	)
-	for i, slot := range slots {
-		if i < len(expected) && !bytes.Equal(b.SavedSlot(slot), expected[i:i+1]) {
+
+	for i := 0; i < len(expected); i++ {
+		if offset != i {
+			t.Fatal("wrong offset")
+		}
+		slot := OffsetSlot(offset, slots[i])
+		if !bytes.Equal(b.SavedSlot(slot), []byte{expected[i]}) {
 			t.Fatal("wrong slot")
 		}
-		offset += b.Discard(OffsetSlot(offset, slot))
+		offset += b.Discard(slot)
 	}
 }
 
