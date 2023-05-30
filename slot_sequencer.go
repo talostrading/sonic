@@ -1,6 +1,9 @@
 package sonic
 
-import "sort"
+import (
+	"github.com/talostrading/sonic/util"
+	"sort"
+)
 
 type sequencedSlot struct {
 	Slot
@@ -34,9 +37,8 @@ func (s *SlotSequencer) Push(seq int, slot Slot) bool {
 			seq:  seq,
 		}
 		return true
-	} else {
-		return false
 	}
+	return false
 }
 
 func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
@@ -51,7 +53,43 @@ func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
 	return Slot{}, false
 }
 
-func (s *SlotSequencer) PopRange(sequenceNumber, n int) []Slot {
+func (s *SlotSequencer) PopRange(seq, n int) (poppedSlots []Slot) {
+	if n > len(s.slots) {
+		n = len(s.slots)
+	}
+
+	if n == 0 {
+		return nil
+	}
+
+	ix := sort.Search(len(s.slots), func(i int) bool {
+		return s.slots[i].seq >= seq
+	})
+	if ix < len(s.slots) {
+		// PopRange(0, 2) on seq[0, 1, 2, 3] => [2, 3]
+		// PopRange(0, 2) on seq[1, 2, 3] => [2, 3]
+		//   - here we want to pop 2 starting from sequence number 0
+		//   - there is no sequence number zero, and the closest one is 1
+		//   - hence we consider 0 already popped, and we must only pop 1 now
+		//   - that's what toPop accounts for
+		toPop := n - (s.slots[ix].seq - seq)
+
+		poppedSlots = util.ExtendSlice(poppedSlots, toPop)
+		poppedSlots = poppedSlots[:0]
+
+		lastSeq := -1
+		for i := 0; i < toPop; i++ {
+			maybePoppedSlot := s.slots[ix+i]
+			if lastSeq == -1 || maybePoppedSlot.seq-lastSeq == 1 {
+				lastSeq = maybePoppedSlot.seq
+				poppedSlots = append(poppedSlots, maybePoppedSlot.Slot)
+			} else {
+				break
+			}
+		}
+		s.slots = append(s.slots[:ix], s.slots[ix+toPop:]...)
+		return poppedSlots
+	}
 	return nil
 }
 
