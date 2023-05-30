@@ -20,6 +20,18 @@ func NewSlotSequencer() (*SlotSequencer, error) {
 	return s, nil
 }
 
+func NewSlotSequencerWith(n int) (*SlotSequencer, error) {
+	s := &SlotSequencer{}
+
+	s.slots = util.ExtendSlice(s.slots, n)
+	s.slots = s.slots[:0]
+
+	s.offsets = util.ExtendSlice(s.offsets, n)
+	s.offsets = s.offsets[:0]
+
+	return s, nil
+}
+
 func (s *SlotSequencer) Push(seq int, slot Slot) bool {
 	ix := sort.Search(len(s.slots), func(i int) bool {
 		return s.slots[i].seq >= seq
