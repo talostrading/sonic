@@ -12,6 +12,11 @@ type sequencedSlot struct {
 	// Sequence number of this slot.
 	seq int
 
+	// nth saved slot in the ByteBuffer save area. This is taken in Push as the
+	// assumed workflow is: sequencer.Push(seq, buffer.Save(n)).
+	//
+	// Might need to be changed if the SlotSequencer keeps a reference to the
+	// ByteBuffer and the workflow changes.
 	nth int
 }
 
