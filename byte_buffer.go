@@ -202,9 +202,7 @@ func (b *ByteBuffer) Discard(slot Slot) (discarded int) {
 		return 0
 	}
 
-	start := slot.Index
-	end := start + slot.Length
-	copy(b.data[start:end], b.data[end:])
+	copy(b.data[slot.Index:], b.data[slot.Index+slot.Length:])
 	b.si -= slot.Length
 	b.ri -= slot.Length
 	b.wi -= slot.Length
