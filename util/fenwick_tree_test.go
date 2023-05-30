@@ -109,3 +109,19 @@ func TestFenwickTree0(t *testing.T) {
 		t.Fatal("wrong Sum")
 	}
 }
+
+func TestFenwickTreeClear(t *testing.T) {
+	tree := NewFenwickTree(5)
+
+	tree.Clear(0)
+	tree.Add(0, 20)
+	tree.Add(4, 40)
+	if tree.Sum() != 60 {
+		t.Fatal("wrong sum")
+	}
+	tree.Clear(0)
+	tree.Clear(4)
+	if tree.Sum() != 0 {
+		t.Fatal("wrong sum")
+	}
+}
