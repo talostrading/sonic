@@ -52,6 +52,11 @@ func (t *FenwickTree) Sum() int {
 	return t.SumUntil(len(t.data) - 1)
 }
 
+func (t *FenwickTree) At(index int) int {
+	// TODO there's probably a better way
+	return t.SumRange(index, index)
+}
+
 func (t *FenwickTree) SumRange(left, right int) int {
 	return t.SumUntil(right) - t.SumUntil(left-1)
 }
