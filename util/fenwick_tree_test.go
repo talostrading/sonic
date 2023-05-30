@@ -7,19 +7,34 @@ import (
 func TestFenwickTree0(t *testing.T) {
 	tree := NewFenwickTree(5)
 
-	// [0, 0, 0, 0, 0]
+	expected := []int{0, 0, 0, 0, 0}
+	for i := 0; i < len(expected); i++ {
+		if tree.At(i) != expected[i] {
+			t.Fatal("At is wrong")
+		}
+	}
 	if tree.Sum() != 0 {
 		t.Fatal("wrong Sum")
 	}
 
-	// [10, 0, 0, 0, 0]
 	tree.Add(0, 10)
+	expected = []int{10, 0, 0, 0, 0}
+	for i := 0; i < len(expected); i++ {
+		if tree.At(i) != expected[i] {
+			t.Fatal("At is wrong")
+		}
+	}
 	if tree.Sum() != 10 {
 		t.Fatal("wrong Sum")
 	}
 
-	// [10, 0, 0, 0, 20]
 	tree.Add(4, 20)
+	expected = []int{10, 0, 0, 0, 20}
+	for i := 0; i < len(expected); i++ {
+		if tree.At(i) != expected[i] {
+			t.Fatal("At is wrong")
+		}
+	}
 	if tree.Sum() != 30 {
 		t.Fatal("wrong Sum")
 	}
@@ -49,8 +64,13 @@ func TestFenwickTree0(t *testing.T) {
 		t.Fatal("wrong SumRange")
 	}
 
-	// [10, 0, 30, 0, 20]
 	tree.Add(2, 30)
+	expected = []int{10, 0, 30, 0, 20}
+	for i := 0; i < len(expected); i++ {
+		if tree.At(i) != expected[i] {
+			t.Fatal("At is wrong")
+		}
+	}
 	if tree.Sum() != 60 {
 		t.Fatal("wrong Sum")
 	}
@@ -71,7 +91,20 @@ func TestFenwickTree0(t *testing.T) {
 	}
 
 	tree.Add(0, -10)
+	expected = []int{0, 0, 30, 0, 20}
+	for i := 0; i < len(expected); i++ {
+		if tree.At(i) != expected[i] {
+			t.Fatal("At is wrong")
+		}
+	}
+
 	tree.Add(2, -30)
+	expected = []int{0, 0, 0, 0, 20}
+	for i := 0; i < len(expected); i++ {
+		if tree.At(i) != expected[i] {
+			t.Fatal("At is wrong")
+		}
+	}
 	if tree.Sum() != 20 {
 		t.Fatal("wrong Sum")
 	}
