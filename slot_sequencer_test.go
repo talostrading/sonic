@@ -129,3 +129,96 @@ func TestSlotSequencerPop0(t *testing.T) {
 		t.Fatal("wrong size")
 	}
 }
+
+func TestSlotSequencerPopRange0(t *testing.T) {
+	// PopRange(0, 2) on seq[0, 1, 2, 3, 4] => seq[2, 3, 4]
+
+	s, b := setupSlotSequencerTest(t, []byte{0, 1, 2, 3, 4})
+	for i := 0; i < 5; i++ {
+		s.Push(i, b.Save(1))
+	}
+
+	popped := s.PopRange(0, 2)
+	if len(popped) != 2 {
+		t.Fatal("wrong pop range")
+	}
+	if len(s.slots) != 3 {
+		t.Fatal("wrong pop range")
+	}
+	for i := 0; i < len(popped); i++ {
+		if popped[i].Index != i || popped[i].Length != 1 {
+			t.Fatal("wrong pop range")
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if s.slots[i].Index != len(popped)+i || s.slots[i].Length != 1 {
+			t.Fatal("wrong pop range")
+		}
+	}
+}
+
+func TestSlotSequencerPopRange1(t *testing.T) {
+	// PopRange(0, 2) on seq[1, 2, 3, 4] => seq[2, 3, 4]
+
+	s, b := setupSlotSequencerTest(t, []byte{0, 1, 2, 3, 4})
+	for i := 0; i < 5; i++ {
+		s.Push(i, b.Save(1))
+	}
+
+	_, ok := s.Pop(0)
+	if !ok {
+		t.Fatal("not popped")
+	}
+
+	popped := s.PopRange(0, 2)
+	if len(popped) != 1 {
+		t.Fatal("wrong pop range")
+	}
+	if len(s.slots) != 3 {
+		t.Fatal("wrong pop range")
+	}
+	for i := 0; i < len(popped); i++ {
+		if popped[i].Index != 1+i || popped[i].Length != 1 {
+			t.Fatal("wrong pop range")
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if s.slots[i].Index != 2+i || s.slots[i].Length != 1 {
+			t.Fatal("wrong pop range")
+		}
+	}
+}
+
+func TestSlotSequencerPopRange2(t *testing.T) {
+	// PopRange(0, 100) on seq[1, 2, 3, 4] => seq[]
+
+	s, b := setupSlotSequencerTest(t, []byte{0, 1, 2, 3, 4})
+	for i := 0; i < 5; i++ {
+		s.Push(i, b.Save(1))
+	}
+
+	popped := s.PopRange(0, 100)
+	if len(popped) != 5 {
+		t.Fatal("wrong pop range")
+	}
+	if len(s.slots) != 0 {
+		t.Fatal("wrong pop")
+	}
+}
+
+func TestSlotSequencerPopRange3(t *testing.T) {
+	// PopRange(0, 1) on seq[0, 1, 2, 3, 4] => seq[1, 2, 3, 4]
+
+	s, b := setupSlotSequencerTest(t, []byte{0, 1, 2, 3, 4})
+	for i := 0; i < 5; i++ {
+		s.Push(i, b.Save(1))
+	}
+
+	popped := s.PopRange(0, 1)
+	if len(popped) != 1 {
+		t.Fatal("wrong pop range")
+	}
+	if len(s.slots) != 4 {
+		t.Fatal("wrong pop")
+	}
+}
