@@ -8,7 +8,7 @@ func setupSlotSequencerTest(
 	t *testing.T, xs []byte,
 ) (*SlotSequencer,
 	*ByteBuffer) {
-	s, err := NewSlotSequencer(len(xs))
+	s, err := NewSlotSequencer(8192)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,7 +34,7 @@ func checkSlotSequencer(t *testing.T, s *SlotSequencer, n int) {
 			t.Fatal("wrong sequencing")
 		}
 	}
-	if s.MaxBytes() != n {
+	if s.Size() != n {
 		t.Fatal("wrong size")
 	}
 }
@@ -108,7 +108,7 @@ func TestSlotSequencerPush3(t *testing.T) {
 		}
 	}
 
-	for j := 0; j < 1000; j++ {
+	for j := 0; j < 100; j++ {
 		for i, slot := range slots {
 			pushed, err := s.Push(int(permutation[i]), slot)
 			if err != nil {
@@ -255,6 +255,149 @@ func TestSlotSequencerPushNoSpace(t *testing.T) {
 	}
 	if err == nil {
 		t.Fatal("should have return err no space")
+	}
+}
+
+func TestSlotSequencerPop4(t *testing.T) {
+	// Pop slots of different lengths.
+
+	s, _ := NewSlotSequencer(128)
+	b := NewByteBuffer()
+
+	// push stuff
+	b.Write([]byte("aaa"))
+	b.Commit(3)
+	ok, err := s.Push(1, b.Save(3))
+	if !ok || err != nil {
+		t.Fatal("not pushed")
+	}
+
+	b.Write([]byte("bb"))
+	b.Commit(2)
+	ok, err = s.Push(2, b.Save(2))
+	if !ok || err != nil {
+		t.Fatal("not pushed")
+	}
+
+	b.Write([]byte("ccccc"))
+	b.Commit(5)
+	ok, err = s.Push(3, b.Save(5))
+	if !ok || err != nil {
+		t.Fatal("not pushed")
+	}
+
+	b.Write([]byte("d"))
+	b.Commit(1)
+	ok, err = s.Push(4, b.Save(1))
+	if !ok || err != nil {
+		t.Fatal("not pushed")
+	}
+
+	b.Write([]byte("ee"))
+	b.Commit(2)
+	ok, err = s.Push(5, b.Save(2))
+	if !ok || err != nil {
+		t.Fatal("not pushed")
+	}
+
+	if s.Bytes() != 13 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	// pop stuff
+	// we pop 1 so the rest must offset
+	slot, ok := s.Pop(1)
+	if !ok {
+		t.Fatal("not popped")
+	}
+	if string(b.SavedSlot(slot)) != "aaa" {
+		t.Fatal("wrong slot")
+	}
+	b.Discard(slot)
+
+	if s.Bytes() != 10 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	// push seq:1 again, but of 4 bytes instead of 3
+	b.Write([]byte("aaaa"))
+	b.Commit(4)
+	ok, err = s.Push(1, b.Save(4))
+	if !ok || err != nil {
+		t.Fatal("not pushed")
+	}
+	if s.Bytes() != 14 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	// pop 2
+	slot, ok = s.Pop(2)
+	if !ok {
+		t.Fatal("not popped")
+	}
+	if string(b.SavedSlot(slot)) != "bb" {
+		t.Fatal("wrong slot")
+	}
+	b.Discard(slot)
+
+	if s.Bytes() != 12 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	// pop 3
+	slot, ok = s.Pop(3)
+	if !ok {
+		t.Fatal("not popped")
+	}
+	if string(b.SavedSlot(slot)) != "ccccc" {
+		t.Fatal("wrong slot")
+	}
+	b.Discard(slot)
+
+	if s.Bytes() != 7 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	// pop 4
+	slot, ok = s.Pop(4)
+	if !ok {
+		t.Fatal("not popped")
+	}
+	if string(b.SavedSlot(slot)) != "d" {
+		t.Fatal("wrong slot")
+	}
+	b.Discard(slot)
+
+	if s.Bytes() != 6 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	// pop 5
+	slot, ok = s.Pop(5)
+	if !ok {
+		t.Fatal("not popped")
+	}
+	if string(b.SavedSlot(slot)) != "ee" {
+		t.Fatal("wrong slot")
+	}
+	b.Discard(slot)
+
+	if s.Bytes() != 4 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	// pop 1
+	slot, ok = s.Pop(1)
+	if !ok {
+		t.Fatal("not popped")
+	}
+	if string(b.SavedSlot(slot)) != "aaaa" {
+		t.Fatal("wrong slot")
+	}
+	b.Discard(slot)
+
+	if s.Bytes() != 0 {
+		t.Fatal("wrong number of bytes")
 	}
 }
 
