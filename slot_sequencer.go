@@ -63,7 +63,7 @@ func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
 	}
 
 	// Guard overall.
-	if s.bytes > s.maxBytes {
+	if s.bytes+slot.Length > s.maxBytes {
 		return false, ErrSlotSequencerNoSpace
 	}
 
