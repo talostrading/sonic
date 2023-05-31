@@ -3,7 +3,7 @@ package sonic
 import "testing"
 
 func TestSlotSequencerBoundSlots(t *testing.T) {
-	s := NewSlotSequencer(1, 1024)
+	s := NewSlotSequencer(1)
 
 	// push 1 for the first time
 	ok, err := s.Push(1, Slot{Index: 0, Length: 1})
