@@ -34,7 +34,7 @@ func checkSlotSequencer(t *testing.T, s *SlotSequencer, n int) {
 			t.Fatal("wrong sequencing")
 		}
 	}
-	if s.Size() != n {
+	if s.MaxBytes() != n {
 		t.Fatal("wrong size")
 	}
 }
@@ -45,7 +45,11 @@ func TestSlotSequencerPush0(t *testing.T) {
 	defer checkSlotSequencer(t, s, len(permutation))
 
 	for i := 0; i < len(permutation); i++ {
-		pushed := s.Push(int(permutation[i]), b.Save(1))
+		pushed, err := s.Push(int(permutation[i]), b.Save(1))
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		if !pushed {
 			t.Fatal("not pushed")
 		}
@@ -58,7 +62,10 @@ func TestSlotSequencerPush1(t *testing.T) {
 	defer checkSlotSequencer(t, s, len(permutation))
 
 	for i := 0; i < len(permutation); i++ {
-		pushed := s.Push(int(permutation[i]), b.Save(1))
+		pushed, err := s.Push(int(permutation[i]), b.Save(1))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !pushed {
 			t.Fatal("not pushed")
 		}
@@ -71,7 +78,10 @@ func TestSlotSequencerPush2(t *testing.T) {
 	defer checkSlotSequencer(t, s, len(permutation))
 
 	for i := 0; i < len(permutation); i++ {
-		pushed := s.Push(int(permutation[i]), b.Save(1))
+		pushed, err := s.Push(int(permutation[i]), b.Save(1))
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !pushed {
 			t.Fatal("not pushed")
 		}
@@ -89,7 +99,10 @@ func TestSlotSequencerPush3(t *testing.T) {
 	for i := 0; i < len(permutation); i++ {
 		slot := b.Save(1)
 		slots = append(slots, slot)
-		pushed := s.Push(int(permutation[i]), slot)
+		pushed, err := s.Push(int(permutation[i]), slot)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !pushed {
 			t.Fatal("not pushed")
 		}
@@ -97,7 +110,10 @@ func TestSlotSequencerPush3(t *testing.T) {
 
 	for j := 0; j < 1000; j++ {
 		for i, slot := range slots {
-			pushed := s.Push(int(permutation[i]), slot)
+			pushed, err := s.Push(int(permutation[i]), slot)
+			if err != nil {
+				t.Fatal(err)
+			}
 			if pushed {
 				t.Fatal("pushed")
 			}

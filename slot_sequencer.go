@@ -1,6 +1,7 @@
 package sonic
 
 import (
+	"errors"
 	"fmt"
 	"github.com/talostrading/sonic/util"
 	"sort"
@@ -19,20 +20,29 @@ func (s sequencedSlot) String() string {
 }
 
 type SlotSequencer struct {
+	maxBytes int
+
+	bytes   int
 	slots   []sequencedSlot // debatable if this is the best data structure
 	offsets *util.FenwickTree
 }
 
-func NewSlotSequencer(n int) (*SlotSequencer, error) {
-	s := &SlotSequencer{}
+func NewSlotSequencer(maxBytes int) (*SlotSequencer, error) {
+	s := &SlotSequencer{
+		maxBytes: maxBytes,
+	}
 
-	s.slots = util.ExtendSlice(s.slots, n)
+	s.slots = util.ExtendSlice(s.slots, maxBytes)
 	s.slots = s.slots[:0]
 
-	s.offsets = util.NewFenwickTree(n)
+	s.offsets = util.NewFenwickTree(maxBytes)
 
 	return s, nil
 }
+
+var ErrSlotSequencerNoSpace = errors.New(
+	"no space left to buffer in the slot sequencer",
+)
 
 // Push a Slot created when saving some bytes to the ByteBuffer's save area. Its
 // position in the SlotSequencer is determined by its seq i.e. sequence number.
@@ -40,7 +50,18 @@ func NewSlotSequencer(n int) (*SlotSequencer, error) {
 // and assumes that slot_a precedes slot_b if:
 // - seq(slot_b) > seq(slot_a) >= 0
 // - seq(slot_b) - seq(slot_a) == 1
-func (s *SlotSequencer) Push(seq int, slot Slot) bool {
+func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
+	// Guard on the Push.
+	if slot.Index >= s.offsets.Size() {
+		return false, ErrSlotSequencerNoSpace
+	}
+
+	// Guard on the Pop.
+	offsetIndex := slot.Index + s.offsets.SumUntil(slot.Index)
+	if offsetIndex >= s.offsets.Size() {
+		return false, ErrSlotSequencerNoSpace
+	}
+
 	ix := sort.Search(len(s.slots), func(i int) bool {
 		return s.slots[i].seq >= seq
 	})
@@ -61,13 +82,15 @@ func (s *SlotSequencer) Push(seq int, slot Slot) bool {
 	}
 	if ix >= len(s.slots) {
 		s.slots = append(s.slots, newSlot)
-		return true
+		s.bytes += slot.Length
+		return true, nil
 	} else if s.slots[ix].seq != seq {
 		s.slots = append(s.slots[:ix+1], s.slots[ix:]...)
 		s.slots[ix] = newSlot
-		return true
+		s.bytes += slot.Length
+		return true, nil
 	}
-	return false
+	return false, nil
 }
 
 // Pop a slot. The returned Slot must be discarded with ByteBuffer.Discard
@@ -86,6 +109,8 @@ func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
 		slot = OffsetSlot(offset, slot)
 
 		s.slots = append(s.slots[:ix], s.slots[ix+1:]...)
+
+		s.bytes -= slot.Length
 
 		return slot, true
 	}
@@ -137,6 +162,17 @@ func (s *SlotSequencer) PopRange(seq, n int) (poppedSlots []Slot) {
 	return nil
 }
 
+// Size ...
 func (s *SlotSequencer) Size() int {
 	return len(s.slots)
+}
+
+// Bytes returns the number of bytes the slot sequencer currently holds.
+func (s *SlotSequencer) Bytes() int {
+	return s.bytes
+}
+
+// MaxBytes the slot sequencer can hold.
+func (s *SlotSequencer) MaxBytes() int {
+	return s.maxBytes
 }
