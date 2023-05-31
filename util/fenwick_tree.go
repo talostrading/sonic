@@ -57,8 +57,10 @@ func (t *FenwickTree) At(index int) int {
 	return t.SumRange(index, index)
 }
 
-func (t *FenwickTree) Clear(index int) {
-	t.Add(index, -t.At(index))
+func (t *FenwickTree) Clear(index int) int {
+	v := t.At(index)
+	t.Add(index, -v)
+	return v
 }
 
 func (t *FenwickTree) SumRange(left, right int) int {
