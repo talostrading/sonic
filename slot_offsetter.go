@@ -6,10 +6,10 @@ type SlotOffsetter struct {
 	tree *util.FenwickTree
 }
 
-func NewSlotOffsetter(maxBytes int) (*SlotOffsetter, error) {
+func NewSlotOffsetter(maxBytes int) *SlotOffsetter {
 	s := &SlotOffsetter{}
 	s.tree = util.NewFenwickTree(maxBytes)
-	return s, nil
+	return s
 }
 
 func (s *SlotOffsetter) Offset(slot Slot) Slot {

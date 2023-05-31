@@ -21,8 +21,29 @@ func TestSlotSequencerBoundSlots(t *testing.T) {
 		t.Fatal("errored")
 	}
 
+	// this one goes over the max slots so we should get an error here
 	ok, err = s.Push(2, Slot{Index: 1, Length: 2})
 	if ok || err == nil {
 		t.Fatal("pushed")
+	}
+
+	// pop 1, should work
+	popped, ok := s.Pop(1)
+	if !ok {
+		t.Fatal("should pop")
+	}
+	if popped.Index != 0 || popped.Length != 1 {
+		t.Fatal("wrong slot")
+	}
+
+	if s.Size() != 0 {
+		t.Fatal("size should be zero")
+	}
+
+	for i := 0; i < 10; i++ {
+		_, ok := s.Pop(1)
+		if ok {
+			t.Fatal("should not pop")
+		}
 	}
 }
