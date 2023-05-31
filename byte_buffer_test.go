@@ -542,6 +542,32 @@ func TestByteBufferSaveAndDiscard3(t *testing.T) {
 	}
 }
 
+func TestByteBufferClaimFixed(t *testing.T) {
+	b := NewByteBuffer()
+	claimed := b.ClaimFixed(b.Cap())
+	if len(claimed) != b.Cap() {
+		t.Fatal("wrong claimed fixed size")
+	}
+	if b.WriteLen() != b.Cap() {
+		t.Fatal("wrong write area size")
+	}
+	writeLen := b.WriteLen()
+
+	claimed = b.ClaimFixed(1)
+	if len(claimed) != 0 {
+		t.Fatal("should have not claimed anything")
+	}
+
+	b.Reserve(8)
+	claimed = b.ClaimFixed(8)
+	if len(claimed) != 8 {
+		t.Fatal("wrong claimed fixed size")
+	}
+	if b.WriteLen() != writeLen+8 {
+		t.Fatal("wrong write area size")
+	}
+}
+
 func BenchmarkByteBuffer(b *testing.B) {
 	var letters = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
