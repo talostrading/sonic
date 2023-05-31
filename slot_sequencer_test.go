@@ -233,6 +233,31 @@ func TestSlotSequencerPop3(t *testing.T) {
 	}
 }
 
+func TestSlotSequencerPushNoSpace(t *testing.T) {
+	s, _ := NewSlotSequencer(5)
+	b := NewByteBuffer()
+
+	b.Write([]byte("aaaa"))
+	b.Commit(4)
+	ok, err := s.Push(1, b.Save(4))
+	if !ok {
+		t.Fatal("slot not pushed")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b.Write([]byte("bb"))
+	b.Commit(2)
+	ok, err = s.Push(2, b.Save(2))
+	if ok {
+		t.Fatal("slot pushed")
+	}
+	if err == nil {
+		t.Fatal("should have return err no space")
+	}
+}
+
 func TestSlotSequencerPopRange0(t *testing.T) {
 	t.Skip("PopRange does not yet offset slots")
 	// PopRange(0, 2) on seq[0, 1, 2, 3, 4] => seq[2, 3, 4]

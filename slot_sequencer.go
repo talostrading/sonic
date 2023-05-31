@@ -57,8 +57,13 @@ func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
 	}
 
 	// Guard on the Pop.
-	offsetIndex := slot.Index + s.offsets.SumUntil(slot.Index)
+	offsetIndex := slot.Index + s.offsets.SumUntil(slot.Index) + slot.Length
 	if offsetIndex >= s.offsets.Size() {
+		return false, ErrSlotSequencerNoSpace
+	}
+
+	// Guard overall.
+	if s.bytes > s.maxBytes {
 		return false, ErrSlotSequencerNoSpace
 	}
 
