@@ -63,6 +63,12 @@ func (t *FenwickTree) Clear(index int) int {
 	return v
 }
 
+func (t *FenwickTree) ClearAll() {
+	for i := 0; i < len(t.data); i++ {
+		t.data[i] = 0
+	}
+}
+
 func (t *FenwickTree) SumRange(left, right int) int {
 	return t.SumUntil(right) - t.SumUntil(left-1)
 }
