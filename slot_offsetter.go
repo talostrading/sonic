@@ -22,9 +22,10 @@ func (s *SlotOffsetter) Clear() {
 	s.tree.ClearAll()
 }
 
-func (s *SlotOffsetter) Add(slot Slot) Slot {
-	return Slot{
-		Index:  s.tree.Sum() + slot.Index,
-		Length: slot.Length,
+func (s *SlotOffsetter) Add(slot Slot) (Slot, error) {
+	slot.Index += s.tree.Sum()
+	if slot.Index >= s.tree.Size() {
+		return Slot{}, ErrNoSpaceLeftForSlot
 	}
+	return slot, nil
 }

@@ -21,7 +21,10 @@ func TestSlotOffsetter1(t *testing.T) {
 	b.Commit(len(letters))
 	for i := 0; i < len(letters); i++ {
 		before := b.Save(1)
-		after := s.Add(before)
+		after, err := s.Add(before)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if before.Index != after.Index {
 			t.Fatal("wrong add")
 		}
@@ -66,7 +69,10 @@ func TestSlotOffsetter2(t *testing.T) {
 		b.Commit(len(letters[i]))
 
 		before := b.Save(len(letters[i]))
-		after := s.Add(before)
+		after, err := s.Add(before)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if before.Index != after.Index {
 			t.Fatal("wrong add")
 		}
@@ -109,7 +115,12 @@ func TestSlotOffsetter3(t *testing.T) {
 	add := func(letter byte) {
 		b.Write([]byte{letter})
 		b.Commit(1)
-		slots[letter] = s.Add(b.Save(1))
+
+		var err error
+		slots[letter], err = s.Add(b.Save(1))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	pop := func(letter byte) {
@@ -183,7 +194,13 @@ func TestSlotOffsetter4(t *testing.T) {
 
 		b.Write(letters)
 		b.Commit(len(letters))
-		slots[letter] = s.Add(b.Save(len(letters)))
+
+		var err error
+		slots[letter], err = s.Add(b.Save(len(letters)))
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		lengths[letter] = len(letters)
 	}
 
@@ -266,7 +283,13 @@ func TestOffsetterRandom(t *testing.T) {
 
 		b.Write(letters)
 		b.Commit(len(letters))
-		slots[letter] = s.Add(b.Save(len(letters)))
+
+		var err error
+		slots[letter], err = s.Add(b.Save(len(letters)))
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		lengths[letter] = len(letters)
 	}
 
