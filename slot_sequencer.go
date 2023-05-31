@@ -1,7 +1,6 @@
 package sonic
 
 import (
-	"errors"
 	"fmt"
 	"github.com/talostrading/sonic/util"
 	"sort"
@@ -20,41 +19,27 @@ func (s sequencedSlot) String() string {
 }
 
 type SlotSequencer struct {
-	nSlots   int
-	maxBytes int
+	maxSlots int
 
-	bytes int
 	slots []sequencedSlot // debatable if this is the best data structure
 }
 
-func NewSlotSequencer(nSlots, maxBytes int) *SlotSequencer {
+func NewSlotSequencer(maxSlots int) *SlotSequencer {
 	s := &SlotSequencer{
-		nSlots:   nSlots,
-		maxBytes: maxBytes,
+		maxSlots: maxSlots,
 	}
 
-	s.slots = util.ExtendSlice(s.slots, nSlots)
+	s.slots = util.ExtendSlice(s.slots, maxSlots)
 	s.slots = s.slots[:0]
 
 	return s
 }
 
-var ErrSlotSequencerNoSpace = errors.New(
-	"no space left to buffer in the slot sequencer",
-)
-
-func (s *SlotSequencer) canPush(slot Slot) bool {
-	// Guard slots.
-	if len(s.slots) >= s.nSlots {
-		return false
+func (s *SlotSequencer) checkSize(slot Slot) error {
+	if len(s.slots) >= s.maxSlots {
+		return ErrNoSpaceLeftForSlot
 	}
-
-	// Guard bytes.
-	if s.bytes+slot.Length > s.maxBytes {
-		return false
-	}
-
-	return true
+	return nil
 }
 
 // Push a Slot created when saving some bytes to the ByteBuffer's save area. Its
@@ -73,23 +58,22 @@ func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
 		seq:  seq,
 	}
 	if ix >= len(s.slots) {
-		if !s.canPush(slot) {
-			return false, ErrSlotSequencerNoSpace
+		if err := s.checkSize(slot); err != nil {
+			return false, err
 		}
 
 		s.slots = append(s.slots, newSlot)
-		s.bytes += slot.Length
 		return true, nil
 	} else if s.slots[ix].seq != seq {
-		if !s.canPush(slot) {
-			return false, ErrSlotSequencerNoSpace
+		if err := s.checkSize(slot); err != nil {
+			return false, err
 		}
 
 		s.slots = append(s.slots[:ix+1], s.slots[ix:]...)
 		s.slots[ix] = newSlot
-		s.bytes += slot.Length
 		return true, nil
 	}
+
 	return false, nil
 }
 
@@ -101,7 +85,6 @@ func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
 	})
 	if ix < len(s.slots) && s.slots[ix].seq == seq {
 		slot := s.slots[ix].Slot
-		s.bytes -= slot.Length
 		s.slots = append(s.slots[:ix], s.slots[ix+1:]...)
 		return slot, true
 	}
@@ -153,14 +136,4 @@ func (s *SlotSequencer) PopRange(seq, n int) (poppedSlots []Slot) {
 // Size ...
 func (s *SlotSequencer) Size() int {
 	return len(s.slots)
-}
-
-// Bytes returns the number of bytes the slot sequencer currently holds.
-func (s *SlotSequencer) Bytes() int {
-	return s.bytes
-}
-
-// MaxBytes the slot sequencer can hold.
-func (s *SlotSequencer) MaxBytes() int {
-	return s.maxBytes
 }

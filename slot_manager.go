@@ -5,9 +5,9 @@ type SlotManager struct {
 	offsetter *SlotOffsetter
 }
 
-func NewSlotManager(nSlots, maxBytes int) *SlotManager {
+func NewSlotManager(maxSlots, maxBytes int) *SlotManager {
 	s := &SlotManager{}
-	s.sequencer = NewSlotSequencer(nSlots, maxBytes)
+	s.sequencer = NewSlotSequencer(maxSlots)
 	s.offsetter = NewSlotOffsetter(maxBytes)
 	return s
 }
