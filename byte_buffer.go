@@ -337,6 +337,9 @@ func (b *ByteBuffer) PrepareRead(n int) (err error) {
 //
 // `fn` implementations should return the number of bytes written into the
 // provided byte slice.
+//
+// Callers have the option to write less than they claim. The amount is returned
+// in the callback and the unused bytes will be used in future claims.
 func (b *ByteBuffer) Claim(fn func(b []byte) int) {
 	n := fn(b.data[b.wi:cap(b.data)])
 	if wi := b.wi + n; n >= 0 && wi <= cap(b.data) {
@@ -344,4 +347,17 @@ func (b *ByteBuffer) Claim(fn func(b []byte) int) {
 		b.wi = wi
 		b.data = b.data[:b.wi]
 	}
+}
+
+// ClaimFixed claims a fixed byte slice from the write area.
+//
+// Callers do not have the option to write less than they claim. The write area
+// will grow by `n`.
+func (b *ByteBuffer) ClaimFixed(n int) (claimed []byte) {
+	if wi := b.wi + n; n >= 0 && wi <= cap(b.data) {
+		claimed = b.data[b.wi:wi]
+		b.wi = wi
+		b.data = b.data[:b.wi]
+	}
+	return
 }
