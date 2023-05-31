@@ -22,20 +22,17 @@ func (s sequencedSlot) String() string {
 type SlotSequencer struct {
 	maxBytes int
 
-	bytes   int
-	slots   []sequencedSlot // debatable if this is the best data structure
-	offsets *util.FenwickTree
+	bytes int
+	slots []sequencedSlot // debatable if this is the best data structure
 }
 
-func NewSlotSequencer(maxBytes int) (*SlotSequencer, error) {
+func NewSlotSequencer(nSlots, maxBytes int) (*SlotSequencer, error) {
 	s := &SlotSequencer{
 		maxBytes: maxBytes,
 	}
 
-	s.slots = util.ExtendSlice(s.slots, maxBytes)
+	s.slots = util.ExtendSlice(s.slots, nSlots)
 	s.slots = s.slots[:0]
-
-	s.offsets = util.NewFenwickTree(maxBytes)
 
 	return s, nil
 }
@@ -51,17 +48,6 @@ var ErrSlotSequencerNoSpace = errors.New(
 // - seq(slot_b) > seq(slot_a) >= 0
 // - seq(slot_b) - seq(slot_a) == 1
 func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
-	// Guard on the Push.
-	if slot.Index >= s.offsets.Size() {
-		return false, ErrSlotSequencerNoSpace
-	}
-
-	// Guard on the Pop.
-	offsetIndex := slot.Index + s.offsets.SumUntil(slot.Index) + slot.Length
-	if offsetIndex >= s.offsets.Size() {
-		return false, ErrSlotSequencerNoSpace
-	}
-
 	// Guard overall.
 	if s.bytes+slot.Length > s.maxBytes {
 		return false, ErrSlotSequencerNoSpace
@@ -71,41 +57,15 @@ func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
 		return s.slots[i].seq >= seq
 	})
 
-	//newSlot := sequencedSlot{
-	//	Slot: Slot{
-	//		// This is a new Slot whose Index can be directly used in its
-	//		// originating ByteBuffer, without any offsetting. This Slot however
-	//		// might come after already offset slots. This means that on Pop,
-	//		// this slot will be offset by n=s.offsets.SumUntil(slot.Index). To
-	//		// deem that offsetting unnecessary, we add n to Index. That means
-	//		// on Pop, the index will be: s.Index + n - n + actual_offset where
-	//		// actual_offset is positive if there were some slots popped before
-	//		// the given Slot.
-	//		Index:  slot.Index + s.offsets.SumUntil(slot.Index),
-	//		Length: slot.Length,
-	//	},
-	//	seq: seq,
-	//}
+	newSlot := sequencedSlot{
+		Slot: slot,
+		seq:  seq,
+	}
 	if ix >= len(s.slots) {
-		newSlot := sequencedSlot{
-			Slot: Slot{
-				Index:  slot.Index + s.offsets.Sum(),
-				Length: slot.Length,
-			},
-			seq: seq,
-		}
 		s.slots = append(s.slots, newSlot)
 		s.bytes += slot.Length
 		return true, nil
 	} else if s.slots[ix].seq != seq {
-		newSlot := sequencedSlot{
-			Slot: Slot{
-				// offsets.At(s.slots[ix].Index) == 0, guaranteed by Pop
-				Index:  slot.Index + s.offsets.SumUntil(s.slots[ix].Index),
-				Length: slot.Length,
-			},
-			seq: seq,
-		}
 		s.slots = append(s.slots[:ix+1], s.slots[ix:]...)
 		s.slots[ix] = newSlot
 		s.bytes += slot.Length
@@ -122,19 +82,8 @@ func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
 	})
 	if ix < len(s.slots) && s.slots[ix].seq == seq {
 		slot := s.slots[ix].Slot
-		offset := s.offsets.SumUntil(slot.Index)
-		carry := s.offsets.Clear(slot.Index) + slot.Length
-		if len(s.slots) > 1 {
-			// There are more slots after removing this one. The next slot
-			// will carry this slot's offset + length.
-			s.offsets.Add(slot.Index+slot.Length, carry)
-		}
-		slot = OffsetSlot(offset, slot)
-
-		s.slots = append(s.slots[:ix], s.slots[ix+1:]...)
-
 		s.bytes -= slot.Length
-
+		s.slots = append(s.slots[:ix], s.slots[ix+1:]...)
 		return slot, true
 	}
 	return Slot{}, false
@@ -142,10 +91,7 @@ func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
 
 // PopRange pops at most n slots that come in sequence, starting from sequence
 // number n.
-// TODO offsetting in this one
 func (s *SlotSequencer) PopRange(seq, n int) (poppedSlots []Slot) {
-	panic("use Pop instead, PopRange does not do slot offsetting yet")
-
 	if n > len(s.slots) {
 		n = len(s.slots)
 	}
