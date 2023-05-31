@@ -11,7 +11,7 @@ import (
 func TestSlotOffsetter1(t *testing.T) {
 	// slots of same length, save all then discard all
 
-	s, _ := NewSlotOffsetter(1024)
+	s := NewSlotOffsetter(1024)
 	b := NewByteBuffer()
 
 	slots := make(map[byte]Slot)
@@ -49,7 +49,7 @@ func TestSlotOffsetter1(t *testing.T) {
 func TestSlotOffsetter2(t *testing.T) {
 	// slots of different lengths, save all then discard all
 
-	s, _ := NewSlotOffsetter(1024)
+	s := NewSlotOffsetter(1024)
 	b := NewByteBuffer()
 
 	slots := make(map[byte]Slot)
@@ -102,7 +102,7 @@ func TestSlotOffsetter2(t *testing.T) {
 func TestSlotOffsetter3(t *testing.T) {
 	// slots of same lengths, save and discard randomly
 
-	s, _ := NewSlotOffsetter(1024)
+	s := NewSlotOffsetter(1024)
 	b := NewByteBuffer()
 	slots := make(map[byte]Slot)
 
@@ -170,7 +170,7 @@ func TestSlotOffsetter3(t *testing.T) {
 func TestSlotOffsetter4(t *testing.T) {
 	// like test3 but slots of different lengths, save and discard randomly
 
-	s, _ := NewSlotOffsetter(1024)
+	s := NewSlotOffsetter(1024)
 	b := NewByteBuffer()
 	slots := make(map[byte]Slot)
 	lengths := make(map[byte]int)
@@ -253,7 +253,7 @@ func TestSlotOffsetter4(t *testing.T) {
 }
 
 func TestOffsetterRandom(t *testing.T) {
-	s, _ := NewSlotOffsetter(1024 * 1024)
+	s := NewSlotOffsetter(1024 * 1024)
 	b := NewByteBuffer()
 	slots := make(map[byte]Slot)
 	lengths := make(map[byte]int)
@@ -333,5 +333,5 @@ func TestOffsetterRandom(t *testing.T) {
 		iterations++
 	}
 
-	log.Printf("offset random test iterations=%d", iterations)
+	log.Printf("slot offset random test iterations=%d", iterations)
 }
