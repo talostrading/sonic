@@ -24,7 +24,7 @@ func TestSlotManager1(t *testing.T) {
 		b.Commit(n)
 		ok, err := s.Push(seq, b.Save(n))
 		if !ok || err != nil {
-			t.Fatal("not pushed")
+			t.Fatalf("not pushed ok=%v err=%v", ok, err)
 		}
 	}
 
@@ -47,11 +47,18 @@ func TestSlotManager1(t *testing.T) {
 	push(3, 'c', 6)
 	push(5, 'e', 10)
 
+	if s.Bytes() != 30 {
+		t.Fatal("wrong number of bytes")
+	}
+
 	for i := 5; i >= 1; i-- {
 		pop(i)
 	}
 	if s.offsetter.tree.Sum() != 0 {
 		t.Fatal("offsetter should have been cleared")
+	}
+	if s.Bytes() != 0 {
+		t.Fatal("slot manager should have 0 bytes")
 	}
 }
 
@@ -126,7 +133,12 @@ func TestSlotManagerRandom(t *testing.T) {
 			t.Fatal("offsetter should have been cleared")
 		}
 
+		if s.Bytes() != 0 {
+			t.Fatal("slot manager should have 0 bytes")
+		}
+
 		iterations++
+
 	}
 
 	log.Printf("slot manager random test iterations=%d", iterations)
