@@ -12,9 +12,12 @@ func NewSlotManager(maxSlots, maxBytes int) *SlotManager {
 	return s
 }
 
-func (s *SlotManager) Push(seq int, slot Slot) (bool, error) {
-	slot = s.offsetter.Add(slot)
-	return s.sequencer.Push(seq, slot)
+func (s *SlotManager) Push(seq int, slot Slot) (ok bool, err error) {
+	slot, err = s.offsetter.Add(slot)
+	if err == nil {
+		return s.sequencer.Push(seq, slot)
+	}
+	return false, err
 }
 
 func (s *SlotManager) Pop(seq int) (Slot, bool) {
