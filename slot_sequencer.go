@@ -20,26 +20,42 @@ func (s sequencedSlot) String() string {
 }
 
 type SlotSequencer struct {
+	nSlots   int
 	maxBytes int
 
 	bytes int
 	slots []sequencedSlot // debatable if this is the best data structure
 }
 
-func NewSlotSequencer(nSlots, maxBytes int) (*SlotSequencer, error) {
+func NewSlotSequencer(nSlots, maxBytes int) *SlotSequencer {
 	s := &SlotSequencer{
+		nSlots:   nSlots,
 		maxBytes: maxBytes,
 	}
 
 	s.slots = util.ExtendSlice(s.slots, nSlots)
 	s.slots = s.slots[:0]
 
-	return s, nil
+	return s
 }
 
 var ErrSlotSequencerNoSpace = errors.New(
 	"no space left to buffer in the slot sequencer",
 )
+
+func (s *SlotSequencer) canPush(slot Slot) bool {
+	// Guard slots.
+	if len(s.slots) >= s.nSlots {
+		return false
+	}
+
+	// Guard bytes.
+	if s.bytes+slot.Length > s.maxBytes {
+		return false
+	}
+
+	return true
+}
 
 // Push a Slot created when saving some bytes to the ByteBuffer's save area. Its
 // position in the SlotSequencer is determined by its seq i.e. sequence number.
@@ -48,11 +64,6 @@ var ErrSlotSequencerNoSpace = errors.New(
 // - seq(slot_b) > seq(slot_a) >= 0
 // - seq(slot_b) - seq(slot_a) == 1
 func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
-	// Guard overall.
-	if s.bytes+slot.Length > s.maxBytes {
-		return false, ErrSlotSequencerNoSpace
-	}
-
 	ix := sort.Search(len(s.slots), func(i int) bool {
 		return s.slots[i].seq >= seq
 	})
@@ -62,10 +73,18 @@ func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
 		seq:  seq,
 	}
 	if ix >= len(s.slots) {
+		if !s.canPush(slot) {
+			return false, ErrSlotSequencerNoSpace
+		}
+
 		s.slots = append(s.slots, newSlot)
 		s.bytes += slot.Length
 		return true, nil
 	} else if s.slots[ix].seq != seq {
+		if !s.canPush(slot) {
+			return false, ErrSlotSequencerNoSpace
+		}
+
 		s.slots = append(s.slots[:ix+1], s.slots[ix:]...)
 		s.slots[ix] = newSlot
 		s.bytes += slot.Length
