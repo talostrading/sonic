@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"math/rand"
 	"testing"
 	"time"
@@ -565,6 +566,75 @@ func TestByteBufferClaimFixed(t *testing.T) {
 	}
 	if b.WriteLen() != writeLen+8 {
 		t.Fatal("wrong write area size")
+	}
+}
+
+func TestByteBufferShrinkBy(t *testing.T) {
+	{
+		b := NewByteBuffer()
+		b.Write([]byte("hello"))
+		if b.WriteLen() != 5 {
+			t.Fatal("wrong write length")
+		}
+
+		if n := b.ShrinkBy(1); n != 1 && b.WriteLen() != 4 {
+			t.Fatal("wrong shrink by")
+		}
+
+		if n := b.ShrinkBy(100); n != 4 && b.WriteLen() != 0 {
+			t.Fatal("wrong shrink by")
+		}
+
+		if n := b.ShrinkBy(-100); n != 0 && b.WriteLen() != 0 {
+			t.Fatal("wrong shrink by")
+		}
+	}
+	{
+		b := NewByteBuffer()
+		b.Write([]byte("hello"))
+		if n := b.ShrinkBy(2); n != 2 && b.WriteLen() != 3 {
+			t.Fatal("wrong shrink to")
+		}
+		b.Commit(100)
+		if string(b.Data()) != "hel" {
+			t.Fatal("wrong shrink by")
+		}
+	}
+}
+
+func TestByteBufferShrinkTo(t *testing.T) {
+	{
+		b := NewByteBuffer()
+		b.Write([]byte("hello"))
+		if b.WriteLen() != 5 {
+			t.Fatal("wrong write length")
+		}
+
+		if n := b.ShrinkTo(4); n != 1 && b.WriteLen() != 4 {
+			t.Fatal("wrong shrink to")
+		}
+
+		if n := b.ShrinkTo(0); n != 4 && b.WriteLen() != 0 {
+			fmt.Println(n, b.WriteLen())
+			t.Fatal("wrong shrink to")
+		}
+	}
+	{
+		b := NewByteBuffer()
+		if n := b.ShrinkTo(1); n != 0 {
+			t.Fatal("wrong shrink to")
+		}
+	}
+	{
+		b := NewByteBuffer()
+		b.Write([]byte("hello"))
+		if n := b.ShrinkTo(3); n != 2 && b.WriteLen() != 3 {
+			t.Fatal("wrong shrink to")
+		}
+		b.Commit(100)
+		if string(b.Data()) != "hel" {
+			t.Fatal("wrong shrink to")
+		}
 	}
 }
 
