@@ -361,3 +361,22 @@ func (b *ByteBuffer) ClaimFixed(n int) (claimed []byte) {
 	}
 	return
 }
+
+// ShrinkBy shrinks the write area by at most `n` bytes.
+func (b *ByteBuffer) ShrinkBy(n int) int {
+	if n <= 0 {
+		return 0
+	}
+
+	if length := b.WriteLen(); n > length {
+		n = length
+	}
+	b.wi -= n
+	b.data = b.data[:b.wi]
+	return n
+}
+
+// ShrinkTo shrinks the write to contain min(n, WriteLen()) bytes.
+func (b *ByteBuffer) ShrinkTo(n int) (shrunkBy int) {
+	return b.ShrinkBy(b.WriteLen() - n)
+}
