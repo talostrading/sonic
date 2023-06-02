@@ -64,3 +64,5 @@ This issue has been addressed in [this](https://github.com/talostrading/sonic/co
   <img src="https://c.tenor.com/OTDlqAguqpEAAAAi/sonic-running.gif" />
 </p>
 
+AK: testing permissions
+
