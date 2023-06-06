@@ -63,3 +63,9 @@ func (s *SlotManager) FillPct() float64 {
 	b := float64(s.MaxBytes())
 	return a / b * 100.0
 }
+
+func (s *SlotManager) Clear() {
+	s.offsetter.Clear()
+	s.sequencer.Clear()
+	s.bytes = 0
+}

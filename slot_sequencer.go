@@ -137,3 +137,7 @@ func (s *SlotSequencer) PopRange(seq, n int) (poppedSlots []Slot) {
 func (s *SlotSequencer) Size() int {
 	return len(s.slots)
 }
+
+func (s *SlotSequencer) Clear() {
+	s.slots = s.slots[:0]
+}
