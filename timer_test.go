@@ -733,6 +733,61 @@ func TestTimerScheduleRepeatingAndCancel(t *testing.T) {
 	}
 }
 
+func TestTimerCancelAndThenScheduleRepeating(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	timer, err := NewTimer(ioc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// here we are cancelling the timer before we call ScheduleRepeating to make sure
+	// that ScheduleRepeating will set cancelled to false and will do all the iterations as it should
+	timer.Cancel()
+
+	// Scheduling a timer & cancelling it after 5 iterations
+	called := 0
+	err = timer.ScheduleRepeating(time.Millisecond, func() {
+		called++
+		if called == 5 {
+			timer.Cancel()
+		}
+	})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !timer.Scheduled() {
+		t.Fatal("timer should be scheduled")
+	}
+	if timer.state != stateScheduled {
+		t.Fatal("timer.state should be scheduled")
+	}
+	if timer.cancelled {
+		t.Fatal("timer.cancelled should be false")
+	}
+
+	// run 5 jobs to get the 5 callbacks triggered
+	for i := 0; i < 5; i++ {
+		ioc.RunOne()
+	}
+
+	if timer.Scheduled() {
+		t.Fatal("timer should not be scheduled")
+	}
+	if timer.cancelled {
+		t.Fatal("timer.cancelled should be false")
+	}
+	if timer.state != stateReady {
+		t.Fatal("timer should be in ready state")
+	}
+	if called != 5 {
+		t.Fatal("timer didn't trigger 5 times as it should have")
+	}
+}
+
 func BenchmarkTimerNew(b *testing.B) {
 	ioc := MustIO()
 	defer ioc.Close()

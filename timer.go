@@ -60,6 +60,7 @@ func NewTimer(ioc *IO) (*Timer, error) {
 // If the delay is negative or 0, the callback is executed as soon as possible.
 func (t *Timer) ScheduleOnce(delay time.Duration, cb func()) (err error) {
 	if t.state == stateReady {
+		t.cancelled = false
 		if delay <= 0 {
 			cb()
 		} else {
