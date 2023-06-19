@@ -63,7 +63,7 @@ func (t *FenwickTree) Clear(index int) int {
 	return v
 }
 
-func (t *FenwickTree) ClearAll() {
+func (t *FenwickTree) Reset() {
 	// TODO this can definitely be made better with smth like memset
 	for i := 0; i < len(t.data); i++ {
 		t.data[i] = 0

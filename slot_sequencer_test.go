@@ -1,49 +1,145 @@
 package sonic
 
-import "testing"
+import (
+	"log"
+	"math/rand"
+	"testing"
+	"time"
+)
 
-func TestSlotSequencerBoundSlots(t *testing.T) {
-	s := NewSlotSequencer(1)
+func TestSlotSequencer1(t *testing.T) {
+	b := NewByteBuffer()
+	s := NewSlotSequencer(10, 1024)
 
-	// push 1 for the first time
-	ok, err := s.Push(1, Slot{Index: 0, Length: 1})
-	if !ok || err != nil {
-		t.Fatal("not pushed")
-	}
+	letters := make(map[int][]byte)
 
-	// push 1 again; should not be pushed since we already have 1,
-	// err must be nil
-	ok, err = s.Push(1, Slot{Index: 0, Length: 1})
-	if ok {
-		t.Fatal("pushed")
-	}
-	if err != nil {
-		t.Fatal("errored")
-	}
+	push := func(seq int, letter byte, n int) {
+		var what []byte
+		for i := 0; i < n; i++ {
+			what = append(what, letter)
+		}
+		letters[seq] = what
 
-	// this one goes over the max slots so we should get an error here
-	ok, err = s.Push(2, Slot{Index: 1, Length: 2})
-	if ok || err == nil {
-		t.Fatal("pushed")
-	}
-
-	// pop 1, should work
-	popped, ok := s.Pop(1)
-	if !ok {
-		t.Fatal("should pop")
-	}
-	if popped.Index != 0 || popped.Length != 1 {
-		t.Fatal("wrong slot")
-	}
-
-	if s.Size() != 0 {
-		t.Fatal("size should be zero")
-	}
-
-	for i := 0; i < 10; i++ {
-		_, ok := s.Pop(1)
-		if ok {
-			t.Fatal("should not pop")
+		b.Write(what)
+		b.Commit(n)
+		ok, err := s.Push(seq, b.Save(n))
+		if !ok || err != nil {
+			t.Fatalf("not pushed ok=%v err=%v", ok, err)
 		}
 	}
+
+	pop := func(seq int) {
+		slot, ok := s.Pop(seq)
+		if !ok {
+			t.Fatal("not popped")
+		}
+		expected := string(letters[seq])
+		given := string(b.SavedSlot(slot))
+		if expected != given {
+			t.Fatalf("wrong slot expected=%s given=%s", expected, given)
+		}
+		b.Discard(slot)
+	}
+
+	push(2, 'b', 4)
+	push(1, 'a', 2)
+	push(4, 'd', 8)
+	push(3, 'c', 6)
+	push(5, 'e', 10)
+
+	if s.Bytes() != 30 {
+		t.Fatal("wrong number of bytes")
+	}
+
+	for i := 5; i >= 1; i-- {
+		pop(i)
+	}
+	if s.offsetter.tree.Sum() != 0 {
+		t.Fatal("offsetter should have been cleared")
+	}
+	if s.Bytes() != 0 {
+		t.Fatal("slot manager should have 0 bytes")
+	}
+}
+
+func TestSlotSequencerRandom(t *testing.T) {
+	b := NewByteBuffer()
+	s := NewSlotSequencer(4096, 1024*1024)
+
+	letters := make(map[int][]byte)
+
+	push := func(seq int, letter byte, n int) {
+		var what []byte
+		for i := 0; i < n; i++ {
+			what = append(what, letter)
+		}
+		letters[seq] = what
+
+		b.Write(what)
+		b.Commit(n)
+		ok, err := s.Push(seq, b.Save(n))
+		if !ok || err != nil {
+			t.Fatalf("not pushed ok=%v err=%v", ok, err)
+		}
+	}
+
+	pop := func(seq int) {
+		slot, ok := s.Pop(seq)
+		if !ok {
+			t.Fatal("not popped")
+		}
+		expected := string(letters[seq])
+		given := string(b.SavedSlot(slot))
+		if expected != given {
+			t.Fatalf("wrong slot expected=%s given=%s", expected, given)
+		}
+		b.Discard(slot)
+	}
+
+	alphabet := []byte("abcdefghijklmnopqrstuvwxyz")
+
+	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	iterations := 0
+	start := time.Now()
+	for time.Since(start).Seconds() < 30 {
+		var sequences []int
+		for seq := 1; seq <= 1024; seq++ {
+			sequences = append(sequences, seq)
+		}
+
+		for len(sequences) > 0 {
+			var toPop []int
+
+			nPop := rand.Int()%len(sequences) + 1
+			for i := 0; i < nPop; i++ {
+				ix := rand.Int() % len(sequences)
+				seq := sequences[ix]
+				sequences = append(sequences[:ix], sequences[ix+1:]...)
+
+				toPop = append(toPop, seq)
+
+				push(seq, alphabet[rand.Int()%len(alphabet)], rand.Int()%100+1)
+			}
+
+			for len(toPop) > 0 {
+				ix := rand.Int() % len(toPop)
+				pop(toPop[ix])
+				toPop = append(toPop[:ix], toPop[ix+1:]...)
+			}
+		}
+
+		if s.offsetter.tree.Sum() != 0 {
+			t.Fatal("offsetter should have been cleared")
+		}
+
+		if s.Bytes() != 0 {
+			t.Fatal("slot manager should have 0 bytes")
+		}
+
+		iterations++
+
+	}
+
+	log.Printf("slot manager random test iterations=%d", iterations)
 }
