@@ -151,12 +151,12 @@ func trashedFenwickTree(n int) (*FenwickTree, *List[int]) {
 	return tree, list
 }
 
-func BenchmarkFenwickTreePrefixSum(b *testing.B) {
+func BenchmarkFenwickTreePrefixSumTrashed(b *testing.B) {
 	debug.SetGCPercent(-1) // make sure trash is not picked up
 
 	const N = 1024 * 10
 
-	b.Run("fenwick_tree_prefix_sum", func(b *testing.B) {
+	b.Run("fenwick_tree_prefix_sum_trashed", func(b *testing.B) {
 		tree, _ := trashedFenwickTree(N)
 		for i := 0; i < tree.Size(); i++ {
 			tree.Add(i, i)
@@ -169,9 +169,15 @@ func BenchmarkFenwickTreePrefixSum(b *testing.B) {
 		b.ReportAllocs()
 	})
 
-	b.Run("array_linear_prefix_sum", func(b *testing.B) {
-		var xs [N]int
-		fn := func(index int) int {
+	b.Run("array_linear_prefix_sum_trashed", func(b *testing.B) {
+		var xs []int
+		list := NewList[int]()
+		for i := 0; i < N; i++ {
+			xs = append(xs, i)
+			list.Add(i)
+		}
+
+		prefixSum := func(index int) int {
 			s := 0
 			for i := 0; i <= index; i++ {
 				s += xs[i]
@@ -180,7 +186,45 @@ func BenchmarkFenwickTreePrefixSum(b *testing.B) {
 		}
 		total := 0
 		for i := 0; i < b.N; i++ {
-			total += fn(i % N)
+			total += prefixSum(i % N)
+		}
+		fmt.Fprint(io.Discard, total)
+		b.ReportAllocs()
+	})
+}
+
+func BenchmarkFenwickTreePrefixSumBig(b *testing.B) {
+	const N = 1024 * 1024 * 10 // 10MB
+
+	b.Run("fenwick_tree_prefix_sum_big", func(b *testing.B) {
+		tree := NewFenwickTree(N)
+		for i := 0; i < tree.Size(); i++ {
+			tree.Add(i, i)
+		}
+		total := 0
+		for i := 0; i < b.N; i++ {
+			total += tree.SumUntil(i % tree.Size())
+		}
+		fmt.Fprint(io.Discard, total)
+		b.ReportAllocs()
+	})
+
+	b.Run("array_linear_prefix_sum_big", func(b *testing.B) {
+		var xs [N]int
+		for i := 0; i < len(xs); i++ {
+			xs[i] = i
+		}
+
+		prefixSum := func(index int) int {
+			s := 0
+			for i := 0; i <= index; i++ {
+				s += xs[i]
+			}
+			return s
+		}
+		total := 0
+		for i := 0; i < b.N; i++ {
+			total += prefixSum(i % N)
 		}
 		fmt.Fprint(io.Discard, total)
 		b.ReportAllocs()
