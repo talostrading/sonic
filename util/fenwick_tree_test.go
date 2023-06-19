@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"io"
+	"runtime/debug"
 	"testing"
 )
 
@@ -129,8 +130,6 @@ func TestFenwickTreeClear(t *testing.T) {
 }
 
 func BenchmarkFenwickTreeAdd(b *testing.B) {
-	// TODO trash the cache with a linked list
-
 	tree := NewFenwickTree(1024 * 1024 * 16)
 	for i := 0; i < b.N; i++ {
 		tree.Add(i%tree.Size(), i)
@@ -139,13 +138,26 @@ func BenchmarkFenwickTreeAdd(b *testing.B) {
 	b.ReportAllocs()
 }
 
+func trashedFenwickTree(n int) (*FenwickTree, *List[int]) {
+	list := NewList[int]()
+
+	tree := &FenwickTree{}
+	for i := 0; i < n; i++ {
+		tree.data = append(tree.data, 0)
+		list.Add(i)
+	}
+	tree.data = tree.data[:n]
+
+	return tree, list
+}
+
 func BenchmarkFenwickTreePrefixSum(b *testing.B) {
-	// TODO trash the cache with a linked list
+	debug.SetGCPercent(-1) // make sure trash is not picked up
 
 	const N = 1024 * 10
 
 	b.Run("fenwick_tree_prefix_sum", func(b *testing.B) {
-		tree := NewFenwickTree(N)
+		tree, _ := trashedFenwickTree(N)
 		for i := 0; i < tree.Size(); i++ {
 			tree.Add(i, i)
 		}
@@ -176,10 +188,10 @@ func BenchmarkFenwickTreePrefixSum(b *testing.B) {
 }
 
 func BenchmarkFenwickTreeRangeSum(b *testing.B) {
-	// Here we are doing two SumUntil, so it should be 2x of PrefixSum.
-	// TODO trash the cache with a linked list
+	debug.SetGCPercent(-1) // make sure trash is not picked up
 
-	tree := NewFenwickTree(1024 * 1024 * 16)
+	tree, _ := trashedFenwickTree(1024 * 10)
+
 	for i := 0; i < tree.Size(); i++ {
 		tree.Add(i, i)
 	}
