@@ -351,7 +351,7 @@ func TestOffsetterRandom(t *testing.T) {
 
 		// This is what callers should also do after all slots are removed
 		// from the save area.
-		s.Clear()
+		s.Reset()
 
 		iterations++
 	}

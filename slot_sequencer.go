@@ -1,143 +1,86 @@
 package sonic
 
-import (
-	"fmt"
-	"github.com/talostrading/sonic/util"
-	"sort"
-)
-
-type sequencedSlot struct {
-	Slot
-	seq int // sequence number of this slot
-}
-
-func (s sequencedSlot) String() string {
-	return fmt.Sprintf(
-		"[seq=%d (index=%d length=%d)]",
-		s.seq, s.Index, s.Length,
-	)
-}
+// SlotSequencer does two things:
+// 1. Provides ordering to ByteBuffer.Slots
+// 2. Offsets ByteBuffer.Slots such that they are discarded correctly. See
+// slot_offsetter.go for a description of why this is necessary and how it's
+// done.
+//
+// Workflow:
+// - slot := ByteBuffer.Save(...)
+// - slot = sequencer.Push(x, slot) where x is some sequence number of this Slot.
+// - ...
+// - ByteBuffer.Discard(sequencer.Pop(slot))
 
 type SlotSequencer struct {
-	maxSlots int
+	maxBytes int
 
-	slots []sequencedSlot // debatable if this is the best data structure
+	bytes     int
+	container *sequencedSlots
+	offsetter *SlotOffsetter
 }
 
-func NewSlotSequencer(maxSlots int) *SlotSequencer {
+func NewSlotSequencer(maxSlots, maxBytes int) *SlotSequencer {
 	s := &SlotSequencer{
-		maxSlots: maxSlots,
+		maxBytes: maxBytes,
 	}
-
-	s.slots = util.ExtendSlice(s.slots, maxSlots)
-	s.slots = s.slots[:0]
-
+	s.container = newSequencedSlots(maxSlots)
+	s.offsetter = NewSlotOffsetter(maxBytes)
 	return s
 }
 
-func (s *SlotSequencer) checkSize(slot Slot) error {
-	if len(s.slots) >= s.maxSlots {
-		return ErrNoSpaceLeftForSlot
+// Push a Slot that's uniquely identified and ordered by `seq`.
+func (s *SlotSequencer) Push(seq int, slot Slot) (ok bool, err error) {
+	if s.bytes+slot.Length > s.maxBytes {
+		return false, ErrNoSpaceLeftForSlot
 	}
-	return nil
+
+	slot, err = s.offsetter.Add(slot)
+	if err == nil {
+		ok, err = s.container.Push(seq, slot)
+		if err == nil {
+			s.bytes += slot.Length
+		}
+	}
+	return ok, err
 }
 
-// Push a Slot created when saving some bytes to the ByteBuffer's save area. Its
-// position in the SlotSequencer is determined by its seq i.e. sequence number.
-// The SlotSequencer keeps slots in ascending order of their sequence number
-// and assumes that slot_a precedes slot_b if:
-// - seq(slot_b) > seq(slot_a) >= 0
-// - seq(slot_b) - seq(slot_a) == 1
-func (s *SlotSequencer) Push(seq int, slot Slot) (bool, error) {
-	ix := sort.Search(len(s.slots), func(i int) bool {
-		return s.slots[i].seq >= seq
-	})
-
-	newSlot := sequencedSlot{
-		Slot: slot,
-		seq:  seq,
-	}
-	if ix >= len(s.slots) {
-		if err := s.checkSize(slot); err != nil {
-			return false, err
-		}
-
-		s.slots = append(s.slots, newSlot)
-		return true, nil
-	} else if s.slots[ix].seq != seq {
-		if err := s.checkSize(slot); err != nil {
-			return false, err
-		}
-
-		s.slots = append(s.slots[:ix+1], s.slots[ix:]...)
-		s.slots[ix] = newSlot
-		return true, nil
-	}
-
-	return false, nil
-}
-
-// Pop a slot. The returned Slot must be discarded with ByteBuffer.Discard
-// before calling Pop again.
+// Pop the slot identified by `seq`. The popped Slot must be discarded through
+// ByteBuffer.Discard before Pop is called again.
 func (s *SlotSequencer) Pop(seq int) (Slot, bool) {
-	ix := sort.Search(len(s.slots), func(i int) bool {
-		return s.slots[i].seq >= seq
-	})
-	if ix < len(s.slots) && s.slots[ix].seq == seq {
-		slot := s.slots[ix].Slot
-		s.slots = append(s.slots[:ix], s.slots[ix+1:]...)
-		return slot, true
-	}
-	return Slot{}, false
-}
+	slot, ok := s.container.Pop(seq)
+	if ok {
+		slot = s.offsetter.Offset(slot)
 
-// PopRange pops at most n slots that come in sequence, starting from sequence
-// number n.
-func (s *SlotSequencer) PopRange(seq, n int) (poppedSlots []Slot) {
-	if n > len(s.slots) {
-		n = len(s.slots)
-	}
-
-	if n == 0 {
-		return nil
-	}
-
-	ix := sort.Search(len(s.slots), func(i int) bool {
-		return s.slots[i].seq >= seq
-	})
-	if ix < len(s.slots) {
-		// PopRange(0, 2) on seq[0, 1, 2, 3] => [2, 3]
-		// PopRange(0, 2) on seq[1, 2, 3] => [2, 3]
-		//   - here we want to pop 2 starting from sequence number 0
-		//   - there is no sequence number zero, and the closest one is 1
-		//   - hence we consider 0 already popped, and we must only pop 1 now
-		//   - that's what toPop accounts for
-		toPop := n - (s.slots[ix].seq - seq)
-
-		poppedSlots = util.ExtendSlice(poppedSlots, toPop)
-		poppedSlots = poppedSlots[:0]
-
-		lastSeq := -1
-		for i := 0; i < toPop; i++ {
-			maybePoppedSlot := s.slots[ix+i]
-			if lastSeq == -1 || maybePoppedSlot.seq-lastSeq == 1 {
-				lastSeq = maybePoppedSlot.seq
-				poppedSlots = append(poppedSlots, maybePoppedSlot.Slot)
-			} else {
-				break
-			}
+		if s.container.Size() == 0 {
+			s.offsetter.Reset()
 		}
-		s.slots = append(s.slots[:ix], s.slots[ix+toPop:]...)
-		return poppedSlots
+
+		s.bytes -= slot.Length
 	}
-	return nil
+	return slot, ok
 }
 
-// Size ...
 func (s *SlotSequencer) Size() int {
-	return len(s.slots)
+	return s.container.Size()
 }
 
-func (s *SlotSequencer) Clear() {
-	s.slots = s.slots[:0]
+func (s *SlotSequencer) Bytes() int {
+	return s.bytes
+}
+
+func (s *SlotSequencer) MaxBytes() int {
+	return s.maxBytes
+}
+
+func (s *SlotSequencer) FillPct() float64 {
+	a := float64(s.Bytes())
+	b := float64(s.MaxBytes())
+	return a / b * 100.0
+}
+
+func (s *SlotSequencer) Reset() {
+	s.offsetter.Reset()
+	s.container.Reset()
+	s.bytes = 0
 }
