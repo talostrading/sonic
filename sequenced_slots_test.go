@@ -1,6 +1,8 @@
 package sonic
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestSequencedSlotsBounds(t *testing.T) {
 	s := newSequencedSlots(1)
@@ -44,6 +46,27 @@ func TestSequencedSlotsBounds(t *testing.T) {
 		_, ok := s.Pop(1)
 		if ok {
 			t.Fatal("should not pop")
+		}
+	}
+}
+
+func BenchmarkSequencedSlots(b *testing.B) {
+	// worst case
+
+	s := newSequencedSlots(1024 * 1024)
+
+	seq := 0
+	for i := 0; i < b.N; i++ {
+		lseq := seq
+
+		for j := 0; j < 128; j++ {
+			s.Push(seq, Slot{})
+			seq++
+		}
+
+		for j := 0; j < 128; j++ {
+			s.Pop(lseq)
+			lseq++
 		}
 	}
 }

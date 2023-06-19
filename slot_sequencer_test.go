@@ -143,3 +143,88 @@ func TestSlotSequencerRandom(t *testing.T) {
 
 	log.Printf("slot manager random test iterations=%d", iterations)
 }
+
+func BenchmarkSlotSequencerPop(b *testing.B) {
+	const N = 1024 * 1024 /* == -benchtime */ * 8
+
+	buf := NewByteBuffer()
+	buf.Reserve(N)
+	s := NewSlotSequencer(4096, N)
+
+	for i := 0; i < N; i++ {
+		buf.Write([]byte("12345678"))
+		buf.Commit(8)
+		s.Push(i, buf.Save(8))
+	}
+
+	// $ go test -bench BenchmarkSlotSeq -v -run=^$ -benchtime=1048576x .
+	// -benchtime is important here otherwise the results don't make sense.
+	for i := 0; i < b.N; i++ {
+		slot, ok := s.Pop(i % N)
+		if ok {
+			buf.Discard(slot)
+		}
+	}
+}
+
+func BenchmarkSlotSequencerPushPop(b *testing.B) {
+	b.Run("first_in_first_out", func(b *testing.B) {
+		buf := NewByteBuffer()
+		buf.Reserve(4096)
+		s := NewSlotSequencer(1024, 4096)
+
+		for i := 0; i < b.N; i++ {
+			for j := 0; j < 1024; j++ {
+				buf.Claim(func(b []byte) int {
+					for k := 0; k < 4; k++ {
+						b[k] = byte(k)
+					}
+					return 4
+				})
+				buf.Commit(4)
+			}
+
+			for j := 0; j < 1024; j++ {
+				s.Push(j, buf.Save(4))
+			}
+
+			for j := 0; j < 1024; j++ {
+				slot, ok := s.Pop(j)
+
+				if ok {
+					buf.Discard(slot)
+				}
+			}
+		}
+	})
+
+	b.Run("first_in_last_out", func(b *testing.B) {
+		buf := NewByteBuffer()
+		buf.Reserve(4096)
+		s := NewSlotSequencer(1024, 4096)
+
+		for i := 0; i < b.N; i++ {
+			for j := 0; j < 1024; j++ {
+				buf.Claim(func(b []byte) int {
+					for k := 0; k < 4; k++ {
+						b[k] = byte(k)
+					}
+					return 4
+				})
+				buf.Commit(4)
+			}
+
+			for j := 0; j < 1024; j++ {
+				s.Push(j, buf.Save(4))
+			}
+
+			for j := 1023; j >= 0; j-- {
+				slot, ok := s.Pop(j)
+
+				if ok {
+					buf.Discard(slot)
+				}
+			}
+		}
+	})
+}

@@ -94,7 +94,7 @@ func (s *sequencedSlots) Pop(seq int) (Slot, bool) {
 
 // PopRange pops at most n slots in order, starting from seq. The returned Slots
 // must be discarded by ByteBuffer.Discard before calling PopRange again.
-// TODO: use this one. Offsetting is a bit tricky here.
+// TODO: offsetting is a bit tricky here.
 func (s *sequencedSlots) PopRange(seq, n int) (poppedSlots []Slot) {
 	if n > len(s.slots) {
 		n = len(s.slots)
