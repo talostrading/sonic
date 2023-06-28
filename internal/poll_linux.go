@@ -30,7 +30,7 @@ func createEvent(flags PollFlags, pd *PollData) Event {
 	ev := Event{
 		Flags: uint32(flags),
 	}
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	*(**PollData)(unsafe.Pointer(&ev.Data)) = pd
 
 	return ev
@@ -137,7 +137,7 @@ func (p *poller) Posted() int {
 }
 
 func (p *poller) Poll(timeoutMs int) (n int, err error) {
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	nn, _, errno := syscall.Syscall6(
 		syscall.SYS_EPOLL_WAIT,
 		uintptr(p.fd),
@@ -169,7 +169,7 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		event := &p.events[i]
 
 		flags := PollFlags(event.Flags)
-        /* #nosec G103 */
+		/* #nosec G103 -- the use of unsafe has been audited */
 		pd := *(**PollData)(unsafe.Pointer(&event.Data))
 
 		if pd.Fd == p.waker.Fd() {
@@ -178,13 +178,13 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		}
 
 		if flags&pd.Flags&ReadFlags == ReadFlags {
-            // TODO this errors should be reported
+			// TODO this errors should be reported
 			_ = p.DelRead(pd.Fd, pd)
 			pd.Cbs[ReadEvent](nil)
 		}
 
 		if flags&pd.Flags&WriteFlags == WriteFlags {
-            // TODO this errors should be reported
+			// TODO this errors should be reported
 			_ = p.DelWrite(pd.Fd, pd)
 			pd.Cbs[WriteEvent](nil)
 		}
@@ -235,7 +235,7 @@ func (p *poller) setRW(fd int, pd *PollData, flag PollFlags) error {
 }
 
 func (p *poller) add(fd int, event Event) error {
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
@@ -251,7 +251,7 @@ func (p *poller) add(fd int, event Event) error {
 }
 
 func (p *poller) modify(fd int, event Event) error {
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
