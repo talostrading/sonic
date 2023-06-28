@@ -172,7 +172,8 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		event := &p.events[i]
 
 		flags := -PollFlags(event.Filter)
-        /* #nosec G103 */
+
+		/* #nosec G103 -- the use of unsafe has been audited */
 		pd := (*PollData)(unsafe.Pointer(event.Udata))
 
 		if pd.Fd == p.waker.ReadFd() {
@@ -283,7 +284,7 @@ func createEvent(flags uint16, filter PollFlags, pd *PollData, dur time.Duration
 	}
 
 	if pd != nil {
-        /* #nosec G103 */
+		/* #nosec G103 -- the use of unsafe has been audited */
 		ev.Udata = (*byte)(unsafe.Pointer(pd)) // not touched by the kernel
 	}
 

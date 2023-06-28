@@ -38,7 +38,7 @@ func (s *Socket) UnbindFromDevice() error {
 		return nil
 	}
 
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_SETSOCKOPT),
 		uintptr(s.fd),
@@ -48,7 +48,7 @@ func (s *Socket) UnbindFromDevice() error {
 		0, 0,
 	)
 	if errno != 0 {
-        err := errno
+		err := errno
 		return err
 	} else {
 		s.boundInterface = nil
@@ -60,7 +60,7 @@ func GetBoundDevice(fd int) (string, error) {
 	into := make([]byte, syscall.IFNAMSIZ)
 	n := 0
 
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_GETSOCKOPT),
 		uintptr(fd),
@@ -71,7 +71,7 @@ func GetBoundDevice(fd int) (string, error) {
 		0,
 	)
 	if errno != 0 {
-        err := errno
+		err := errno
 		return "", err
 	} else {
 		return string(into[:n]), nil

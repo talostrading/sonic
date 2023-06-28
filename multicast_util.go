@@ -30,8 +30,8 @@ func serializeIPv4Addr(addr net.Addr, into []byte) bool {
 }
 
 func createIPv4InterfaceRequest(
-    ip net.IP,
-    iff *net.Interface,
+	ip net.IP,
+	iff *net.Interface,
 ) (*syscall.IPMreq, error) {
 	// TODO here you might also want to explicitly request
 	// a specific IP, but not sure yet about the semantics of the link layer.
@@ -64,9 +64,9 @@ func createIPv4InterfaceRequestWithSource(
 ) (*IPMreqSource, error) {
 	if sourceIP.To4() == nil {
 		return nil, fmt.Errorf(
-            "invalid source=%s; can only filter on IPv4 sources",
-            sourceIP,
-        )
+			"invalid source=%s; can only filter on IPv4 sources",
+			sourceIP,
+		)
 	}
 
 	mreqAll, err := createIPv4InterfaceRequest(multicastIP, iff)
@@ -83,8 +83,8 @@ func createIPv4InterfaceRequestWithSource(
 }
 
 func createIPv6InterfaceRequest(
-    ip net.IP,
-    iff *net.Interface,
+	ip net.IP,
+	iff *net.Interface,
 ) (*syscall.IPv6Mreq, error) {
 	// set multicast address
 	mreq := &syscall.IPv6Mreq{}
@@ -108,14 +108,14 @@ func makeInterfaceRequest(
 	)
 
 	// IPv4 is not compatible with IPv6 which means devices cannot communicate
-    // with each other if they mix addressing. So we want an IPv4 interface
-    // address for an IPv4 multicast address and same for IPv6.
+	// with each other if they mix addressing. So we want an IPv4 interface
+	// address for an IPv4 multicast address and same for IPv6.
 	if multicastIP := multicastIP.To4(); multicastIP != nil {
 		// IPv4
 		if sourceIP == nil {
 			mreq, err := createIPv4InterfaceRequest(multicastIP, iff)
 			if err == nil {
-                /* #nosec G103 */
+				/* #nosec G103 -- the use of unsafe has been audited */
 				_, _, errno = syscall.Syscall6(
 					syscall.SYS_SETSOCKOPT,
 					uintptr(fd),
@@ -126,12 +126,12 @@ func makeInterfaceRequest(
 			}
 		} else {
 			mreq, err := createIPv4InterfaceRequestWithSource(
-                multicastIP,
-                iff,
-                sourceIP,
-            )
+				multicastIP,
+				iff,
+				sourceIP,
+			)
 			if err == nil {
-                /* #nosec G103 */
+				/* #nosec G103 -- the use of unsafe has been audited */
 				_, _, errno = syscall.Syscall6(
 					syscall.SYS_SETSOCKOPT,
 					uintptr(fd),
@@ -146,7 +146,7 @@ func makeInterfaceRequest(
 		if sourceIP == nil {
 			mreq, err := createIPv6InterfaceRequest(multicastIP.To16(), iff)
 			if err == nil {
-                /* #nosec G103 */
+				/* #nosec G103 -- the use of unsafe has been audited */
 				_, _, errno = syscall.Syscall6(
 					syscall.SYS_SETSOCKOPT,
 					uintptr(fd),

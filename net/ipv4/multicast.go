@@ -2,11 +2,12 @@ package ipv4
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic"
 	"net"
 	"net/netip"
 	"syscall"
 	"unsafe"
+
+	"github.com/talostrading/sonic"
 )
 
 // SizeofIPMreqSource I would love to do unsafe.SizeOf  but for a struct with
@@ -29,10 +30,10 @@ type IPMreqSource struct {
 
 func GetMulticastInterfaceAddr(socket *sonic.Socket) (netip.Addr, error) {
 	addr, err := syscall.GetsockoptInet4Addr(
-        socket.RawFd(),
-        syscall.IPPROTO_IP,
-        syscall.IP_MULTICAST_IF,
-    )
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_MULTICAST_IF,
+	)
 	if err != nil {
 		return netip.Addr{}, err
 	} else {
@@ -41,13 +42,13 @@ func GetMulticastInterfaceAddr(socket *sonic.Socket) (netip.Addr, error) {
 }
 
 func GetMulticastInterfaceAddrAndGroup(
-    socket *sonic.Socket,
+	socket *sonic.Socket,
 ) (interfaceAddr, multicastAddr netip.Addr, err error) {
 	addr, err := syscall.GetsockoptIPMreq(
-        socket.RawFd(),
-        syscall.IPPROTO_IP,
-        syscall.IP_MULTICAST_IF,
-    )
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_MULTICAST_IF,
+	)
 	if err != nil {
 		return netip.Addr{}, netip.Addr{}, err
 	} else {
@@ -57,19 +58,19 @@ func GetMulticastInterfaceAddrAndGroup(
 
 func GetMulticastInterfaceIndex(socket *sonic.Socket) (int, error) {
 	return syscall.GetsockoptInt(
-        socket.RawFd(),
-        syscall.IPPROTO_IP,
-        syscall.IP_MULTICAST_IF,
-    )
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_MULTICAST_IF,
+	)
 }
 
 func SetMulticastInterface(
-    socket *sonic.Socket,
-    iff *net.Interface,
+	socket *sonic.Socket,
+	iff *net.Interface,
 ) (netip.Addr, error) {
 	if iff.Flags&net.FlagMulticast == 0 {
 		return netip.Addr{}, fmt.Errorf(
-            "interface=%s does not support multicast", iff.Name)
+			"interface=%s does not support multicast", iff.Name)
 	}
 
 	addrs, err := iff.Addrs()
@@ -169,8 +170,8 @@ func ValidateMulticastIP(ip netip.Addr) error {
 }
 
 func prepareAddMembership(
-    multicastIP netip.Addr,
-    iff *net.Interface,
+	multicastIP netip.Addr,
+	iff *net.Interface,
 ) (*syscall.IPMreq, error) {
 	mreq := &syscall.IPMreq{}
 	copy(mreq.Multiaddr[:], multicastIP.AsSlice())
@@ -214,8 +215,8 @@ func prepareAddMembership(
 		}
 		if !set {
 			return nil, fmt.Errorf(
-                "cannot add membership on interface %s as there is no IPv4 address on it", 
-                iff.Name)
+				"cannot add membership on interface %s as there is no IPv4 address on it",
+				iff.Name)
 		}
 	}
 
@@ -233,11 +234,11 @@ func AddMembership(
 		return err
 	}
 	return syscall.SetsockoptIPMreq(
-        socket.RawFd(),
-        syscall.IPPROTO_IP,
-        syscall.IP_ADD_MEMBERSHIP,
-        mreq,
-    )
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_ADD_MEMBERSHIP,
+		mreq,
+	)
 }
 
 func AddSourceMembership(
@@ -256,7 +257,7 @@ func AddSourceMembership(
 	copy(mreqSource.Interface[:], mreq.Interface[:])
 	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
 
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_SETSOCKOPT),
 		uintptr(socket.RawFd()),
@@ -282,23 +283,23 @@ func DropMembership(socket *sonic.Socket, multicastIP netip.Addr) error {
 	mreq := prepareDropMembership(multicastIP)
 
 	return syscall.SetsockoptIPMreq(
-        socket.RawFd(),
-        syscall.IPPROTO_IP,
-        syscall.IP_DROP_MEMBERSHIP,
-        mreq,
-    )
+		socket.RawFd(),
+		syscall.IPPROTO_IP,
+		syscall.IP_DROP_MEMBERSHIP,
+		mreq,
+	)
 }
 
 func DropSourceMembership(
-    socket *sonic.Socket,
-    multicastIP, sourceIP netip.Addr,
+	socket *sonic.Socket,
+	multicastIP, sourceIP netip.Addr,
 ) (err error) {
 	mreq := prepareDropMembership(multicastIP)
 	mreqSource := &IPMreqSource{}
 	copy(mreqSource.Multiaddr[:], mreq.Multiaddr[:])
 	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
 
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_SETSOCKOPT),
 		uintptr(socket.RawFd()),
@@ -315,14 +316,14 @@ func DropSourceMembership(
 }
 
 func BlockSource(
-    socket *sonic.Socket,
-    multicastIP, sourceIP netip.Addr,
+	socket *sonic.Socket,
+	multicastIP, sourceIP netip.Addr,
 ) (err error) {
 	mreqSource := &IPMreqSource{}
 	copy(mreqSource.Multiaddr[:], multicastIP.AsSlice())
 	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
 
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_SETSOCKOPT),
 		uintptr(socket.RawFd()),
@@ -339,14 +340,14 @@ func BlockSource(
 }
 
 func UnblockSource(
-    socket *sonic.Socket,
-    multicastIP, sourceIP netip.Addr,
+	socket *sonic.Socket,
+	multicastIP, sourceIP netip.Addr,
 ) (err error) {
 	mreqSource := &IPMreqSource{}
 	copy(mreqSource.Multiaddr[:], multicastIP.AsSlice())
 	copy(mreqSource.Sourceaddr[:], sourceIP.AsSlice())
 
-    /* #nosec G103 */
+	/* #nosec G103 -- the use of unsafe has been audited */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_SETSOCKOPT),
 		uintptr(socket.RawFd()),
