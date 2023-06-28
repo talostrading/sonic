@@ -8,4 +8,4 @@ temp/
 examples/multicast_peer/udp_rate_reader
 examples/multicast_peer/udp_rate_writer
 examples/multicast_peer/dump
-
+gosec_results.json
