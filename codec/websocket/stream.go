@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" //#nosec G505
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -87,6 +87,7 @@ func NewWebsocketStream(
 		src:    sonic.NewByteBuffer(),
 		dst:    sonic.NewByteBuffer(),
 		state:  StateHandshake,
+        /* #nosec G401 */
 		hasher: sha1.New(),
 		hb:     make([]byte, 1024),
 		dialer: &net.Dialer{
