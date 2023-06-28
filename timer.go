@@ -98,7 +98,8 @@ func (t *Timer) ScheduleRepeating(repeat time.Duration, cb func()) error {
 			if t.cancelled {
 				t.cancelled = false
 			} else {
-				t.ScheduleOnce(repeat, ccb)
+                // TODO this error should not be ignored
+				_ = t.ScheduleOnce(repeat, ccb)
 			}
 		}
 

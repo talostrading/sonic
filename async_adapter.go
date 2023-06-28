@@ -215,7 +215,7 @@ func (a *AsyncAdapter) Close() error {
 		return io.EOF
 	}
 
-	a.ioc.poller.Del(a.fd, &a.pd)
+	_ = a.ioc.poller.Del(a.fd, &a.pd)
 
 	return syscall.Close(a.fd)
 }

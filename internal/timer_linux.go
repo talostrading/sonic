@@ -45,8 +45,9 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 		Value:    timespec,
 	}, nil)
 	if err == nil {
-		t.pd.Set(ReadEvent, func(err error) {
-			syscall.Read(t.fd, t.b[:])
+        // TODO error checking here
+		t.pd.Set(ReadEvent, func(error) {
+			_, _ = syscall.Read(t.fd, t.b[:])
 			cb()
 		})
 		err = t.poller.SetRead(t.fd, &t.pd)
@@ -67,6 +68,6 @@ func (t *Timer) Unset() error {
 }
 
 func (t *Timer) Close() error {
-	t.Unset()
+	_ = t.Unset()
 	return syscall.Close(t.fd)
 }

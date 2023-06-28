@@ -207,17 +207,17 @@ func Listen(network, addr string, opts ...sonicopts.Option) (int, net.Addr, erro
 	}
 
 	if err := ApplyOpts(fd, opts...); err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		return -1, nil, err
 	}
 
 	if err := syscall.Bind(fd, ToSockaddr(localAddr)); err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		return -1, nil, os.NewSyscallError("bind", err)
 	}
 
 	if err := syscall.Listen(fd, ListenBacklog); err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		return -1, nil, os.NewSyscallError("listen", err)
 	}
 
@@ -235,12 +235,12 @@ func ListenUDP(network, addr string, opts ...sonicopts.Option) (int, net.Addr, e
 	}
 
 	if err := ApplyOpts(fd, opts...); err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		return -1, nil, err
 	}
 
 	if err := syscall.Bind(fd, ToSockaddr(localAddr)); err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		return -1, nil, os.NewSyscallError("bind", err)
 	}
 

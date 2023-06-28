@@ -79,7 +79,7 @@ func NewPoller() (Poller, error) {
 
 	eventFd, err := NewEventFd(true)
 	if err != nil {
-		syscall.Close(epollFd)
+		_ = syscall.Close(epollFd)
 		return nil, err
 	}
 
@@ -91,8 +91,8 @@ func NewPoller() (Poller, error) {
 
 	err = p.SetRead(p.waker.Fd(), p.waker.PollData())
 	if err != nil {
-		p.waker.Close()
-		syscall.Close(p.fd)
+		_ = p.waker.Close()
+		_ = syscall.Close(p.fd)
 		return nil, err
 	}
 	// ignore the waker
@@ -110,7 +110,7 @@ func (p *poller) Close() error {
 		return io.EOF
 	}
 
-	p.waker.Close()
+	_ = p.waker.Close()
 	return syscall.Close(p.fd)
 }
 
@@ -178,12 +178,14 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		}
 
 		if flags&pd.Flags&ReadFlags == ReadFlags {
-			p.DelRead(pd.Fd, pd)
+            // TODO this errors should be reported
+			_ = p.DelRead(pd.Fd, pd)
 			pd.Cbs[ReadEvent](nil)
 		}
 
 		if flags&pd.Flags&WriteFlags == WriteFlags {
-			p.DelWrite(pd.Fd, pd)
+            // TODO this errors should be reported
+			_ = p.DelWrite(pd.Fd, pd)
 			pd.Cbs[WriteEvent](nil)
 		}
 	}
