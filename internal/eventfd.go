@@ -32,6 +32,7 @@ func NewEventFd(nonBlocking bool) (*EventFd, error) {
 }
 
 func (e *EventFd) Write(x uint64) (int, error) {
+    /* #nosec G103 */
 	return syscall.Write(e.fd, (*(*[8]byte)(unsafe.Pointer(&x)))[:])
 }
 

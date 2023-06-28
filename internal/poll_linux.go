@@ -30,6 +30,7 @@ func createEvent(flags PollFlags, pd *PollData) Event {
 	ev := Event{
 		Flags: uint32(flags),
 	}
+    /* #nosec G103 */
 	*(**PollData)(unsafe.Pointer(&ev.Data)) = pd
 
 	return ev
@@ -136,6 +137,7 @@ func (p *poller) Posted() int {
 }
 
 func (p *poller) Poll(timeoutMs int) (n int, err error) {
+    /* #nosec G103 */
 	nn, _, errno := syscall.Syscall6(
 		syscall.SYS_EPOLL_WAIT,
 		uintptr(p.fd),
@@ -167,6 +169,7 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		event := &p.events[i]
 
 		flags := PollFlags(event.Flags)
+        /* #nosec G103 */
 		pd := *(**PollData)(unsafe.Pointer(&event.Data))
 
 		if pd.Fd == p.waker.Fd() {
@@ -230,6 +233,7 @@ func (p *poller) setRW(fd int, pd *PollData, flag PollFlags) error {
 }
 
 func (p *poller) add(fd int, event Event) error {
+    /* #nosec G103 */
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
@@ -245,6 +249,7 @@ func (p *poller) add(fd int, event Event) error {
 }
 
 func (p *poller) modify(fd int, event Event) error {
+    /* #nosec G103 */
 	_, _, errno := syscall.Syscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),

@@ -8,10 +8,11 @@ import (
 	"unsafe"
 )
 
-// BindToDevice binds the socket to the device with the given name. The device is a network interface (`ip link` to see
-// all interfaces).
+// BindToDevice binds the socket to the device with the given name. The device
+// must be a network interface (`ip link` to see all interfaces).
 //
-// This makes it such that only packets from the given device will be processed by the socket.
+// This makes it such that only packets from the given device will be processed
+// by the socket.
 func (s *Socket) BindToDevice(name string) (*net.Interface, error) {
 	iff, err := net.InterfaceByName(name)
 	if err != nil {
@@ -37,6 +38,7 @@ func (s *Socket) UnbindFromDevice() error {
 		return nil
 	}
 
+    /* #nosec G103 */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_SETSOCKOPT),
 		uintptr(s.fd),
@@ -46,8 +48,7 @@ func (s *Socket) UnbindFromDevice() error {
 		0, 0,
 	)
 	if errno != 0 {
-		var err error
-		err = errno
+        err := errno
 		return err
 	} else {
 		s.boundInterface = nil
@@ -59,6 +60,7 @@ func GetBoundDevice(fd int) (string, error) {
 	into := make([]byte, syscall.IFNAMSIZ)
 	n := 0
 
+    /* #nosec G103 */
 	_, _, errno := syscall.Syscall6(
 		uintptr(syscall.SYS_GETSOCKOPT),
 		uintptr(fd),
@@ -69,8 +71,7 @@ func GetBoundDevice(fd int) (string, error) {
 		0,
 	)
 	if errno != 0 {
-		var err error
-		err = errno
+        err := errno
 		return "", err
 	} else {
 		return string(into[:n]), nil
