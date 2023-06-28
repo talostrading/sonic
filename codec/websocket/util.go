@@ -2,7 +2,7 @@ package websocket
 
 import (
 	"crypto/rand"
-	"crypto/sha1"
+	"crypto/sha1" //#nosec G505
 	"encoding/base64"
 )
 
@@ -27,7 +27,7 @@ func MakeResponseKey(reqKey []byte) string {
 	resKey = append(resKey, reqKey...)
 	resKey = append(resKey, GUID...)
 
-	hasher := sha1.New()
+	hasher := sha1.New() //#nosec G401
 	hasher.Write(resKey)
 	return base64.StdEncoding.EncodeToString(hasher.Sum(nil))
 }
