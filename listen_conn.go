@@ -96,7 +96,7 @@ func (l *listener) accept() (Conn, error) {
 	fd, addr, err := syscall.Accept(l.fd)
 
 	if err != nil {
-		syscall.Close(fd)
+		_ = syscall.Close(fd)
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
 			return nil, sonicerrors.ErrWouldBlock
 		}
@@ -115,7 +115,7 @@ func (l *listener) accept() (Conn, error) {
 }
 
 func (l *listener) Close() error {
-	l.ioc.poller.Del(l.fd, &l.pd)
+	_ = l.ioc.poller.Del(l.fd, &l.pd)
 	return syscall.Close(l.fd)
 }
 

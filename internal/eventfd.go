@@ -21,7 +21,7 @@ func NewEventFd(nonBlocking bool) (*EventFd, error) {
 
 	fd, _, err := syscall.Syscall(syscall.SYS_EVENTFD2, 0, nonBlock, 0)
 	if err != 0 {
-		syscall.Close(int(fd))
+		_ = syscall.Close(int(fd))
 		return nil, os.NewSyscallError("eventfd", err)
 	}
 	e := &EventFd{

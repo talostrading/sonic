@@ -88,10 +88,10 @@ func (s *MockServer) Read(b []byte) error {
 func (s *MockServer) Close() {
 	if atomic.CompareAndSwapInt32(&s.closed, 0, 1) {
 		if s.conn != nil {
-			s.conn.Close()
+			_ = s.conn.Close()
 		}
 		if s.ln != nil {
-			s.ln.Close()
+			_ = s.ln.Close()
 		}
 	}
 }

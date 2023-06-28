@@ -146,7 +146,7 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	err = s.Flush()
 
 	if errors.Is(err, ErrMessageTooBig) {
-		s.Close(CloseGoingAway, "payload too big")
+		_ = s.Close(CloseGoingAway, "payload too big")
 		return nil, err
 	}
 
@@ -241,7 +241,7 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 
 			if readBytes > MaxMessageSize || n != f.PayloadLen() {
 				err = ErrMessageTooBig
-				s.Close(CloseGoingAway, "payload too big")
+				_ = s.Close(CloseGoingAway, "payload too big")
 				break
 			}
 
@@ -606,10 +606,11 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	s.reset()
 
 	// I know, this is horrible, but if you help me write a TLS client for sonic
-	// we can asynchronously dial endpoints and remove the need for a goroutine here
+	// we can asynchronously dial endpoints and remove the need for a goroutine
 	go func() {
 		s.handshake(addr, func(err error, stream sonic.Stream) {
-			s.ioc.Post(func() {
+            // TODO maybe report this error somehow although this is very fatal
+			_ = s.ioc.Post(func() {
 				if err != nil {
 					s.state = StateTerminated
 				} else {
@@ -755,7 +756,7 @@ func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.Stream) error {
 		// we got some frames as well with the handshake so we can put
 		// them in src for later decoding before clearing the handshake
 		// buffer
-		s.src.Write(s.hb[resLen:])
+		_, _ = s.src.Write(s.hb[resLen:])
 	}
 	s.hb = s.hb[:0]
 
@@ -775,7 +776,7 @@ func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.Stream) error {
 func (s *WebsocketStream) makeHandshakeKey() (req, res string) {
 	// request
 	b := make([]byte, 16)
-	rand.Read(b)
+	_, _ = rand.Read(b)
 	req = base64.StdEncoding.EncodeToString(b)
 
 	// response
