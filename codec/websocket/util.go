@@ -1,5 +1,18 @@
 package websocket
 
+/*
+gosec G505 G401:
+The WebSocket protocol mandates the use of sha1 hashes in the
+opening handshake initiated by the client. Sha1 is used purely
+as a hashing function. This hash not used to provide any security.
+It is simply used as a verification step by the protocol to ensure
+that the server speaks the WebSocket protocol.
+This verifiction is needed as the handshake is done over HTTP -
+without it any http server might accept the websocket handshake, at
+which point the protocol will be violated on subsequent read/writes,
+when the client cannot parse what the server sends.
+*/
+
 import (
 	"crypto/rand"
 	"crypto/sha1" //#nosec G505
