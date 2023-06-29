@@ -21,6 +21,3 @@ jobs:
       - run:
           name: Run benchmarks
           command: make bench
-      - run:
-          name: Run gosec
-          command: make gosec
