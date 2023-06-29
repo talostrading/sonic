@@ -15,7 +15,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-        defer timer.Close()
+	defer timer.Close()
 
 	fmt.Println("timer armed: ", time.Now())
 	err = timer.ScheduleOnce(time.Second, func() {

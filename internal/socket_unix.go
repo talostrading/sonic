@@ -3,13 +3,14 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/sonicopts"
-	"golang.org/x/sys/unix"
 	"net"
 	"os"
 	"syscall"
 	"time"
+
+	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
+	"golang.org/x/sys/unix"
 )
 
 var (

@@ -14,9 +14,10 @@ The bandwidth results vary greatly with the values set for -l and *n flag below.
 
 import (
 	"flag"
+	"log"
+
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/internal"
-	"log"
 )
 
 var (
