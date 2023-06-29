@@ -3,7 +3,7 @@
 package internal
 
 import (
-	"math/rand"
+	"math/rand" //#nosec G404 -- randint is used as a timer file descriptor
 	"syscall"
 	"time"
 )
@@ -18,6 +18,7 @@ type Timer struct {
 
 func NewTimer(p Poller) (*Timer, error) {
 	t := &Timer{
+		/* #nosec G404 -- randint is used as a timer file descriptor */
 		fd:     rand.Int(), // TODO figure out something better
 		poller: p.(*poller),
 	}

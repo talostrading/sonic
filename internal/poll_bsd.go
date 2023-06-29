@@ -83,8 +83,8 @@ func NewPoller() (Poller, error) {
 		Flags:  syscall.EV_ADD | syscall.EV_CLEAR,
 	}}, nil, nil)
 	if err != nil {
-		pipe.Close()
-		syscall.Close(kqueueFd)
+		_ = pipe.Close()
+		_ = syscall.Close(kqueueFd)
 		return nil, err
 	}
 
@@ -97,8 +97,8 @@ func NewPoller() (Poller, error) {
 
 	err = p.setRead(p.waker.ReadFd(), syscall.EV_ADD, &p.waker.pd)
 	if err != nil {
-		p.waker.Close()
-		syscall.Close(kqueueFd)
+		_ = p.waker.Close()
+		_ = syscall.Close(kqueueFd)
 		return nil, err
 	}
 	p.pending-- // ignore the pipe read
@@ -115,7 +115,7 @@ func (p *poller) Close() error {
 		return io.EOF
 	}
 
-	p.waker.Close()
+	_ = p.waker.Close()
 	return syscall.Close(p.fd)
 }
 
