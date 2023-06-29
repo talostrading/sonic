@@ -3,12 +3,13 @@ package frame
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/talostrading/sonic"
 	"log"
 	"net"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic"
 )
 
 type testServer struct {

@@ -2,10 +2,11 @@ package main
 
 import (
 	"flag"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/multicast"
 	"log"
 	"net/netip"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/multicast"
 )
 
 var (

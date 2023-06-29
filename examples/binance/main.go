@@ -20,7 +20,7 @@ var subscriptionMessage = []byte(
 var b = make([]byte, 512*1024) // contains websocket payloads
 
 func run(stream websocket.Stream) {
-    stream.AsyncHandshake("wss://stream.binance.com:9443/ws", func(err error) {
+	stream.AsyncHandshake("wss://stream.binance.com:9443/ws", func(err error) {
 		onHandshake(err, stream)
 	})
 }

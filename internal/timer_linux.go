@@ -45,7 +45,7 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 		Value:    timespec,
 	}, nil)
 	if err == nil {
-        // TODO error checking here
+		// TODO error checking here
 		t.pd.Set(ReadEvent, func(error) {
 			_, _ = syscall.Read(t.fd, t.b[:])
 			cb()

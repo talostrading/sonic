@@ -4,11 +4,12 @@ package internal
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic/util"
-	"golang.org/x/sys/unix"
 	"net"
 	"reflect"
 	"syscall"
+
+	"github.com/talostrading/sonic/util"
+	"golang.org/x/sys/unix"
 )
 
 // TODO Handle IPv6

@@ -1,10 +1,11 @@
 package sonic
 
 import (
-	"github.com/talostrading/sonic/sonicerrors"
 	"net"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 var _ Codec[TestItem, TestItem] = &TestCodec{}

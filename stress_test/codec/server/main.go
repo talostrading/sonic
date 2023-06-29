@@ -3,9 +3,10 @@ package main
 import (
 	"encoding/binary"
 	"flag"
+	"log"
+
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/frame"
-	"log"
 )
 
 var (

@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/codec/frame"
 	"log"
 	"time"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/codec/frame"
 )
 
 var (

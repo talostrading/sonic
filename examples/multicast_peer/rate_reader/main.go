@@ -3,18 +3,20 @@ package main
 import (
 	"encoding/binary"
 	"flag"
-	"github.com/HdrHistogram/hdrhistogram-go"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/multicast"
-	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/util"
 	"log"
 	"net/http"
 	"net/netip"
 	"time"
 
-	"github.com/felixge/fgprof"
+	"github.com/HdrHistogram/hdrhistogram-go"
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/multicast"
+	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/util"
+
 	_ "net/http/pprof"
+
+	"github.com/felixge/fgprof"
 )
 
 var (

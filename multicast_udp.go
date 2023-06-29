@@ -2,13 +2,14 @@ package sonic
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/sonicopts"
 	"io"
 	"net"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/sonicopts"
 )
 
 // SizeofIPMreqSource I would love to do unsafe.SizeOf  but for a struct with 3 4-byte arrays, it returns 8 on my Mac.

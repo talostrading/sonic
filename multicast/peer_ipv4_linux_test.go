@@ -4,15 +4,16 @@ package multicast
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/net/ipv4"
-	"github.com/talostrading/sonic/sonicerrors"
 	"log"
 	"net/netip"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/net/ipv4"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 // TODO: really don't know how to make this run on my mac

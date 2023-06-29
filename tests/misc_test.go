@@ -1,8 +1,9 @@
 package tests
 
 import (
-	"github.com/talostrading/sonic"
 	"testing"
+
+	"github.com/talostrading/sonic"
 )
 
 var (

@@ -15,12 +15,12 @@ import (
 // - write area: [ri, wi)
 //
 // A usual workflow is as follows:
-// - Bytes are written to the write area. These bytes cannot be read yet.
-// - Bytes from the write area are made available for reading in the read area,
-//   by calling Commit.
-// - Bytes from the read area can be either Saved or Consumed. If Saved, the
-//   bytes are kept in the save area. If Consumed, the bytes' lifetime ends,
-//   they are automatically discarded. Saved bytes must be discarded later.
+//   - Bytes are written to the write area. These bytes cannot be read yet.
+//   - Bytes from the write area are made available for reading in the read area,
+//     by calling Commit.
+//   - Bytes from the read area can be either Saved or Consumed. If Saved, the
+//     bytes are kept in the save area. If Consumed, the bytes' lifetime ends,
+//     they are automatically discarded. Saved bytes must be discarded later.
 //
 // Invariants:
 // - 0 <= si <= ri <= wi <= min(len(data), cap(b.data)) <= cap(b.data)

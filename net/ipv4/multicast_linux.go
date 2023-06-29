@@ -1,8 +1,9 @@
 package ipv4
 
 import (
-	"github.com/talostrading/sonic"
 	"syscall"
+
+	"github.com/talostrading/sonic"
 )
 
 const IP_MULTICAST_ALL = 49 /* grepped torvalds/linux */

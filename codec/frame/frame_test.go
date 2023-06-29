@@ -2,9 +2,10 @@ package frame
 
 import (
 	"encoding/binary"
-	"github.com/talostrading/sonic/sonicerrors"
 	"math/rand"
 	"testing"
+
+	"github.com/talostrading/sonic/sonicerrors"
 
 	"github.com/talostrading/sonic"
 )

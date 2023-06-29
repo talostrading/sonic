@@ -2,12 +2,13 @@ package sonic
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic/sonicerrors"
-	"golang.org/x/sys/unix"
 	"io"
 	"net"
 	"net/netip"
 	"syscall"
+
+	"github.com/talostrading/sonic/sonicerrors"
+	"golang.org/x/sys/unix"
 )
 
 type SocketDomain int

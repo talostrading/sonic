@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"github.com/talostrading/sonic"
 	"net"
+
+	"github.com/talostrading/sonic"
 )
 
 func main() {

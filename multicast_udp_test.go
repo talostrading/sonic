@@ -3,14 +3,15 @@
 package sonic
 
 import (
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicopts"
 	"net"
 	"os"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic/internal"
+	"github.com/talostrading/sonic/sonicopts"
 )
 
 var testInterface *net.Interface

@@ -3,11 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/util"
 	"log"
 	"net"
 	"time"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/util"
 )
 
 var (

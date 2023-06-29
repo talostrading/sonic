@@ -1,9 +1,10 @@
 package sonic
 
 import (
-	"github.com/talostrading/sonic/internal"
 	"net"
 	"testing"
+
+	"github.com/talostrading/sonic/internal"
 )
 
 func TestTCPConnListenerDefaultOpts(t *testing.T) {

@@ -3,12 +3,13 @@ package main
 import (
 	"encoding/binary"
 	"flag"
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/multicast"
-	"github.com/talostrading/sonic/util"
 	"log"
 	"net/netip"
 	"time"
+
+	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/multicast"
+	"github.com/talostrading/sonic/util"
 )
 
 var (
