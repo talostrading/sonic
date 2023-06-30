@@ -82,15 +82,21 @@ func (s *MockServer) Write(b []byte) error {
 	return err
 }
 
-func (s *MockServer) Read(b []byte) error {
+func (s *MockServer) Read(b []byte) (n int, err error) {
 	fr := AcquireFrame()
 	defer ReleaseFrame(fr)
 
-	_, err := fr.ReadFrom(s.conn)
+	_, err = fr.ReadFrom(s.conn)
 	if err == nil {
+		if !fr.IsMasked() {
+			return 0, fmt.Errorf("client frames should be masked")
+		}
+
+		fr.Unmask()
 		copy(b, fr.Payload())
+		n = fr.PayloadLen()
 	}
-	return err
+	return n, err
 }
 
 func (s *MockServer) Close() {
