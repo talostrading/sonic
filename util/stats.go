@@ -2,18 +2,26 @@ package util
 
 import "math"
 
-type Stats struct {
-	xs  []float64
-	res *Result
-	n   int
-	cb  func(*Result)
-}
-
 type Result struct {
 	Min    float64
 	Max    float64
 	Avg    float64
 	StdDev float64
+}
+
+func (r *Result) Reset() {
+	r.Min = math.MaxFloat64
+	r.Max = -math.MaxFloat64
+	r.Avg = 0.0
+	r.StdDev = 0.0
+}
+
+// Stats gives you min/avg/max/stddev in O(1) time O(n) space.
+type Stats struct {
+	xs  []float64
+	res *Result
+	n   int
+	cb  func(*Result)
 }
 
 func NewStats(n int, cb func(*Result)) *Stats {

@@ -7,6 +7,7 @@ type listNode[T comparable] struct {
 	next *listNode[T]
 }
 
+// List of singly-linked nodes.
 type List[T comparable] struct {
 	head *listNode[T]
 	n    int
