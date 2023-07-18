@@ -243,7 +243,11 @@ func main() {
 					sofar = 0
 				}
 			}
-			p.AsyncRead(b.ClaimFixed(256), onRead)
+			if slice := b.ClaimFixed(256); slice != nil {
+				p.AsyncRead(slice, onRead)
+			} else {
+				panic("out of buffer space")
+			}
 		}
 	}
 
