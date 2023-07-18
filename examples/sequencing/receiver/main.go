@@ -21,6 +21,7 @@ import (
 var (
 	addr     = flag.String("addr", "224.0.0.224:8080", "multicast group address")
 	debug    = flag.Bool("debug", false, "if true, you can see what you receive")
+	verbose  = flag.Bool("verbose", false, "if true, we also log ignored packets")
 	slow     = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
 	samples  = flag.Int("iter", 4096, "number of samples to collect")
 	bufSize  = flag.Int("bufsize", 1024*1024*256, "buffer size")
@@ -58,56 +59,53 @@ func (p *SlowProcessor) Process(
 	payload []byte,
 	b *sonic.ByteBuffer,
 ) {
-	if *debug {
-		log.Println("----------------process----------------------")
-	}
-
-	defer func() {
-		b.Consume(len(b.Data()))
-
-		if *debug {
-			log.Printf(
-				"done processing buffer_len=%d",
-				len(p.buffer),
-			)
-			log.Println("---------------------------------------------")
-		}
-	}()
+	defer b.Consume(len(b.Data()))
 
 	// Ignore anything we received before.
 	if seq < p.expected {
-		if *debug {
-			log.Printf("ignoring seq=%d as we are on %d", seq, p.expected)
+		if *debug && *verbose {
+			log.Printf(
+				"ignoring seq=%d(%d) as we are on %d n_bufferd=%d",
+				seq,
+				len(payload),
+				p.expected,
+				len(p.buffer),
+			)
 		}
 
 		return
 	}
 
-	// Allow starting from sequence number other than 1.
-	if p.expected == 1 {
-		p.expected = seq
-	}
-
 	if seq == p.expected {
 		if *debug {
-			log.Printf("processing live seq=%d", seq)
+			log.Printf(
+				"processing live seq=%d(%d) n_buffered=%d",
+				seq,
+				len(payload),
+				len(p.buffer),
+			)
 		}
 
 		p.expected++
 		p.walkBuffer()
 	} else {
-		if *debug {
-			log.Printf("buffering seq=%d", seq)
+		buffered := p.addToBuffer(seq, payload)
+		if buffered && *debug {
+			log.Printf(
+				"buffering seq=%d(%d) n_buffered=%d",
+				seq,
+				len(payload),
+				len(p.buffer),
+			)
 		}
-
-		p.addToBuffer(seq, payload)
 	}
 }
 
-func (p *SlowProcessor) addToBuffer(seq int, payload []byte) {
+func (p *SlowProcessor) addToBuffer(seq int, payload []byte) (buffered bool) {
 	i := sort.Search(len(p.buffer), func(i int) bool {
 		return p.buffer[i].seq >= seq
 	})
+
 	if i >= len(p.buffer) {
 		b := make([]byte, len(payload))
 		copy(b, payload)
@@ -119,6 +117,8 @@ func (p *SlowProcessor) addToBuffer(seq int, payload []byte) {
 			seq,
 			b,
 		})
+
+		buffered = true
 	} else if i < len(p.buffer) && p.buffer[i].seq != seq {
 		b := make([]byte, len(payload))
 		copy(b, payload)
@@ -131,7 +131,10 @@ func (p *SlowProcessor) addToBuffer(seq int, payload []byte) {
 			seq,
 			b,
 		}
+		buffered = true
 	}
+
+	return buffered
 }
 
 func (p *SlowProcessor) walkBuffer() {
@@ -142,7 +145,11 @@ func (p *SlowProcessor) walkBuffer() {
 	for _, entry := range p.buffer {
 		if entry.seq == p.expected {
 			if *debug {
-				log.Printf("processing buffered seq=%d", p.expected)
+				log.Printf(
+					"processing buffered seq=%d n_buffered=%d",
+					p.expected,
+					len(p.buffer),
+				)
 			}
 
 			p.expected++
@@ -180,49 +187,44 @@ func (p *FastProcessor) Process(
 	payload []byte,
 	b *sonic.ByteBuffer,
 ) {
-	if *debug {
-		log.Println("----------------process----------------------")
-	}
-
-	defer func() {
-		if *debug {
-			log.Println("---------------------------------------------")
-			log.Printf(
-				"done processing sequencer_size=%d save_area_len=%d",
-				p.sequencer.Size(),
-				b.SaveLen(),
-			)
-		}
-	}()
-
 	// Ignore anything we received before.
 	if seq < p.expected {
-		if *debug {
-			log.Printf("ignoring seq=%d as we are on %d", seq, p.expected)
+		if *debug && *verbose {
+			log.Printf(
+				"ignoring seq=%d(%d) as we are on %d n_buffered=%d",
+				seq,
+				len(payload),
+				p.expected,
+				p.sequencer.Size(),
+			)
 		}
 		b.Consume(len(b.Data()))
 		return
 	}
 
-	// Allow starting from sequence number other than 1.
-	if p.expected == 1 {
-		p.expected = seq
-	}
-
 	if seq == p.expected {
 		if *debug {
-			log.Printf("processing live seq=%d", seq)
+			log.Printf(
+				"processing live seq=%d(%d) n_buffered=%d",
+				seq,
+				len(payload),
+				p.sequencer.Size(),
+			)
 		}
 
 		p.expected++
 		b.Consume(len(b.Data()))
 		p.walkBuffer(b)
 	} else {
-		if *debug {
-			log.Printf("buffering seq=%d", seq)
+		buffered := p.addToBuffer(seq, payload, b)
+		if *debug && buffered {
+			log.Printf(
+				"buffering seq=%d(%d) n_buffered=%d",
+				seq,
+				len(payload),
+				p.sequencer.Size(),
+			)
 		}
-
-		p.addToBuffer(seq, payload, b)
 	}
 }
 
@@ -234,7 +236,11 @@ func (p *FastProcessor) walkBuffer(b *sonic.ByteBuffer) {
 		}
 
 		if *debug {
-			log.Printf("processing buffered seq=%d", p.expected)
+			log.Printf(
+				"processing buffered seq=%d n_buffered=%d",
+				p.expected,
+				p.sequencer.Size(),
+			)
 		}
 
 		p.expected++
@@ -249,20 +255,20 @@ func (p *FastProcessor) addToBuffer(
 	seq int,
 	payload []byte,
 	b *sonic.ByteBuffer,
-) {
-	p.sequencer.Push(seq, b.Save(len(b.Data())))
+) bool {
+	slot := b.Save(len(b.Data()))
+	ok, err := p.sequencer.Push(seq, slot)
+	if err != nil {
+		panic(err)
+	}
+	if !ok {
+		b.Discard(slot)
+	}
+	return ok
 }
 
 func (p *FastProcessor) Type() ProcessorType {
 	return TypeFast
-}
-
-func (p *FastProcessor) Dump() {
-	log.Printf(
-		"sequencer bytes=%d size=%d",
-		p.sequencer.Bytes(),
-		p.sequencer.Size(),
-	)
 }
 
 func main() {
@@ -335,23 +341,16 @@ func main() {
 			_ = b.ShrinkTo(n)
 			b.Commit(n)
 
-			if *debug {
-				log.Printf("read %d bytes", n)
-			}
-
-			seq, payloadSize, payload := decode()
-			if *debug {
-				log.Printf(
-					"received seq=%d n=%d payload=%s",
-					seq,
-					payloadSize,
-					string(payload),
-				)
-			}
+			seq, _, payload := decode()
 
 			if first {
+				if seq != 1 {
+					panic(fmt.Errorf(
+						"first packet sequence number = %d != 1",
+						seq,
+					))
+				}
 				first = false
-				log.Printf("received first packet seq=%d", seq)
 			}
 
 			start := time.Now()
@@ -364,8 +363,6 @@ func main() {
 					start = end
 					sofar++
 				} else {
-					log.Println("|||||||||||||||||||||||||||||||||||||||")
-
 					log.Printf(
 						"process latency min/avg/max/stddev = %d/%d/%d/%d",
 						int(hist.Min()),
@@ -374,29 +371,13 @@ func main() {
 						int(hist.StdDev()),
 					)
 
-					if proc.Type() == TypeFast {
-						fp := proc.(*FastProcessor)
-						log.Printf(
-							"fast processor state save_len=%d read_len=%d write_len=%d sequencer_size=%d",
-							b.SaveLen(),
-							b.ReadLen(),
-							b.WriteLen(),
-							fp.sequencer.Size(),
-						)
-					}
-
 					hist.Reset()
 					sofar = 0
-
-					log.Println("|||||||||||||||||||||||||||||||||||||||")
 				}
 			}
 			if slice := b.ClaimFixed(256); slice != nil {
 				p.AsyncRead(slice, onRead)
 			} else {
-				if proc.Type() == TypeFast {
-					proc.(*FastProcessor).Dump()
-				}
 				panic("out of buffer space")
 			}
 		}
