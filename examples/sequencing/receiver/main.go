@@ -23,10 +23,19 @@ var (
 	samples  = flag.Int("iter", 4096, "number of samples to collect")
 	bufSize  = flag.Int("bufsize", 1024*1024*256, "buffer size")
 	maxSlots = flag.Int("maxslots", 1024, "max slots")
+	busy     = flag.Bool("busy", true, "If true, busywait for events")
+)
+
+type ProcessorType uint8
+
+const (
+	TypeSlow ProcessorType = iota
+	TypeFast
 )
 
 type Processor interface {
 	Process(seq int, payload []byte, b *sonic.ByteBuffer)
+	Type() ProcessorType
 }
 
 type SlowProcessor struct {
@@ -101,6 +110,10 @@ func (p *SlowProcessor) walkBuffer() {
 	p.buffer = newBuffer
 }
 
+func (p *SlowProcessor) Type() ProcessorType {
+	return TypeSlow
+}
+
 type FastProcessor struct {
 	expected  int
 	sequencer *sonic.SlotSequencer
@@ -124,6 +137,10 @@ func (p *FastProcessor) Process(
 	payload []byte,
 	b *sonic.ByteBuffer,
 ) {
+	if p.expected == 1 {
+		p.expected = seq
+	}
+
 	if seq == p.expected {
 		p.expected++
 		b.Consume(len(b.Data()))
@@ -153,6 +170,18 @@ func (p *FastProcessor) addToBuffer(
 	b *sonic.ByteBuffer,
 ) {
 	p.sequencer.Push(seq, b.Save(len(b.Data())))
+}
+
+func (p *FastProcessor) Type() ProcessorType {
+	return TypeFast
+}
+
+func (p *FastProcessor) Dump() {
+	log.Printf(
+		"sequencer bytes=%d size=%d",
+		p.sequencer.Bytes(),
+		p.sequencer.Size(),
+	)
 }
 
 func main() {
@@ -199,7 +228,7 @@ func main() {
 	)
 
 	decode := func() (seq, n int, payload []byte) {
-		seq = int(binary.BigEndian.Uint32(b.Data()))
+		seq = int(binary.BigEndian.Uint32(b.Data()[:4]))
 		n = int(binary.BigEndian.Uint32(b.Data()[4:]))
 		b.Consume(8)
 		payload = b.Data()[:n]
@@ -213,6 +242,7 @@ func main() {
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, _ netip.AddrPort) {
 		if err == nil {
+
 			_ = b.ShrinkTo(n)
 			b.Commit(n)
 
@@ -250,6 +280,9 @@ func main() {
 			if slice := b.ClaimFixed(256); slice != nil {
 				p.AsyncRead(slice, onRead)
 			} else {
+				if proc.Type() == TypeFast {
+					proc.(*FastProcessor).Dump()
+				}
 				panic("out of buffer space")
 			}
 		}
@@ -258,7 +291,13 @@ func main() {
 	p.AsyncRead(b.ClaimFixed(256), onRead)
 
 	log.Print("starting...")
-	for {
-		ioc.PollOne()
+	if *busy {
+		log.Print("busy-waiting...")
+		for {
+			_, _ = ioc.PollOne()
+		}
+	} else {
+		log.Print("yielding...")
+		ioc.Run()
 	}
 }

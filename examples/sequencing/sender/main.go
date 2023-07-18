@@ -102,6 +102,7 @@ func main() {
 	prepare()
 	p.AsyncWrite(b, maddr, onWrite)
 
+	log.Print("starting...")
 	if *iter == 0 {
 		for {
 			_, _ = ioc.PollOne()
