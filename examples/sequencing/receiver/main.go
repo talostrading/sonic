@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/netip"
 	"runtime"
-	dbg "runtime/debug"
 	"sort"
 	"time"
 
@@ -274,8 +273,6 @@ func (p *FastProcessor) Type() ProcessorType {
 func main() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-
-	dbg.SetGCPercent(-1) // turn GC off
 
 	flag.Parse()
 
