@@ -12,6 +12,7 @@ import (
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/multicast"
+	"github.com/talostrading/sonic/sonicerrors"
 )
 
 var (
@@ -103,11 +104,17 @@ func main() {
 		}
 		err = t.ScheduleRepeating(*rate, func() {
 			prepare()
-			p.AsyncWrite(b, maddr, func(err error, _ int) {
+			// Send the same packet 10 times to increase the likelihood of
+			// arrival.
+			for i := 0; i < 10; i++ {
+				_, err := p.Write(b, maddr)
+				for err == sonicerrors.ErrWouldBlock {
+					_, err = p.Write(b, maddr)
+				}
 				if err != nil {
 					panic(err)
 				}
-			})
+			}
 		})
 		if err != nil {
 			panic(err)
@@ -119,13 +126,21 @@ func main() {
 		onWrite = func(err error, _ int) {
 			if err == nil {
 				prepare()
-				p.AsyncWrite(b, maddr, onWrite)
+				// Send the same packet 10 times to increase the likelihood of
+				// arrival.
+				for i := 0; i < 10; i++ {
+					p.AsyncWrite(b, maddr, onWrite)
+				}
 			} else {
 				panic(err)
 			}
 		}
+
 		prepare()
-		p.AsyncWrite(b, maddr, onWrite)
+		// Send the same packet 10 times to increase the likelihood of arrival.
+		for i := 0; i < 10; i++ {
+			p.AsyncWrite(b, maddr, onWrite)
+		}
 	}
 
 	log.Print("starting...")
