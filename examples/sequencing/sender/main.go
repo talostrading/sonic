@@ -6,6 +6,7 @@ import (
 	"log"
 	"math/rand"
 	"net/netip"
+	"runtime"
 	dbg "runtime/debug"
 
 	"github.com/talostrading/sonic"
@@ -21,6 +22,9 @@ var (
 )
 
 func main() {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	dbg.SetGCPercent(-1) // turn GC off
 
 	flag.Parse()
