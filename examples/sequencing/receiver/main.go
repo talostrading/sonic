@@ -23,7 +23,8 @@ var (
 	verbose  = flag.Bool("verbose", false, "if true, we also log ignored packets")
 	slow     = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
 	samples  = flag.Int("iter", 4096, "number of samples to collect")
-	bufSize  = flag.Int("bufsize", 1024*1024*256, "buffer size")
+	justmax  = flag.Bool("justmax", true, "if true, we just get the max, otherwise min/avg/max/stddev")
+	bufSize  = flag.Int("bufsize", 1024*256, "buffer size")
 	maxSlots = flag.Int("maxslots", 1024, "max slots")
 	busy     = flag.Bool("busy", true, "If true, busywait for events")
 )
@@ -38,6 +39,7 @@ const (
 type Processor interface {
 	Process(seq int, payload []byte, b *sonic.ByteBuffer)
 	Type() ProcessorType
+	Buffered() int
 }
 
 type SlowProcessor struct {
@@ -163,6 +165,10 @@ func (p *SlowProcessor) Type() ProcessorType {
 	return TypeSlow
 }
 
+func (p *SlowProcessor) Buffered() int {
+	return len(p.buffer)
+}
+
 type FastProcessor struct {
 	expected  int
 	sequencer *sonic.SlotSequencer
@@ -270,6 +276,10 @@ func (p *FastProcessor) Type() ProcessorType {
 	return TypeFast
 }
 
+func (p *FastProcessor) Buffered() int {
+	return p.sequencer.Size()
+}
+
 func main() {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -326,15 +336,22 @@ func main() {
 		return
 	}
 
-	sofar := 0
-	hist := hdrhistogram.New(1, 10_000_000, 1)
+	var (
+		sofar = 0
+		hist  *hdrhistogram.Histogram
+		first       = true
+		max   int64 = -10_000_000_000
+	)
 
-	first := true
+	if !*justmax {
+		hist = hdrhistogram.New(1, 10_000_000, 1)
+	}
 
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, _ netip.AddrPort) {
-		if err == nil {
-
+		if err != nil {
+			panic(err)
+		} else {
 			_ = b.ShrinkTo(n)
 			b.Commit(n)
 
@@ -355,27 +372,44 @@ func main() {
 			end := time.Now()
 
 			if *samples > 0 {
+				diff := end.Sub(start).Microseconds()
 				if sofar < *samples {
-					_ = hist.RecordValue(end.Sub(start).Microseconds())
-					start = end
+					if *justmax {
+						if diff > max {
+							max = diff
+						}
+					} else {
+						_ = hist.RecordValue(diff)
+					}
 					sofar++
 				} else {
-					log.Printf(
-						"process latency min/avg/max/stddev = %d/%d/%d/%d",
-						int(hist.Min()),
-						int(hist.Mean()),
-						int(hist.Max()),
-						int(hist.StdDev()),
-					)
+					if *justmax {
+						log.Printf(
+							"process latency max = %dus n_buffered=%d",
+							max,
+							proc.Buffered(),
+						)
+					} else {
+						log.Printf(
+							"process latency min/avg/max/stddev = %d/%d/%d/%dus n_buffered=%d",
+							int(hist.Min()),
+							int(hist.Mean()),
+							int(hist.Max()),
+							int(hist.StdDev()),
+							proc.Buffered(),
+						)
+						hist.Reset()
+					}
 
-					hist.Reset()
 					sofar = 0
+					max = -10_000_000_000
+
 				}
-			}
-			if slice := b.ClaimFixed(256); slice != nil {
-				p.AsyncRead(slice, onRead)
-			} else {
-				panic("out of buffer space")
+				if slice := b.ClaimFixed(256); slice != nil {
+					p.AsyncRead(slice, onRead)
+				} else {
+					panic("out of buffer space")
+				}
 			}
 		}
 	}
