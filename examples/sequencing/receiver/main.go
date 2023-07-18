@@ -12,13 +12,17 @@ import (
 	"github.com/HdrHistogram/hdrhistogram-go"
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/multicast"
+	"github.com/talostrading/sonic/util"
 )
 
 var (
-	addr    = flag.String("addr", "224.0.0.224:8080", "multicast group address")
-	debug   = flag.Bool("debug", false, "if true, you can see what you receive")
-	slow    = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
-	samples = flag.Int("iter", 4096, "number of samples to collect")
+	addr     = flag.String("addr", "224.0.0.224:8080", "multicast group address")
+	debug    = flag.Bool("debug", false, "if true, you can see what you receive")
+	slow     = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
+	samples  = flag.Int("iter", 4096, "number of samples to collect")
+	track    = flag.Bool("track", true, "If false, do not track histograms")
+	bufSize  = flag.Int("bufsize", 1024*1024*256, "buffer size")
+	maxSlots = flag.Int("maxslots", 1024, "max slots")
 )
 
 type Processor interface {
@@ -105,8 +109,13 @@ type FastProcessor struct {
 func NewFastProcessor() *FastProcessor {
 	p := &FastProcessor{
 		expected:  1,
-		sequencer: sonic.NewSlotSequencer(1024, 1024*256),
+		sequencer: sonic.NewSlotSequencer(*maxSlots, *bufSize),
 	}
+	log.Printf(
+		"created slot sequencer max_slots=%d buf_size=%d",
+		*maxSlots,
+		*bufSize,
+	)
 	return p
 }
 
@@ -147,7 +156,7 @@ func (p *FastProcessor) addToBuffer(
 }
 
 func main() {
-	dbg.SetGCPercent(-1)
+	dbg.SetGCPercent(-1) // turn GC off
 
 	flag.Parse()
 
@@ -178,7 +187,13 @@ func main() {
 	}
 
 	b := sonic.NewByteBuffer()
-	b.Reserve(1024 * 1024 * 256) // 256MB
+	b.Reserve(*bufSize)
+	b.Warm()
+
+	log.Printf(
+		"created sonic byte_buffer size=%s",
+		util.ByteCountSI(int64(*bufSize)),
+	)
 
 	decode := func() (seq, n int, payload []byte) {
 		seq = int(binary.BigEndian.Uint32(b.Data()))
@@ -210,28 +225,32 @@ func main() {
 
 			proc.Process(seq, payload, b)
 
-			if sofar < *samples {
-				end := time.Now()
-				_ = hist.RecordValue(end.Sub(start).Microseconds())
-				start = end
-				sofar++
-			} else {
-				log.Printf(
-					"report min/avg/max/stddev = %d/%d/%d/%d",
-					int(hist.Min()),
-					int(hist.Mean()),
-					int(hist.Max()),
-					int(hist.StdDev()),
-				)
-				hist.Reset()
-				start = time.Now()
-				sofar = 0
+			if *track {
+				if sofar < *samples {
+					end := time.Now()
+					_ = hist.RecordValue(end.Sub(start).Microseconds())
+					start = end
+					sofar++
+				} else {
+					log.Printf(
+						"report min/avg/max/stddev = %d/%d/%d/%d",
+						int(hist.Min()),
+						int(hist.Mean()),
+						int(hist.Max()),
+						int(hist.StdDev()),
+					)
+					hist.Reset()
+					start = time.Now()
+					sofar = 0
+				}
 			}
 			p.AsyncRead(b.ClaimFixed(256), onRead)
 		}
 	}
+
 	p.AsyncRead(b.ClaimFixed(256), onRead)
 
+	log.Print("starting...")
 	for {
 		ioc.PollOne()
 	}
