@@ -20,7 +20,6 @@ var (
 	debug    = flag.Bool("debug", false, "if true, you can see what you receive")
 	slow     = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
 	samples  = flag.Int("iter", 4096, "number of samples to collect")
-	track    = flag.Bool("track", true, "If false, do not track histograms")
 	bufSize  = flag.Int("bufsize", 1024*1024*256, "buffer size")
 	maxSlots = flag.Int("maxslots", 1024, "max slots")
 )
@@ -225,7 +224,7 @@ func main() {
 
 			proc.Process(seq, payload, b)
 
-			if *track {
+			if *samples > 0 {
 				if sofar < *samples {
 					end := time.Now()
 					_ = hist.RecordValue(end.Sub(start).Microseconds())
