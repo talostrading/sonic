@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"runtime"
 	dbg "runtime/debug"
+	"time"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/multicast"
@@ -17,6 +18,7 @@ var (
 	addr  = flag.String("addr", "224.0.0.224:8080", "multicast group address")
 	iter  = flag.Int("iter", 10, "how many iterations, if 0, infinite")
 	debug = flag.Bool("debug", false, "if true you can see what is sent")
+	rate  = flag.Duration("rate", 50*time.Microsecond, "sending rate")
 
 	letters = []byte("abcdefghijklmnopqrstuvwxyz")
 )
@@ -92,15 +94,39 @@ func main() {
 
 	}
 
-	var onWrite func(error, int)
-	onWrite = func(err error, _ int) {
-		if err == nil {
-			prepare()
-			p.AsyncWrite(b, maddr, onWrite)
+	if *rate > 0 {
+		log.Printf("sending at a rate of %s", *rate)
+
+		t, err := sonic.NewTimer(ioc)
+		if err != nil {
+			panic(err)
 		}
+		err = t.ScheduleRepeating(*rate, func() {
+			prepare()
+			p.AsyncWrite(b, maddr, func(err error, _ int) {
+				if err != nil {
+					panic(err)
+				}
+			})
+		})
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		log.Print("sending as fast as possible")
+
+		var onWrite func(error, int)
+		onWrite = func(err error, _ int) {
+			if err == nil {
+				prepare()
+				p.AsyncWrite(b, maddr, onWrite)
+			} else {
+				panic(err)
+			}
+		}
+		prepare()
+		p.AsyncWrite(b, maddr, onWrite)
 	}
-	prepare()
-	p.AsyncWrite(b, maddr, onWrite)
 
 	log.Print("starting...")
 	if *iter == 0 {
