@@ -38,7 +38,7 @@ func (s *SlotSequencer) Push(seq int, slot Slot) (ok bool, err error) {
 	slot, err = s.offsetter.Add(slot)
 	if err == nil {
 		ok, err = s.container.Push(seq, slot)
-		if err == nil {
+		if ok && err == nil {
 			s.bytes += slot.Length
 		}
 	}
