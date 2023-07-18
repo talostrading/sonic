@@ -156,4 +156,21 @@ func TestFastProcessor(t *testing.T) {
 	if p.sequencer.Size() != 0 {
 		t.Fatal("wrong")
 	}
+
+	// now send some older ones
+	p.Process(2, []byte("abc"), b)
+	if p.expected != 7 {
+		t.Fatal("wrong")
+	}
+	if p.sequencer.Size() != 0 {
+		t.Fatal("wrong")
+	}
+
+	p.Process(3, []byte("abc"), b)
+	if p.expected != 7 {
+		t.Fatal("wrong")
+	}
+	if p.sequencer.Size() != 0 {
+		t.Fatal("wrong")
+	}
 }
