@@ -27,6 +27,7 @@ var (
 	bufSize  = flag.Int("bufsize", 1024*256, "buffer size")
 	maxSlots = flag.Int("maxslots", 1024, "max slots")
 	busy     = flag.Bool("busy", true, "If true, busywait for events")
+	iface    = flag.String("interface", "", "multicast interface")
 )
 
 type ProcessorType uint8
@@ -210,24 +211,26 @@ func (p *FastProcessor) Process(
 	if seq == p.expected {
 		if *debug {
 			log.Printf(
-				"processing live seq=%d(%d) n_buffered=%d",
+				"processing live seq=%d(%d) n_buffered=%d n_bytes=%d",
 				seq,
 				len(payload),
 				p.sequencer.Size(),
+				p.sequencer.Bytes(),
 			)
 		}
 
 		p.expected++
-		b.Consume(len(b.Data()))
 		p.walkBuffer(b)
+		b.Consume(len(b.Data()))
 	} else {
 		buffered := p.addToBuffer(seq, payload, b)
 		if *debug && buffered {
 			log.Printf(
-				"buffering seq=%d(%d) n_buffered=%d",
+				"buffering seq=%d(%d) n_buffered=%d n_bytes=%d",
 				seq,
 				len(payload),
 				p.sequencer.Size(),
+				p.sequencer.Bytes(),
 			)
 		}
 	}
@@ -242,9 +245,10 @@ func (p *FastProcessor) walkBuffer(b *sonic.ByteBuffer) {
 
 		if *debug {
 			log.Printf(
-				"processing buffered seq=%d n_buffered=%d",
+				"processing buffered seq=%d n_buffered=%d n_bytes=%d",
 				p.expected,
 				p.sequencer.Size(),
+				p.sequencer.Bytes(),
 			)
 		}
 
@@ -264,7 +268,7 @@ func (p *FastProcessor) addToBuffer(
 	slot := b.Save(len(b.Data()))
 	ok, err := p.sequencer.Push(seq, slot)
 	if err != nil {
-		panic(err)
+		panic(fmt.Errorf("could not push err=%s bytes=%d", err, p.sequencer.Bytes()))
 	}
 	if !ok {
 		b.Discard(slot)
@@ -299,8 +303,20 @@ func main() {
 		panic(err)
 	}
 
-	if err := p.Join(multicast.IP(maddr.Addr().String())); err != nil {
-		panic(err)
+	multicastIP := maddr.Addr().String()
+	if *iface == "" {
+		log.Printf("joining %s", multicastIP)
+		if err := p.Join(multicast.IP(multicastIP)); err != nil {
+			panic(err)
+		}
+	} else {
+		log.Printf("joining %s on %s", multicastIP, *iface)
+		if err := p.JoinOn(
+			multicast.IP(maddr.Addr().String()),
+			multicast.InterfaceName(*iface),
+		); err != nil {
+			panic(err)
+		}
 	}
 
 	var proc Processor
@@ -373,6 +389,7 @@ func main() {
 
 			if *samples > 0 {
 				diff := end.Sub(start).Microseconds()
+				start = end
 				if sofar < *samples {
 					if *justmax {
 						if diff > max {

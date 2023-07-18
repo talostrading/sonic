@@ -16,10 +16,11 @@ import (
 )
 
 var (
-	addr  = flag.String("addr", "224.0.0.224:8080", "multicast group address")
-	iter  = flag.Int("iter", 10, "how many iterations, if 0, infinite")
-	debug = flag.Bool("debug", false, "if true you can see what is sent")
-	rate  = flag.Duration("rate", 50*time.Microsecond, "sending rate")
+	addr     = flag.String("addr", "224.0.0.224:8080", "multicast group address")
+	iter     = flag.Int("iter", 10, "how many iterations, if 0, infinite")
+	debug    = flag.Bool("debug", false, "if true you can see what is sent")
+	rate     = flag.Duration("rate", 50*time.Microsecond, "sending rate")
+	bindAddr = flag.String("bind", "", "bind address")
 
 	letters = []byte("abcdefghijklmnopqrstuvwxyz")
 )
@@ -40,7 +41,7 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	p, err := multicast.NewUDPPeer(ioc, "udp", "")
+	p, err := multicast.NewUDPPeer(ioc, "udp", *bindAddr)
 	if err != nil {
 		panic(err)
 	}
