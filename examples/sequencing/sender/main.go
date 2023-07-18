@@ -21,7 +21,7 @@ var (
 )
 
 func main() {
-	dbg.SetGCPercent(-1)
+	dbg.SetGCPercent(-1) // turn GC off
 
 	flag.Parse()
 
