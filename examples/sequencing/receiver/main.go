@@ -2,7 +2,9 @@ package main
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"flag"
+	"fmt"
 	"log"
 	"net/netip"
 	"runtime"
@@ -56,13 +58,50 @@ func (p *SlowProcessor) Process(
 	payload []byte,
 	b *sonic.ByteBuffer,
 ) {
+	if *debug {
+		log.Println("----------------process----------------------")
+	}
+
+	defer func() {
+		b.Consume(len(b.Data()))
+
+		if *debug {
+			log.Printf(
+				"done processing buffer_len=%d",
+				len(p.buffer),
+			)
+			log.Println("---------------------------------------------")
+		}
+	}()
+
+	// Ignore anything we received before.
+	if seq < p.expected {
+		if *debug {
+			log.Printf("ignoring seq=%d as we are on %d", seq, p.expected)
+		}
+
+		return
+	}
+
+	// Allow starting from sequence number other than 1.
+	if p.expected == 1 {
+		p.expected = seq
+	}
+
 	if seq == p.expected {
+		if *debug {
+			log.Printf("processing live seq=%d", seq)
+		}
+
 		p.expected++
 		p.walkBuffer()
 	} else {
+		if *debug {
+			log.Printf("buffering seq=%d", seq)
+		}
+
 		p.addToBuffer(seq, payload)
 	}
-	b.Consume(len(b.Data()))
 }
 
 func (p *SlowProcessor) addToBuffer(seq int, payload []byte) {
@@ -102,6 +141,10 @@ func (p *SlowProcessor) walkBuffer() {
 	}
 	for _, entry := range p.buffer {
 		if entry.seq == p.expected {
+			if *debug {
+				log.Printf("processing buffered seq=%d", p.expected)
+			}
+
 			p.expected++
 		} else {
 			newBuffer = append(newBuffer, entry)
@@ -137,15 +180,48 @@ func (p *FastProcessor) Process(
 	payload []byte,
 	b *sonic.ByteBuffer,
 ) {
+	if *debug {
+		log.Println("----------------process----------------------")
+	}
+
+	defer func() {
+		if *debug {
+			log.Println("---------------------------------------------")
+			log.Printf(
+				"done processing sequencer_size=%d save_area_len=%d",
+				p.sequencer.Size(),
+				b.SaveLen(),
+			)
+		}
+	}()
+
+	// Ignore anything we received before.
+	if seq < p.expected {
+		if *debug {
+			log.Printf("ignoring seq=%d as we are on %d", seq, p.expected)
+		}
+		b.Consume(len(b.Data()))
+		return
+	}
+
+	// Allow starting from sequence number other than 1.
 	if p.expected == 1 {
 		p.expected = seq
 	}
 
 	if seq == p.expected {
+		if *debug {
+			log.Printf("processing live seq=%d", seq)
+		}
+
 		p.expected++
 		b.Consume(len(b.Data()))
 		p.walkBuffer(b)
 	} else {
+		if *debug {
+			log.Printf("buffering seq=%d", seq)
+		}
+
 		p.addToBuffer(seq, payload, b)
 	}
 }
@@ -156,6 +232,11 @@ func (p *FastProcessor) walkBuffer(b *sonic.ByteBuffer) {
 		if !ok {
 			break
 		}
+
+		if *debug {
+			log.Printf("processing buffered seq=%d", p.expected)
+		}
+
 		p.expected++
 
 		// handle p.expected
@@ -230,6 +311,13 @@ func main() {
 	decode := func() (seq, n int, payload []byte) {
 		seq = int(binary.BigEndian.Uint32(b.Data()[:4]))
 		n = int(binary.BigEndian.Uint32(b.Data()[4:]))
+		if n > 256 {
+			panic(fmt.Errorf(
+				"something wrong as n = %d > 256 b.Data()[hex]=%s",
+				n,
+				hex.EncodeToString(b.Data())),
+			)
+		}
 		b.Consume(8)
 		payload = b.Data()[:n]
 		return
@@ -238,13 +326,18 @@ func main() {
 	sofar := 0
 	hist := hdrhistogram.New(1, 10_000_000, 1)
 
-	start := time.Now()
+	first := true
+
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, _ netip.AddrPort) {
 		if err == nil {
 
 			_ = b.ShrinkTo(n)
 			b.Commit(n)
+
+			if *debug {
+				log.Printf("read %d bytes", n)
+			}
 
 			seq, payloadSize, payload := decode()
 			if *debug {
@@ -256,25 +349,46 @@ func main() {
 				)
 			}
 
+			if first {
+				first = false
+				log.Printf("received first packet seq=%d", seq)
+			}
+
+			start := time.Now()
 			proc.Process(seq, payload, b)
+			end := time.Now()
 
 			if *samples > 0 {
 				if sofar < *samples {
-					end := time.Now()
 					_ = hist.RecordValue(end.Sub(start).Microseconds())
 					start = end
 					sofar++
 				} else {
+					log.Println("|||||||||||||||||||||||||||||||||||||||")
+
 					log.Printf(
-						"report min/avg/max/stddev = %d/%d/%d/%d",
+						"process latency min/avg/max/stddev = %d/%d/%d/%d",
 						int(hist.Min()),
 						int(hist.Mean()),
 						int(hist.Max()),
 						int(hist.StdDev()),
 					)
+
+					if proc.Type() == TypeFast {
+						fp := proc.(*FastProcessor)
+						log.Printf(
+							"fast processor state save_len=%d read_len=%d write_len=%d sequencer_size=%d",
+							b.SaveLen(),
+							b.ReadLen(),
+							b.WriteLen(),
+							fp.sequencer.Size(),
+						)
+					}
+
 					hist.Reset()
-					start = time.Now()
 					sofar = 0
+
+					log.Println("|||||||||||||||||||||||||||||||||||||||")
 				}
 			}
 			if slice := b.ClaimFixed(256); slice != nil {
