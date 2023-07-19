@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"net/netip"
 	"runtime"
 	"sort"
@@ -15,6 +16,8 @@ import (
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/multicast"
 	"github.com/talostrading/sonic/util"
+
+	_ "net/http/pprof"
 )
 
 var (
@@ -28,6 +31,7 @@ var (
 	maxSlots = flag.Int("maxslots", 1024, "max slots")
 	busy     = flag.Bool("busy", true, "If true, busywait for events")
 	iface    = flag.String("interface", "", "multicast interface")
+	prof     = flag.Bool("prof", false, "If true, we profile the app")
 )
 
 type ProcessorType uint8
@@ -285,10 +289,17 @@ func (p *FastProcessor) Buffered() int {
 }
 
 func main() {
+	flag.Parse()
+
+	if *prof {
+		log.Println("profiling...")
+		go func() {
+			log.Println(http.ListenAndServe("localhost:6060", nil))
+		}()
+	}
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-
-	flag.Parse()
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
