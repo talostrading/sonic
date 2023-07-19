@@ -396,46 +396,7 @@ func main() {
 				first = false
 			}
 
-			start := time.Now()
 			proc.Process(seq, payload, b)
-			end := time.Now()
-
-			if *samples > 0 {
-				diff := end.Sub(start).Microseconds()
-				start = end
-				if sofar < *samples {
-					if *justmax {
-						if diff > max {
-							max = diff
-						}
-					} else {
-						_ = hist.RecordValue(diff)
-					}
-					sofar++
-				} else {
-					if *justmax {
-						log.Printf(
-							"process latency max = %dus n_buffered=%d",
-							max,
-							proc.Buffered(),
-						)
-					} else {
-						log.Printf(
-							"process latency min/avg/max/stddev = %d/%d/%d/%dus n_buffered=%d",
-							int(hist.Min()),
-							int(hist.Mean()),
-							int(hist.Max()),
-							int(hist.StdDev()),
-							proc.Buffered(),
-						)
-						hist.Reset()
-					}
-
-					sofar = 0
-					max = -10_000_000_000
-
-				}
-			}
 
 			if *allocateSome {
 				sum := 0
@@ -464,8 +425,57 @@ func main() {
 	p.AsyncRead(b.ClaimFixed(*readBufferSize), onRead)
 
 	log.Print("starting...")
-	log.Print("busy-waiting...")
-	for {
-		_, _ = ioc.PollOne()
+	if *samples > 0 {
+		log.Println("measuring loop latency")
+
+		for {
+			start := time.Now()
+			n, _ := ioc.PollOne()
+			if n > 0 {
+				end := time.Now()
+				diff := end.Sub(start).Microseconds()
+				start = end
+				if sofar < *samples {
+					if *justmax {
+						if diff > max {
+							max = diff
+						}
+					} else {
+						_ = hist.RecordValue(diff)
+					}
+					sofar++
+				} else {
+					if *justmax {
+						log.Printf(
+							"loop latency max = %dus n_buffered=%d",
+							max,
+							proc.Buffered(),
+						)
+					} else {
+						log.Printf(
+							"loop latency min/avg/max/stddev = %d/%d/%d/%dus p99=%d p99.5=%d p99.9=%d n_buffered=%d",
+							int(hist.Min()),
+							int(hist.Mean()),
+							int(hist.Max()),
+							int(hist.StdDev()),
+							hist.ValueAtPercentile(99.0),
+							hist.ValueAtPercentile(99.5),
+							hist.ValueAtPercentile(99.9),
+							proc.Buffered(),
+						)
+						hist.Reset()
+					}
+
+					sofar = 0
+					max = -10_000_000_000
+
+				}
+
+			}
+		}
+	} else {
+		for {
+			_, _ = ioc.PollOne()
+		}
 	}
 }
