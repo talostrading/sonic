@@ -29,7 +29,6 @@ var (
 	justmax        = flag.Bool("justmax", true, "if true, we just get the max, otherwise min/avg/max/stddev")
 	bufSize        = flag.Int("bufsize", 1024*256, "buffer size")
 	maxSlots       = flag.Int("maxslots", 1024, "max slots")
-	busy           = flag.Bool("busy", true, "If true, busywait for events")
 	iface          = flag.String("interface", "", "multicast interface")
 	prof           = flag.Bool("prof", false, "If true, we profile the app")
 	readBufferSize = flag.Int("rbsize", 256, "read buffer size")
@@ -465,13 +464,8 @@ func main() {
 	p.AsyncRead(b.ClaimFixed(*readBufferSize), onRead)
 
 	log.Print("starting...")
-	if *busy {
-		log.Print("busy-waiting...")
-		for {
-			_, _ = ioc.PollOne()
-		}
-	} else {
-		log.Print("yielding...")
-		ioc.Run()
+	log.Print("busy-waiting...")
+	for {
+		_, _ = ioc.PollOne()
 	}
 }
