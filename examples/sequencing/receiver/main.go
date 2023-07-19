@@ -33,6 +33,7 @@ var (
 	iface          = flag.String("interface", "", "multicast interface")
 	prof           = flag.Bool("prof", false, "If true, we profile the app")
 	readBufferSize = flag.Int("rbsize", 256, "read buffer size")
+	allocateSome   = flag.Bool("allocate", false, "if true make some pointless inline allocations to put more pressure on GC")
 )
 
 type ProcessorType uint8
@@ -436,6 +437,23 @@ func main() {
 
 				}
 			}
+
+			if *allocateSome {
+				sum := 0
+				for i := 0; i < 10; i++ {
+					b := make([]byte, 4096)
+					for j := 0; j < len(b); j++ {
+						b[j] = byte(j % 255)
+						sum += int(b[j])
+					}
+				}
+
+				if *verbose {
+					// just to not have it optimized away
+					log.Printf("pointless sum=%d", sum)
+				}
+			}
+
 			if slice := b.ClaimFixed(*readBufferSize); slice != nil {
 				p.AsyncRead(slice, onRead)
 			} else {
