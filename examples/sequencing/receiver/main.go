@@ -422,11 +422,11 @@ func main() {
 					max = -10_000_000_000
 
 				}
-				if slice := b.ClaimFixed(256); slice != nil {
-					p.AsyncRead(slice, onRead)
-				} else {
-					panic("out of buffer space")
-				}
+			}
+			if slice := b.ClaimFixed(256); slice != nil {
+				p.AsyncRead(slice, onRead)
+			} else {
+				panic("out of buffer space")
 			}
 		}
 	}
