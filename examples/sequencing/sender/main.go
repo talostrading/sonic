@@ -16,23 +16,24 @@ import (
 )
 
 var (
-	addr     = flag.String("addr", "224.0.0.224:8080", "multicast group address")
-	iter     = flag.Int("iter", 10, "how many iterations, if 0, infinite")
-	debug    = flag.Bool("debug", false, "if true you can see what is sent")
-	rate     = flag.Duration("rate", 50*time.Microsecond, "sending rate")
-	bindAddr = flag.String("bind", "", "bind address")
-	gap      = flag.Int("gap", 50, "maximum size of sequence number gaps")
+	addr            = flag.String("addr", "224.0.0.224:8080", "multicast group address")
+	iter            = flag.Int("iter", 10, "how many iterations, if 0, infinite")
+	debug           = flag.Bool("debug", false, "if true you can see what is sent")
+	rate            = flag.Duration("rate", 50*time.Microsecond, "sending rate")
+	bindAddr        = flag.String("bind", "", "bind address")
+	gap             = flag.Int("gap", 50, "maximum size of sequence number gaps")
+	writeBufferSize = flag.Int("wbsize", 256, "write buffer size")
 
 	letters = []byte("abcdefghijklmnopqrstuvwxyz")
 )
 
 func main() {
+	flag.Parse()
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 
 	dbg.SetGCPercent(-1) // turn GC off
-
-	flag.Parse()
 
 	maddr, err := netip.ParseAddrPort(*addr)
 	if err != nil {
@@ -47,7 +48,7 @@ func main() {
 		panic(err)
 	}
 
-	b := make([]byte, 256)
+	b := make([]byte, *writeBufferSize)
 	var (
 		seq          uint32 = 1
 		continuation uint32 = 1
