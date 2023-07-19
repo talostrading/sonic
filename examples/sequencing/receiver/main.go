@@ -26,7 +26,6 @@ var (
 	verbose        = flag.Bool("verbose", false, "if true, we also log ignored packets")
 	slow           = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
 	samples        = flag.Int("iter", 4096, "number of samples to collect")
-	justmax        = flag.Bool("justmax", true, "if true, we just get the max, otherwise min/avg/max/stddev")
 	bufSize        = flag.Int("bufsize", 1024*256, "buffer size")
 	maxSlots       = flag.Int("maxslots", 1024, "max slots")
 	iface          = flag.String("interface", "", "multicast interface")
@@ -367,14 +366,9 @@ func main() {
 
 	var (
 		sofar = 0
-		hist  *hdrhistogram.Histogram
-		first       = true
-		max   int64 = -10_000_000_000
+		hist  = hdrhistogram.New(1, 10_000_000, 1)
+		first = true
 	)
-
-	if !*justmax {
-		hist = hdrhistogram.New(1, 10_000_000, 1)
-	}
 
 	var onRead func(error, int, netip.AddrPort)
 	onRead = func(err error, n int, _ netip.AddrPort) {
@@ -436,39 +430,25 @@ func main() {
 				diff := end.Sub(start).Microseconds()
 				start = end
 				if sofar < *samples {
-					if *justmax {
-						if diff > max {
-							max = diff
-						}
-					} else {
-						_ = hist.RecordValue(diff)
-					}
+					_ = hist.RecordValue(diff)
 					sofar++
 				} else {
-					if *justmax {
-						log.Printf(
-							"loop latency max = %dus n_buffered=%d",
-							max,
-							proc.Buffered(),
-						)
-					} else {
-						log.Printf(
-							"loop latency min/avg/max/stddev = %d/%d/%d/%dus p99=%d p99.5=%d p99.9=%d n_buffered=%d",
-							int(hist.Min()),
-							int(hist.Mean()),
-							int(hist.Max()),
-							int(hist.StdDev()),
-							hist.ValueAtPercentile(99.0),
-							hist.ValueAtPercentile(99.5),
-							hist.ValueAtPercentile(99.9),
-							proc.Buffered(),
-						)
-						hist.Reset()
-					}
+					log.Printf(
+						"loop latency min/avg/max/stddev = %d/%d/%d/%dus p95=%d p99=%d p99.5=%d p99.9=%d p99.99=%d n_buffered=%d",
+						int(hist.Min()),
+						int(hist.Mean()),
+						int(hist.Max()),
+						int(hist.StdDev()),
+						hist.ValueAtPercentile(95.0),
+						hist.ValueAtPercentile(99.0),
+						hist.ValueAtPercentile(99.5),
+						hist.ValueAtPercentile(99.9),
+						hist.ValueAtPercentile(99.99),
+						proc.Buffered(),
+					)
+					hist.Reset()
 
 					sofar = 0
-					max = -10_000_000_000
-
 				}
 
 			}
