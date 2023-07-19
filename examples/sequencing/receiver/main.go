@@ -505,7 +505,31 @@ func main() {
 				first = false
 			}
 
+			start := time.Now()
 			proc.Process(seq, payload, b)
+			diff := time.Since(start).Microseconds()
+
+			if sofar < *samples {
+				_ = hist.RecordValue(diff)
+				sofar++
+			} else {
+				log.Printf(
+					"loop latency min/avg/max/stddev = %d/%d/%d/%dus p95=%d p99=%d p99.5=%d p99.9=%d p99.99=%d n_buffered=%d",
+					int(hist.Min()),
+					int(hist.Mean()),
+					int(hist.Max()),
+					int(hist.StdDev()),
+					hist.ValueAtPercentile(95.0),
+					hist.ValueAtPercentile(99.0),
+					hist.ValueAtPercentile(99.5),
+					hist.ValueAtPercentile(99.9),
+					hist.ValueAtPercentile(99.99),
+					proc.Buffered(),
+				)
+				hist.Reset()
+
+				sofar = 0
+			}
 
 			if slice := b.ClaimFixed(*readBufferSize); slice != nil {
 				p.AsyncRead(slice, onRead)
@@ -517,44 +541,7 @@ func main() {
 
 	p.AsyncRead(b.ClaimFixed(*readBufferSize), onRead)
 
-	log.Print("starting...")
-	if *samples > 0 {
-		log.Println("measuring loop latency")
-
-		for {
-			start := time.Now()
-			n, _ := ioc.PollOne()
-			if n > 0 {
-				end := time.Now()
-				diff := end.Sub(start).Microseconds()
-				start = end
-				if sofar < *samples {
-					_ = hist.RecordValue(diff)
-					sofar++
-				} else {
-					log.Printf(
-						"loop latency min/avg/max/stddev = %d/%d/%d/%dus p95=%d p99=%d p99.5=%d p99.9=%d p99.99=%d n_buffered=%d",
-						int(hist.Min()),
-						int(hist.Mean()),
-						int(hist.Max()),
-						int(hist.StdDev()),
-						hist.ValueAtPercentile(95.0),
-						hist.ValueAtPercentile(99.0),
-						hist.ValueAtPercentile(99.5),
-						hist.ValueAtPercentile(99.9),
-						hist.ValueAtPercentile(99.99),
-						proc.Buffered(),
-					)
-					hist.Reset()
-
-					sofar = 0
-				}
-
-			}
-		}
-	} else {
-		for {
-			_, _ = ioc.PollOne()
-		}
+	for {
+		_, _ = ioc.PollOne()
 	}
 }
