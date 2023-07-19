@@ -16,15 +16,16 @@ import (
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/multicast"
 	"github.com/talostrading/sonic/util"
+	"github.com/valyala/bytebufferpool"
 
 	_ "net/http/pprof"
 )
 
 var (
+	which          = flag.String("which", "alloc", "one of: alloc,pool,noalloc")
 	addr           = flag.String("addr", "224.0.0.224:8080", "multicast group address")
 	debug          = flag.Bool("debug", false, "if true, you can see what you receive")
 	verbose        = flag.Bool("verbose", false, "if true, we also log ignored packets")
-	slow           = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
 	samples        = flag.Int("iter", 4096, "number of samples to collect")
 	bufSize        = flag.Int("bufsize", 1024*256, "buffer size")
 	maxSlots       = flag.Int("maxslots", 1024, "max slots")
@@ -34,16 +35,8 @@ var (
 	allocateSome   = flag.Bool("allocate", false, "if true make some pointless inline allocations to put more pressure on GC")
 )
 
-type ProcessorType uint8
-
-const (
-	TypeSlow ProcessorType = iota
-	TypeFast
-)
-
 type Processor interface {
 	Process(seq int, payload []byte, b *sonic.ByteBuffer)
-	Type() ProcessorType
 	Buffered() int
 }
 
@@ -57,6 +50,7 @@ type AllocProcessor struct {
 
 func NewAllocProcessor() *AllocProcessor {
 	p := &AllocProcessor{expected: 1}
+	log.Println("using plain alloc processor")
 	return p
 }
 
@@ -166,11 +160,133 @@ func (p *AllocProcessor) walkBuffer() {
 	p.buffer = newBuffer
 }
 
-func (p *AllocProcessor) Type() ProcessorType {
-	return TypeSlow
+func (p *AllocProcessor) Buffered() int {
+	return len(p.buffer)
 }
 
-func (p *AllocProcessor) Buffered() int {
+type PoolAllocProcessor struct {
+	expected int
+	buffer   []struct {
+		seq int
+		b   *bytebufferpool.ByteBuffer
+	}
+}
+
+func NewPoolAllocProcessor() *PoolAllocProcessor {
+	p := &PoolAllocProcessor{expected: 1}
+	log.Println("using pool alloc processor")
+	return p
+}
+
+func (p *PoolAllocProcessor) Process(
+	seq int,
+	payload []byte,
+	b *sonic.ByteBuffer,
+) {
+	defer b.Consume(len(b.Data()))
+
+	// Ignore anything we received before.
+	if seq < p.expected {
+		if *debug && *verbose {
+			log.Printf(
+				"ignoring seq=%d(%d) as we are on %d n_bufferd=%d",
+				seq,
+				len(payload),
+				p.expected,
+				len(p.buffer),
+			)
+		}
+
+		return
+	}
+
+	if seq == p.expected {
+		if *debug {
+			log.Printf(
+				"processing live seq=%d(%d) n_buffered=%d",
+				seq,
+				len(payload),
+				len(p.buffer),
+			)
+		}
+
+		p.expected++
+		p.walkBuffer()
+	} else {
+		buffered := p.addToBuffer(seq, payload)
+		if buffered && *debug {
+			log.Printf(
+				"buffering seq=%d(%d) n_buffered=%d",
+				seq,
+				len(payload),
+				len(p.buffer),
+			)
+		}
+	}
+}
+
+func (p *PoolAllocProcessor) addToBuffer(seq int, payload []byte) (buffered bool) {
+	i := sort.Search(len(p.buffer), func(i int) bool {
+		return p.buffer[i].seq >= seq
+	})
+
+	if i >= len(p.buffer) {
+		bb := bytebufferpool.Get()
+		_, _ = bb.Write(payload)
+
+		p.buffer = append(p.buffer, struct {
+			seq int
+			b   *bytebufferpool.ByteBuffer
+		}{
+			seq,
+			bb,
+		})
+
+		buffered = true
+	} else if i < len(p.buffer) && p.buffer[i].seq != seq {
+		bb := bytebufferpool.Get()
+		_, _ = bb.Write(payload)
+
+		p.buffer = append(p.buffer[:i+1], p.buffer[i:]...)
+		p.buffer[i] = struct {
+			seq int
+			b   *bytebufferpool.ByteBuffer
+		}{
+			seq,
+			bb,
+		}
+		buffered = true
+	}
+
+	return buffered
+}
+
+func (p *PoolAllocProcessor) walkBuffer() {
+	var newBuffer []struct {
+		seq int
+		b   *bytebufferpool.ByteBuffer
+	}
+	for _, entry := range p.buffer {
+		if entry.seq == p.expected {
+			if *debug {
+				log.Printf(
+					"processing buffered seq=%d n_buffered=%d",
+					p.expected,
+					len(p.buffer),
+				)
+			}
+
+			p.expected++
+
+			bytebufferpool.Put(entry.b)
+		} else {
+			newBuffer = append(newBuffer, entry)
+		}
+	}
+	p.buffer = newBuffer
+}
+
+func (p *PoolAllocProcessor) Buffered() int {
 	return len(p.buffer)
 }
 
@@ -189,6 +305,7 @@ func NewNoAllocProcessor() *NoAllocProcessor {
 		*maxSlots,
 		*bufSize,
 	)
+	log.Println("using no alloc processor")
 	return p
 }
 
@@ -280,10 +397,6 @@ func (p *NoAllocProcessor) addToBuffer(
 	return ok
 }
 
-func (p *NoAllocProcessor) Type() ProcessorType {
-	return TypeFast
-}
-
 func (p *NoAllocProcessor) Buffered() int {
 	return p.sequencer.Size()
 }
@@ -331,12 +444,15 @@ func main() {
 	}
 
 	var proc Processor
-	if *slow {
-		log.Printf("using slow")
+	switch *which {
+	case "alloc":
 		proc = NewAllocProcessor()
-	} else {
-		log.Printf("using fast")
+	case "pool":
+		proc = NewPoolAllocProcessor()
+	case "noalloc":
 		proc = NewNoAllocProcessor()
+	default:
+		panic("unknown processor type")
 	}
 
 	b := sonic.NewByteBuffer()
