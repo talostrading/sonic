@@ -21,6 +21,7 @@ var (
 	debug    = flag.Bool("debug", false, "if true you can see what is sent")
 	rate     = flag.Duration("rate", 50*time.Microsecond, "sending rate")
 	bindAddr = flag.String("bind", "", "bind address")
+	gap      = flag.Int("gap", 50, "maximum size of sequence number gaps")
 
 	letters = []byte("abcdefghijklmnopqrstuvwxyz")
 )
@@ -48,17 +49,19 @@ func main() {
 
 	b := make([]byte, 256)
 	var (
-		current       uint32 = 1
-		last          uint32 = 1
-		backfill             = false
-		backfillUntil uint32 = 1
-
-		// 1 then increment random, backfill is true
-		// if backfill is true, we need to backfill until we increment and then
-		// is false
+		seq          uint32 = 1
+		continuation uint32 = 1
+		until        uint32 = 1
+		present             = true
 	)
+
+	jump := func() uint32 {
+		return uint32(rand.Int31n(int32(*gap)) + 1)
+	}
+	until = jump()
+
 	prepare := func() {
-		binary.BigEndian.PutUint32(b, current) // sequence number
+		binary.BigEndian.PutUint32(b, seq) // sequence number
 
 		// payload size
 		n := rand.Intn(len(b) - 8 /* 4 for seq, 4 for payload size */)
@@ -71,29 +74,33 @@ func main() {
 
 		if *debug {
 			log.Printf(
-				"sending seq=%d n=%d payload=%s",
-				current,
+				"sending seq=%d [present=%v until=%d] n=%d payload=%s",
+				seq,
+				present,
+				until,
 				n,
 				string(b[8:8+n]),
 			)
 		}
 
-		if backfill {
-			last++
-			if last == backfillUntil {
-				backfill = false
-				current = last + 1
+		if present {
+			if seq < until {
+				seq++
 			} else {
-				current = last
+				continuation = seq + 1
+				seq += jump()
+				until = seq + jump()
+				present = false
 			}
 		} else {
-			last = current
-			increment := uint32(rand.Int31n(10) + 1)
-			current += increment
-			backfill = true
-			backfillUntil = current
+			if seq < until {
+				seq++
+			} else {
+				seq = continuation
+				present = true
+				until += jump()
+			}
 		}
-
 	}
 
 	if *rate > 0 {
