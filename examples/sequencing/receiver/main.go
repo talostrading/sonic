@@ -21,17 +21,18 @@ import (
 )
 
 var (
-	addr     = flag.String("addr", "224.0.0.224:8080", "multicast group address")
-	debug    = flag.Bool("debug", false, "if true, you can see what you receive")
-	verbose  = flag.Bool("verbose", false, "if true, we also log ignored packets")
-	slow     = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
-	samples  = flag.Int("iter", 4096, "number of samples to collect")
-	justmax  = flag.Bool("justmax", true, "if true, we just get the max, otherwise min/avg/max/stddev")
-	bufSize  = flag.Int("bufsize", 1024*256, "buffer size")
-	maxSlots = flag.Int("maxslots", 1024, "max slots")
-	busy     = flag.Bool("busy", true, "If true, busywait for events")
-	iface    = flag.String("interface", "", "multicast interface")
-	prof     = flag.Bool("prof", false, "If true, we profile the app")
+	addr           = flag.String("addr", "224.0.0.224:8080", "multicast group address")
+	debug          = flag.Bool("debug", false, "if true, you can see what you receive")
+	verbose        = flag.Bool("verbose", false, "if true, we also log ignored packets")
+	slow           = flag.Bool("slow", true, "if true, use the slow processor, otherwise the fast one")
+	samples        = flag.Int("iter", 4096, "number of samples to collect")
+	justmax        = flag.Bool("justmax", true, "if true, we just get the max, otherwise min/avg/max/stddev")
+	bufSize        = flag.Int("bufsize", 1024*256, "buffer size")
+	maxSlots       = flag.Int("maxslots", 1024, "max slots")
+	busy           = flag.Bool("busy", true, "If true, busywait for events")
+	iface          = flag.String("interface", "", "multicast interface")
+	prof           = flag.Bool("prof", false, "If true, we profile the app")
+	readBufferSize = flag.Int("rbsize", 256, "read buffer size")
 )
 
 type ProcessorType uint8
@@ -351,10 +352,11 @@ func main() {
 	decode := func() (seq, n int, payload []byte) {
 		seq = int(binary.BigEndian.Uint32(b.Data()[:4]))
 		n = int(binary.BigEndian.Uint32(b.Data()[4:]))
-		if n > 256 {
+		if n > *readBufferSize {
 			panic(fmt.Errorf(
-				"something wrong as n = %d > 256 b.Data()[hex]=%s",
+				"something wrong as n = %d > %d b.Data()[hex]=%s",
 				n,
+				*readBufferSize,
 				hex.EncodeToString(b.Data())),
 			)
 		}
@@ -434,7 +436,7 @@ func main() {
 
 				}
 			}
-			if slice := b.ClaimFixed(256); slice != nil {
+			if slice := b.ClaimFixed(*readBufferSize); slice != nil {
 				p.AsyncRead(slice, onRead)
 			} else {
 				panic("out of buffer space")
@@ -442,7 +444,7 @@ func main() {
 		}
 	}
 
-	p.AsyncRead(b.ClaimFixed(256), onRead)
+	p.AsyncRead(b.ClaimFixed(*readBufferSize), onRead)
 
 	log.Print("starting...")
 	if *busy {
