@@ -47,7 +47,7 @@ type Processor interface {
 	Buffered() int
 }
 
-type SlowProcessor struct {
+type AllocProcessor struct {
 	expected int
 	buffer   []struct {
 		seq int
@@ -55,12 +55,12 @@ type SlowProcessor struct {
 	}
 }
 
-func NewSlowProcessor() *SlowProcessor {
-	p := &SlowProcessor{expected: 1}
+func NewAllocProcessor() *AllocProcessor {
+	p := &AllocProcessor{expected: 1}
 	return p
 }
 
-func (p *SlowProcessor) Process(
+func (p *AllocProcessor) Process(
 	seq int,
 	payload []byte,
 	b *sonic.ByteBuffer,
@@ -107,7 +107,7 @@ func (p *SlowProcessor) Process(
 	}
 }
 
-func (p *SlowProcessor) addToBuffer(seq int, payload []byte) (buffered bool) {
+func (p *AllocProcessor) addToBuffer(seq int, payload []byte) (buffered bool) {
 	i := sort.Search(len(p.buffer), func(i int) bool {
 		return p.buffer[i].seq >= seq
 	})
@@ -143,7 +143,7 @@ func (p *SlowProcessor) addToBuffer(seq int, payload []byte) (buffered bool) {
 	return buffered
 }
 
-func (p *SlowProcessor) walkBuffer() {
+func (p *AllocProcessor) walkBuffer() {
 	var newBuffer []struct {
 		seq int
 		b   []byte
@@ -166,21 +166,21 @@ func (p *SlowProcessor) walkBuffer() {
 	p.buffer = newBuffer
 }
 
-func (p *SlowProcessor) Type() ProcessorType {
+func (p *AllocProcessor) Type() ProcessorType {
 	return TypeSlow
 }
 
-func (p *SlowProcessor) Buffered() int {
+func (p *AllocProcessor) Buffered() int {
 	return len(p.buffer)
 }
 
-type FastProcessor struct {
+type NoAllocProcessor struct {
 	expected  int
 	sequencer *sonic.SlotSequencer
 }
 
-func NewFastProcessor() *FastProcessor {
-	p := &FastProcessor{
+func NewNoAllocProcessor() *NoAllocProcessor {
+	p := &NoAllocProcessor{
 		expected:  1,
 		sequencer: sonic.NewSlotSequencer(*maxSlots, *bufSize),
 	}
@@ -192,7 +192,7 @@ func NewFastProcessor() *FastProcessor {
 	return p
 }
 
-func (p *FastProcessor) Process(
+func (p *NoAllocProcessor) Process(
 	seq int,
 	payload []byte,
 	b *sonic.ByteBuffer,
@@ -240,7 +240,7 @@ func (p *FastProcessor) Process(
 	}
 }
 
-func (p *FastProcessor) walkBuffer(b *sonic.ByteBuffer) {
+func (p *NoAllocProcessor) walkBuffer(b *sonic.ByteBuffer) {
 	for {
 		slot, ok := p.sequencer.Pop(p.expected)
 		if !ok {
@@ -264,7 +264,7 @@ func (p *FastProcessor) walkBuffer(b *sonic.ByteBuffer) {
 	}
 }
 
-func (p *FastProcessor) addToBuffer(
+func (p *NoAllocProcessor) addToBuffer(
 	seq int,
 	payload []byte,
 	b *sonic.ByteBuffer,
@@ -280,11 +280,11 @@ func (p *FastProcessor) addToBuffer(
 	return ok
 }
 
-func (p *FastProcessor) Type() ProcessorType {
+func (p *NoAllocProcessor) Type() ProcessorType {
 	return TypeFast
 }
 
-func (p *FastProcessor) Buffered() int {
+func (p *NoAllocProcessor) Buffered() int {
 	return p.sequencer.Size()
 }
 
@@ -333,10 +333,10 @@ func main() {
 	var proc Processor
 	if *slow {
 		log.Printf("using slow")
-		proc = NewSlowProcessor()
+		proc = NewAllocProcessor()
 	} else {
 		log.Printf("using fast")
-		proc = NewFastProcessor()
+		proc = NewNoAllocProcessor()
 	}
 
 	b := sonic.NewByteBuffer()
