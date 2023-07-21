@@ -32,10 +32,11 @@ var (
 	iface          = flag.String("interface", "", "multicast interface")
 	prof           = flag.Bool("prof", false, "If true, we profile the app")
 	readBufferSize = flag.Int("rbsize", 256, "read buffer size")
+	pinCPU         = flag.Int("pincpu", -1, "which cpu to pin to")
 )
 
 type Processor interface {
-	Process(seq int, payload []byte, b *sonic.ByteBuffer)
+	Process(seq int, payload []byte, b *sonic.ByteBuffer) int
 	Buffered() int
 }
 
@@ -57,7 +58,7 @@ func (p *AllocProcessor) Process(
 	seq int,
 	payload []byte,
 	b *sonic.ByteBuffer,
-) {
+) int {
 	defer b.Consume(len(b.Data()))
 
 	// Ignore anything we received before.
@@ -72,7 +73,7 @@ func (p *AllocProcessor) Process(
 			)
 		}
 
-		return
+		return 0
 	}
 
 	if seq == p.expected {
@@ -98,6 +99,8 @@ func (p *AllocProcessor) Process(
 			)
 		}
 	}
+
+	return 0
 }
 
 func (p *AllocProcessor) addToBuffer(seq int, payload []byte) (buffered bool) {
@@ -181,7 +184,7 @@ func (p *PoolAllocProcessor) Process(
 	seq int,
 	payload []byte,
 	b *sonic.ByteBuffer,
-) {
+) int {
 	defer b.Consume(len(b.Data()))
 
 	// Ignore anything we received before.
@@ -196,7 +199,7 @@ func (p *PoolAllocProcessor) Process(
 			)
 		}
 
-		return
+		return 0
 	}
 
 	if seq == p.expected {
@@ -222,6 +225,8 @@ func (p *PoolAllocProcessor) Process(
 			)
 		}
 	}
+
+	return 0
 }
 
 func (p *PoolAllocProcessor) addToBuffer(seq int, payload []byte) (buffered bool) {
@@ -312,7 +317,9 @@ func (p *NoAllocProcessor) Process(
 	seq int,
 	payload []byte,
 	b *sonic.ByteBuffer,
-) {
+) int {
+	discarded := 0
+
 	// Ignore anything we received before.
 	if seq < p.expected {
 		if *debug && *verbose {
@@ -325,7 +332,7 @@ func (p *NoAllocProcessor) Process(
 			)
 		}
 		b.Consume(len(b.Data()))
-		return
+		return 0
 	}
 
 	if seq == p.expected {
@@ -340,7 +347,7 @@ func (p *NoAllocProcessor) Process(
 		}
 
 		p.expected++
-		p.walkBuffer(b)
+		discarded = p.walkBuffer(b)
 		b.Consume(len(b.Data()))
 	} else {
 		buffered := p.addToBuffer(seq, payload, b)
@@ -354,9 +361,12 @@ func (p *NoAllocProcessor) Process(
 			)
 		}
 	}
+
+	return discarded
 }
 
-func (p *NoAllocProcessor) walkBuffer(b *sonic.ByteBuffer) {
+func (p *NoAllocProcessor) walkBuffer(b *sonic.ByteBuffer) int {
+	discarded := 0
 	for {
 		slot, ok := p.sequencer.Pop(p.expected)
 		if !ok {
@@ -377,7 +387,10 @@ func (p *NoAllocProcessor) walkBuffer(b *sonic.ByteBuffer) {
 		// handle p.expected
 		_ = b.SavedSlot(slot)
 		b.Discard(slot)
+
+		discarded++
 	}
+	return discarded
 }
 
 func (p *NoAllocProcessor) addToBuffer(
@@ -408,6 +421,13 @@ func main() {
 		go func() {
 			log.Println(http.ListenAndServe("localhost:6060", nil))
 		}()
+	}
+
+	if *pinCPU >= 0 {
+		log.Printf("pinning process to cpu=%d", *pinCPU)
+		if err := util.PinTo(*pinCPU); err != nil {
+			panic(err)
+		}
 	}
 
 	runtime.LockOSThread()
@@ -506,15 +526,23 @@ func main() {
 			}
 
 			start := time.Now()
-			proc.Process(seq, payload, b)
+			discarded := proc.Process(seq, payload, b)
 			diff := time.Since(start).Microseconds()
 
 			if sofar < *samples {
+				if discarded > 0 {
+					log.Printf(
+						"discarded %d from buffer time=%d",
+						discarded,
+						diff,
+					)
+				}
+
 				_ = hist.RecordValue(diff)
 				sofar++
 			} else {
 				log.Printf(
-					"loop latency min/avg/max/stddev = %d/%d/%d/%dus p95=%d p99=%d p99.5=%d p99.9=%d p99.99=%d n_buffered=%d",
+					"process latency min/avg/max/stddev = %d/%d/%d/%dus p95=%d p99=%d p99.5=%d p99.9=%d p99.99=%d n_buffered=%d",
 					int(hist.Min()),
 					int(hist.Mean()),
 					int(hist.Max()),
