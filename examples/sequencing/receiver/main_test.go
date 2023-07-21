@@ -278,3 +278,44 @@ func TestNoAllocProcessor(t *testing.T) {
 		t.Fatal("wrong")
 	}
 }
+
+func BenchmarkWalkBuffer(b *testing.B) {
+	buf := sonic.NewByteBuffer()
+	buf.Reserve(1024 * 256)
+	buf.Warm()
+
+	sequencer := sonic.NewSlotSequencer(1024, 1024*256)
+
+	walk := func(seq int) int {
+		for {
+			slot, ok := sequencer.Pop(seq)
+			if !ok {
+				break
+			}
+
+			seq++
+
+			_ = buf.SavedSlot(slot)
+			buf.Discard(slot)
+		}
+		return seq
+	}
+
+	seq := 1
+
+	var slice []byte
+	for i := 0; i < 128; i++ {
+		slice = append(slice, 1)
+	}
+
+	for i := 0; i < b.N; i++ {
+		buf.Write(slice)
+		buf.Commit(len(slice))
+		slot := buf.Save(len(slice))
+		sequencer.Push(seq, slot)
+
+		seq = walk(seq)
+	}
+
+	b.ReportAllocs()
+}
