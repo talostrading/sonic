@@ -64,9 +64,9 @@ func (t *FenwickTree) Clear(index int) int {
 }
 
 func (t *FenwickTree) Reset() {
-	t.data[0] = 0
-	for i := 1; i < len(t.data); i *= 2 {
-		copy(t.data[i:], t.data[:i])
+	data := t.data
+	for i := range data {
+		data[i] = 0
 	}
 }
 
