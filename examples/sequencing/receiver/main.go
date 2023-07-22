@@ -476,7 +476,7 @@ func main() {
 
 	b := sonic.NewByteBuffer()
 	b.Reserve(*bufSize)
-	b.Warm()
+	b.Zero()
 
 	log.Printf(
 		"created sonic byte_buffer size=%s",
