@@ -249,3 +249,24 @@ func BenchmarkFenwickTreeRangeSum(b *testing.B) {
 	fmt.Fprint(io.Discard, total)
 	b.ReportAllocs()
 }
+
+func BenchmarkFenwickTreeReset(b *testing.B) {
+	const N = 1024 * 10
+
+	b.Run("fenwick_tree_reset", func(b *testing.B) {
+		tree, _ := trashedFenwickTree(N)
+		for i := 0; i < b.N; i++ {
+			tree.Reset()
+		}
+	})
+	b.Run("log2_memcpy_reset", func(*testing.B) {
+		tree, _ := trashedFenwickTree(N)
+		for i := 0; i < b.N; i++ {
+			data := tree.data
+			data[0] = 0
+			for k := 1; k < len(data); k *= 2 {
+				copy(data[k:], data[:k])
+			}
+		}
+	})
+}
