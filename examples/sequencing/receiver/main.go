@@ -100,6 +100,8 @@ func main() {
 			*readBufferSize,
 			peer,
 		)
+	case "bip":
+		reader = NewBipBufferReader(*bufSize, *readBufferSize, peer)
 	default:
 		panic("unknown processor type")
 	}
