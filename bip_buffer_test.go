@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestBipBufferReserve(t *testing.T) {
+func TestBipBufferClaim(t *testing.T) {
 	buf := NewBipBuffer(8)
 	{
 		b := buf.Claim(3)
@@ -170,5 +170,32 @@ func TestBipBufferReset(t *testing.T) {
 	buf.Reset()
 	if buf.Committed() != 0 {
 		t.Fatal("wrong committed")
+	}
+}
+
+func TestBipBufferClaimSameChunk(t *testing.T) {
+	buf := NewBipBuffer(4)
+	{
+		b := buf.Claim(4)
+		b[0] = 7
+		b[1] = 22
+		b[2] = 218
+		b[3] = 56
+	}
+	{
+		b := buf.Claim(4)
+		if !bytes.Equal(b, []byte{7, 22, 218, 56}) {
+			t.Fatal("wrong claim")
+		}
+		b[0] = 7 + 1
+		b[1] = 22 + 1
+		b[2] = 218 + 1
+		b[3] = 56 + 1
+	}
+	{
+		b := buf.Claim(4)
+		if !bytes.Equal(b, []byte{7 + 1, 22 + 1, 218 + 1, 56 + 1}) {
+			t.Fatal("wrong claim")
+		}
 	}
 }
