@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	which          = flag.String("which", "simple", "one of: simple,pool,fenwick")
+	which          = flag.String("which", "simple", "one of: simple,pool,fenwick,ip")
 	addr           = flag.String("addr", "224.0.0.224:8080", "multicast group address")
 	debug          = flag.Bool("debug", false, "if true, you can see what you receive")
 	verbose        = flag.Bool("verbose", false, "if true, we also log ignored packets")
