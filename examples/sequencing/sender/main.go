@@ -23,6 +23,7 @@ var (
 	bindAddr        = flag.String("bind", "", "bind address")
 	gap             = flag.Int("gap", 50, "maximum size of sequence number gaps")
 	writeBufferSize = flag.Int("wbsize", 256, "write buffer size")
+	duplicate       = flag.Int("duplicate", 2, "how many times to send the same packet")
 
 	letters = []byte("abcdefghijklmnopqrstuvwxyz")
 )
@@ -113,9 +114,7 @@ func main() {
 		}
 		err = t.ScheduleRepeating(*rate, func() {
 			prepare()
-			// Send the same packet 10 times to increase the likelihood of
-			// arrival.
-			for i := 0; i < 10; i++ {
+			for i := 0; i < *duplicate; i++ {
 				_, err := p.Write(b, maddr)
 				for err == sonicerrors.ErrWouldBlock {
 					_, err = p.Write(b, maddr)
