@@ -42,6 +42,8 @@ func NewBipBufferReader(
 		hist:     hdrhistogram.New(1, 10_000_000, 1),
 	}
 
+	r.buf.Zero()
+
 	log.Println("running bip_buffer_reader")
 
 	return r
