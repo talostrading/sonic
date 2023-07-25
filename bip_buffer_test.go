@@ -47,12 +47,23 @@ func TestBipBufferOverClaim(t *testing.T) {
 	if buf.Claimed() != 0 {
 		t.Fatal("0 should be claimed")
 	}
-	b := buf.Claim(4)
-	if len(b) != 3 {
-		t.Fatal("wrong claim")
+	{
+		// overclaim
+		b := buf.Claim(4)
+		if len(b) != 3 {
+			t.Fatal("wrong claim")
+		}
+		if buf.Claimed() != 3 {
+			t.Fatal("wrong claim")
+		}
 	}
-	if buf.Claimed() != 3 {
-		t.Fatal("wrong claim")
+	{
+		// overcommit and overclaim
+		buf.Commit(100)
+		b := buf.Claim(4)
+		if b != nil {
+			t.Fatal("overclaim should return nil")
+		}
 	}
 }
 
