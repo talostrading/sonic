@@ -29,7 +29,7 @@ func TestBipBufferClaim(t *testing.T) {
 
 func TestBipBufferData(t *testing.T) {
 	buf := NewBipBuffer(3)
-	if buf.Data() != nil {
+	if buf.Head() != nil {
 		t.Fatal("wrong data slice")
 	}
 }
@@ -37,7 +37,7 @@ func TestBipBufferData(t *testing.T) {
 func TestBipBufferDataUncommitted(t *testing.T) {
 	buf := NewBipBuffer(3)
 	buf.Claim(2)
-	if buf.Data() != nil {
+	if buf.Head() != nil {
 		t.Fatal("wrong data slice")
 	}
 }
@@ -78,7 +78,7 @@ func TestBipBufferCommit(t *testing.T) {
 	if buf.Claimed() != 0 {
 		t.Fatal("wrong claimed")
 	}
-	b = buf.Data()
+	b = buf.Head()
 	if !bytes.Equal(b, []byte{7, 22, 218}) {
 		t.Fatal("wrong data")
 	}
@@ -108,14 +108,14 @@ func TestBipBufferConsume(t *testing.T) {
 	}
 	buf.Consume(2)
 	{
-		b := buf.Data()
+		b := buf.Head()
 		if !bytes.Equal(b, []byte{218, 56}) {
 			t.Fatal("wrong data")
 		}
 	}
 	buf.Consume(1)
 	{
-		b := buf.Data()
+		b := buf.Head()
 		if !bytes.Equal(b, []byte{56}) {
 			t.Fatal("wrong data")
 		}
@@ -149,14 +149,14 @@ func TestBipBufferClaimAfterWrapping(t *testing.T) {
 		t.Fatal("wrong committed")
 	}
 	{
-		b := buf.Data()
+		b := buf.Head()
 		if !bytes.Equal(b, []byte{218, 56}) {
 			t.Fatal("wrong data")
 		}
 	}
 	buf.Consume(2)
 	{
-		b := buf.Data()
+		b := buf.Head()
 		if !bytes.Equal(b, []byte{49, 81}) {
 			t.Fatal("wrong data")
 		}
@@ -257,7 +257,7 @@ func TestBipBufferCommitAfterWrapping(t *testing.T) {
 			t.Fatal("wrong committed")
 		}
 
-		if !bytes.Equal(buf.Data(), []byte{56}) {
+		if !bytes.Equal(buf.Head(), []byte{56}) {
 			t.Fatal("wrong data")
 		}
 	}

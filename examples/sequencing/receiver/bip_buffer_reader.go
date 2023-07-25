@@ -67,7 +67,7 @@ func (r *BipBufferReader) Setup() {
 				// so we're better off filtering them here.
 				r.buf.Commit(nRead)
 
-				entire := r.buf.Data()
+				entire := r.buf.Head()
 				b = entire[len(entire)-r.readbufsize:]
 
 				if r.first {
@@ -131,7 +131,7 @@ func (r *BipBufferReader) process(seq, n int, payload []byte) {
 	}
 
 	for {
-		b := r.buf.Data()
+		b := r.buf.Head()
 		if b == nil {
 			break
 		}
