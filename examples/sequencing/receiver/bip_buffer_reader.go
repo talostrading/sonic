@@ -54,7 +54,6 @@ func (r *BipBufferReader) Setup() {
 		b      []byte
 		onRead func(error, int, netip.AddrPort)
 	)
-
 	onRead = func(err error, nRead int, _ netip.AddrPort) {
 		if err != nil {
 			panic(err)
@@ -65,10 +64,8 @@ func (r *BipBufferReader) Setup() {
 				// Older ones are pointless to store as they will be Consumed
 				// later on in process. However, consuming them also takes time,
 				// so we're better off filtering them here.
-				r.buf.Commit(nRead)
 
-				entire := r.buf.Head()
-				b = entire[len(entire)-r.readbufsize:]
+				b = r.buf.Commit(nRead)
 
 				if r.first {
 					if seq != 1 {
@@ -124,9 +121,18 @@ func (r *BipBufferReader) decode(b []byte) (seq, n int, payload []byte) {
 
 func (r *BipBufferReader) process(seq, n int, payload []byte) {
 	if seq == r.expected {
-		if *debug {
-			log.Printf("processing seq=%d", seq)
-		}
+		defer func() {
+			// We defer the log in order to allow the consumption of the last
+			// read packet in the loop below.
+			if *debug {
+				log.Printf(
+					"processed live seq=%d n_buffered=%d",
+					seq,
+					r.buf.Committed()/r.readbufsize,
+				)
+			}
+		}()
+
 		r.expected++
 	}
 
@@ -140,16 +146,18 @@ func (r *BipBufferReader) process(seq, n int, payload []byte) {
 		if seq < r.expected {
 			r.buf.Consume(r.readbufsize)
 		} else if seq == r.expected {
-			if *debug {
-				log.Printf("processing buffered seq=%d", seq)
-			}
 			r.expected++
 			r.buf.Consume(r.readbufsize)
+
+			if *debug {
+				log.Printf(
+					"processed buff seq=%d n_buffered=%d",
+					seq,
+					r.buf.Committed()/r.readbufsize,
+				)
+			}
 		} else {
 			break
 		}
-	}
-	if *debug {
-		log.Printf("committed=%d", r.buf.Committed())
 	}
 }
