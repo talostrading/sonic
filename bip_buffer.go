@@ -89,27 +89,35 @@ func (buf *BipBuffer) Claim(n int) []byte {
 	return buf.data[buf.claimHead:buf.claimTail]
 }
 
-// Commit n bytes of the previously claimed slice.
-func (buf *BipBuffer) Commit(n int) {
+// Commit n bytes of the previously claimed slice. Returns the committed chunk.
+func (buf *BipBuffer) Commit(n int) []byte {
 	if n == 0 {
 		buf.claimHead = 0
 		buf.claimTail = 0
-		return
+		return nil
 	}
 	toCommit := buf.claimTail - buf.claimHead
 	if toCommit > n {
 		toCommit = n
 	}
+	var head, tail int
 	if buf.Committed() == 0 {
 		buf.head = buf.claimHead
 		buf.tail = buf.claimHead + toCommit
+		head = buf.head
+		tail = buf.tail
 	} else if buf.claimHead == buf.tail {
+		head = buf.tail
 		buf.tail += toCommit
+		tail = buf.tail
 	} else {
+		head = buf.wrappedTail
 		buf.wrappedTail += toCommit
+		tail = buf.wrappedTail
 	}
 	buf.claimHead = 0
 	buf.claimTail = 0
+	return buf.data[head:tail]
 }
 
 // Data returns the first contiguous byte slice in the buffer.
