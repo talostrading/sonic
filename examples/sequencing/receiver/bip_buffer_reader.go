@@ -59,34 +59,47 @@ func (r *BipBufferReader) Setup() {
 			panic(err)
 		} else {
 			seq, payloadSize, payload := r.decode(b)
-			if seq >= r.expected {
-				// We only want to store expected or future sequence numbers.
-				// Older ones are pointless to store as they will be Consumed
-				// later on in process. However, consuming them also takes time,
-				// so we're better off filtering them here.
 
+			if r.first && seq != 1 {
+				if seq != 1 {
+					panic(fmt.Errorf(
+						"sequencing must start at 1, not at %d", seq))
+				}
+				r.first = false
+			}
+
+			if *debug && *verbose {
+				log.Printf(
+					"read seq=%d n=%d payload=%s",
+					seq,
+					payloadSize,
+					string(payload),
+				)
+			}
+
+			start := time.Now()
+			if seq == r.expected {
+				r.expected++
+				if *debug {
+					log.Printf(
+						"processed live seq=%d n_buffered=%d",
+						seq,
+						r.buf.Committed()/r.readbufsize,
+					)
+				}
+
+				r.walkBuffer(seq)
+			} else if seq > r.expected {
 				b = r.buf.Commit(nRead)
+				r.walkBuffer(seq)
+			}
+			diff := time.Since(start).Microseconds()
 
-				if r.first {
-					if seq != 1 {
-						panic(fmt.Errorf(
-							"first packet sequence number = %d != 1",
-							seq,
-						))
-					}
-					r.first = false
-				}
-
-				start := time.Now()
-				r.process(seq, payloadSize, payload)
-				diff := time.Since(start).Microseconds()
-
-				if r.hist.TotalCount() < int64(*samples) {
-					_ = r.hist.RecordValue(diff)
-				} else {
-					PrintHistogram(r.hist, r.buf.Committed()/r.readbufsize)
-					r.hist.Reset()
-				}
+			if r.hist.TotalCount() < int64(*samples) {
+				_ = r.hist.RecordValue(diff)
+			} else {
+				PrintHistogram(r.hist, r.buf.Committed()/r.readbufsize)
+				r.hist.Reset()
 			}
 
 			if b = r.buf.Claim(r.readbufsize); b != nil {
@@ -119,23 +132,7 @@ func (r *BipBufferReader) decode(b []byte) (seq, n int, payload []byte) {
 	return
 }
 
-func (r *BipBufferReader) process(seq, n int, payload []byte) {
-	if seq == r.expected {
-		defer func() {
-			// We defer the log in order to allow the consumption of the last
-			// read packet in the loop below.
-			if *debug {
-				log.Printf(
-					"processed live seq=%d n_buffered=%d",
-					seq,
-					r.buf.Committed()/r.readbufsize,
-				)
-			}
-		}()
-
-		r.expected++
-	}
-
+func (r *BipBufferReader) walkBuffer(seq int) {
 	for {
 		b := r.buf.Head()
 		if b == nil {
