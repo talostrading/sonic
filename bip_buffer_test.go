@@ -142,11 +142,13 @@ func TestBipBufferClaimAfterWrapping(t *testing.T) {
 		b[2] = 218
 		b[3] = 56
 	}
-	b := buf.Commit(4)
-	if !bytes.Equal(b, []byte{7, 22, 218, 56}) {
-		t.Fatal("wrong committed")
+	{
+		b := buf.Commit(4)
+		if !bytes.Equal(b, []byte{7, 22, 218, 56}) {
+			t.Fatal("wrong committed")
+		}
+		buf.Consume(2)
 	}
-	buf.Consume(2)
 	{
 		b := buf.Claim(4)
 		if len(b) != 2 {
@@ -154,22 +156,44 @@ func TestBipBufferClaimAfterWrapping(t *testing.T) {
 		}
 		b[0] = 49
 		b[1] = 81
+
+		if buf.Wrapped() {
+			t.Fatal("should not yet report wrapped, need to commit first")
+		}
 	}
-	b = buf.Commit(2)
-	if !bytes.Equal(b, []byte{49, 81}) {
-		t.Fatal("wrong committed")
+	{
+		b := buf.Commit(2)
+		if !bytes.Equal(b, []byte{49, 81}) {
+			t.Fatal("wrong committed")
+		}
+
+		if !buf.Wrapped() {
+			t.Fatal("should report as wrapped")
+		}
 	}
 	{
 		b := buf.Head()
 		if !bytes.Equal(b, []byte{218, 56}) {
 			t.Fatal("wrong data")
 		}
+		buf.Consume(2)
+
+		if buf.Wrapped() {
+			t.Fatal("should not report wrapped")
+		}
 	}
-	buf.Consume(2)
 	{
 		b := buf.Head()
 		if !bytes.Equal(b, []byte{49, 81}) {
 			t.Fatal("wrong data")
+		}
+
+		buf.Consume(2)
+		if buf.Head() != nil {
+			t.Fatal("should be empty")
+		}
+		if buf.Wrapped() {
+			t.Fatal("empty buffer cannot be wrapped")
 		}
 	}
 }
