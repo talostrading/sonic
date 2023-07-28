@@ -53,7 +53,7 @@ func (buf *BipBuffer) Reset() {
 	buf.claimTail = 0
 }
 
-func (buf *BipBuffer) wrapped() bool {
+func (buf *BipBuffer) Wrapped() bool {
 	return buf.wrappedTail-buf.wrappedHead > 0
 }
 
@@ -63,7 +63,7 @@ func (buf *BipBuffer) Claim(n int) []byte {
 		claimHead int
 		freeSpace int
 	)
-	if buf.wrapped() {
+	if buf.Wrapped() {
 		claimHead = buf.wrappedTail
 		freeSpace = buf.head - buf.wrappedTail
 	} else {
