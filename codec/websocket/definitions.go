@@ -108,6 +108,20 @@ type AsyncMessageHandler = func(err error, n int, mt MessageType)
 type AsyncFrameHandler = func(err error, f *Frame)
 type ControlCallback = func(mt MessageType, payload []byte)
 
+type Header struct {
+	Key       string
+	Value     string
+	Canonical bool
+}
+
+func ExtraHeader(key string, value string, canonical bool) Header {
+	return Header{
+		Key:       key,
+		Value:     value,
+		Canonical: canonical,
+	}
+}
+
 // Stream is an interface for representing a stateful WebSocket connection
 // on the server or client side.
 //
@@ -250,7 +264,7 @@ type Stream interface {
 	// The call blocks until one of the following conditions is true:
 	//	- the request is sent and the response is received
 	//	- an error occurs
-	Handshake(addr string) error
+	Handshake(addr string, extraHeaders ...Header) error
 
 	// AsyncHandshake performs the WebSocket handshake asynchronously in the client role.
 	//
@@ -260,7 +274,7 @@ type Stream interface {
 	// Regardless of  whether the asynchronous operation completes immediately or not,
 	// the handler will not be invoked from within this function. Invocation of the handler
 	// will be performed in a manner equivalent to using sonic.Post(...).
-	AsyncHandshake(addr string, cb func(error))
+	AsyncHandshake(addr string, cb func(error), extraHeaders ...Header)
 
 	// Accept performs the handshake in the server role.
 	//

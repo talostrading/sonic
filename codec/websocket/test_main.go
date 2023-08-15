@@ -17,6 +17,8 @@ type MockServer struct {
 	ln     net.Listener
 	conn   net.Conn
 	closed int32
+
+	Upgrade *http.Request
 }
 
 func (s *MockServer) Accept(addr string) (err error) {
@@ -38,13 +40,13 @@ func (s *MockServer) Accept(addr string) (err error) {
 	}
 	b = b[:n]
 
-	req, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(b)))
+	s.Upgrade, err = http.ReadRequest(bufio.NewReader(bytes.NewBuffer(b)))
 	if err != nil {
 		return err
 	}
 
-	if !IsUpgradeReq(req) {
-		reqb, err := httputil.DumpRequest(req, true)
+	if !IsUpgradeReq(s.Upgrade) {
+		reqb, err := httputil.DumpRequest(s.Upgrade, true)
 		if err == nil {
 			err = fmt.Errorf("request is not websocket upgrade: %s", string(reqb))
 		}
@@ -55,7 +57,7 @@ func (s *MockServer) Accept(addr string) (err error) {
 	res.Write([]byte("HTTP/1.1 101 Switching Protocols\r\n"))
 	res.Write([]byte("Upgrade: websocket\r\n"))
 	res.Write([]byte("Connection: Upgrade\r\n"))
-	res.Write([]byte(fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n", MakeResponseKey([]byte(req.Header.Get("Sec-WebSocket-Key"))))))
+	res.Write([]byte(fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n", MakeResponseKey([]byte(s.Upgrade.Header.Get("Sec-WebSocket-Key"))))))
 	res.Write([]byte("\r\n"))
 
 	_, err = res.WriteTo(s.conn)
