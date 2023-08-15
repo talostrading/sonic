@@ -109,16 +109,16 @@ type AsyncFrameHandler = func(err error, f *Frame)
 type ControlCallback = func(mt MessageType, payload []byte)
 
 type Header struct {
-	Key       string
-	Value     string
-	Canonical bool
+	Key          string
+	Values       []string
+	CanonicalKey bool
 }
 
-func ExtraHeader(key string, value string, canonical bool) Header {
+func ExtraHeader(canonicalKey bool, key string, values ...string) Header {
 	return Header{
-		Key:       key,
-		Value:     value,
-		Canonical: canonical,
+		Key:          key,
+		Values:       values,
+		CanonicalKey: canonicalKey,
 	}
 }
 

@@ -215,6 +215,17 @@ func TestClientSuccessfulHandshakeWithExtraHeaders(t *testing.T) {
 
 	assertState(t, ws, StateHandshake)
 
+	// Keys are automatically canonicalized by Go's protocol implementation -
+	// hence we don't care about their casing here.
+	expected := map[string][]string{
+		"k1": {"v1"},
+		"k2": {"v21", "v22"},
+		"k3": {"v31", "v32"},
+		"k4": {"v4"},
+		"k5": {"v51", "v52"},
+		"k6": {"v61", "v62"},
+	}
+
 	ws.AsyncHandshake(
 		"ws://localhost:8080",
 		func(err error) {
@@ -224,19 +235,28 @@ func TestClientSuccessfulHandshakeWithExtraHeaders(t *testing.T) {
 				assertState(t, ws, StateActive)
 			}
 		},
-		ExtraHeader("key1-asdf", "value1", true),
-		ExtraHeader("key2-asdf", "value2", false),
+		ExtraHeader(true, "k1", "v1"),
+		ExtraHeader(true, "k2", "v21", "v22"),
+		ExtraHeader(true, "k3", "v31"), ExtraHeader(true, "k3", "v32"),
+		ExtraHeader(false, "k4", "v4"),
+		ExtraHeader(false, "k5", "v51", "v52"),
+		ExtraHeader(false, "k6", "v61"), ExtraHeader(false, "k6", "v62"),
 	)
 
 	for !srv.IsClosed() {
 		ioc.RunOne()
 	}
 
-	if srv.Upgrade.Header.Get("key1-asdf") != "value1" {
-		t.Fatal("invalid extra header")
-	}
-	if srv.Upgrade.Header.Get("key2-asdf") != "value2" {
-		t.Fatal("invalid extra header")
+	for key := range expected {
+		given := srv.Upgrade.Header.Values(key)
+		if len(given) != len(expected[key]) {
+			t.Fatal("wrong extra header")
+		}
+		for i := 0; i < len(given); i++ {
+			if given[i] != expected[key][i] {
+				t.Fatal("wrong extra header")
+			}
+		}
 	}
 }
 
