@@ -19,7 +19,7 @@ type FrameCodec struct {
 	dst *sonic.ByteBuffer // buffer we encode to
 
 	decodeFrame *Frame // frame we decode into
-	decodeBytes int    // the number of bytes of the last successfully decoded frame
+	decodeBytes int    // number of bytes of the last successfully decoded frame
 	decodeReset bool   // true if we must reset the state on the next decode
 }
 

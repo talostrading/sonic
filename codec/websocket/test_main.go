@@ -48,17 +48,23 @@ func (s *MockServer) Accept(addr string) (err error) {
 	if !IsUpgradeReq(s.Upgrade) {
 		reqb, err := httputil.DumpRequest(s.Upgrade, true)
 		if err == nil {
-			err = fmt.Errorf("request is not websocket upgrade: %s", string(reqb))
+			err = fmt.Errorf(
+				"request is not websocket upgrade: %s",
+				string(reqb),
+			)
 		}
 		return err
 	}
 
 	res := bytes.NewBuffer(nil)
-	res.Write([]byte("HTTP/1.1 101 Switching Protocols\r\n"))
-	res.Write([]byte("Upgrade: websocket\r\n"))
-	res.Write([]byte("Connection: Upgrade\r\n"))
-	res.Write([]byte(fmt.Sprintf("Sec-WebSocket-Accept: %s\r\n", MakeResponseKey([]byte(s.Upgrade.Header.Get("Sec-WebSocket-Key"))))))
-	res.Write([]byte("\r\n"))
+	fmt.Fprintf(res, "HTTP/1.1 101 Switching Protocols\r\n")
+	fmt.Fprintf(res, "Upgrade: websocket\r\n")
+	fmt.Fprintf(res, "Connection: Upgrade\r\n")
+	fmt.Fprintf(res,
+		"Sec-WebSocket-Accept: %s\r\n",
+		MakeResponseKey([]byte(s.Upgrade.Header.Get("Sec-WebSocket-Key"))),
+	)
+	fmt.Fprintf(res, "\r\n")
 
 	_, err = res.WriteTo(s.conn)
 	return err

@@ -125,17 +125,19 @@ func ExtraHeader(key string, value string, canonical bool) Header {
 // Stream is an interface for representing a stateful WebSocket connection
 // on the server or client side.
 //
-// The interface uses the layered stream model. A WebSocket stream object contains
-// another stream object, called the "next layer", which it uses to perform IO.
+// The interface uses the layered stream model. A WebSocket stream object
+// contains another stream object, called the "next layer", which it uses to
+// perform IO.
 //
-// Implementations handle the replies to control frames. Before closing the stream,
-// it is important to call Flush or AsyncFlush in order to write any pending
-// control frame replies to the underlying stream.
+// Implementations handle the replies to control frames. Before closing the
+// stream, it is important to call Flush or AsyncFlush in order to write any
+// pending control frame replies to the underlying stream.
 type Stream interface {
 	// NextLayer returns the underlying stream object.
 	//
-	// The returned object is constructed by the Stream and maintained throughout its
-	// entire lifetime. All reads and writes will go through the next layer.
+	// The returned object is constructed by the Stream and maintained
+	// throughout its entire lifetime. All reads and writes will go through the
+	// next layer.
 	NextLayer() sonic.Stream
 
 	// SupportsDeflate returns true if Deflate compression is supported.
@@ -149,53 +151,66 @@ type Stream interface {
 	// should be able to turn it on when instantiating the Stream.
 	SupportsUTF8() bool
 
-	// NextMessage reads the payload of the next message into the supplied buffer.
-	// Message fragmentation is automatically handled by the implementation.
+	// NextMessage reads the payload of the next message into the supplied
+	// buffer. Message fragmentation is automatically handled by the
+	// implementation.
 	//
-	// This call first flushes any pending control frames to the underlying stream.
+	// This call first flushes any pending control frames to the underlying
+	// stream.
 	//
 	// This call blocks until one of the following conditions is true:
 	//  - an error occurs while flushing the pending operations
-	//  - an error occurs when reading/decoding the message bytes from the underlying stream
-	//  - the payload of the message is successfully read into the supplied buffer
+	//  - an error occurs when reading/decoding the message bytes from the
+	//    underlying stream
+	//  - the payload of the message is successfully read into the supplied
+	//    buffer
 	NextMessage([]byte) (mt MessageType, n int, err error)
 
 	// NextFrame reads and returns the next frame.
 	//
-	// This call first flushes any pending control frames to the underlying stream.
+	// This call first flushes any pending control frames to the underlying
+	// stream.
 	//
 	// This call blocks until one of the following conditions is true:
 	//  - an error occurs while flushing the pending operations
-	//  - an error occurs when reading/decoding the message bytes from the underlying stream
+	//  - an error occurs when reading/decoding the message bytes from the
+	//    underlying stream
 	//  - a frame is successfully read from the underlying stream
 	NextFrame() (*Frame, error)
 
-	// AsyncNextMessage reads the payload of the next message into the supplied buffer
-	// asynchronously. Message fragmentation is automatically handled by the implementation.
+	// AsyncNextMessage reads the payload of the next message into the supplied
+	// buffer asynchronously. Message fragmentation is automatically handled by
+	// the implementation.
 	//
-	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	// This call first flushes any pending control frames to the underlying
+	// stream asynchronously.
 	//
-	// This call does not block. The provided completion handler is invoked when one of the
-	// following happens:
+	// This call does not block. The provided completion handler is invoked when
+	// one of the following happens:
 	//  - an error occurs while flushing the pending operations
-	//  - an error occurs when reading/decoding the message bytes from the underlying stream
-	//  - the payload of the message is successfully read into the supplied buffer
+	//  - an error occurs when reading/decoding the message bytes from the
+	//    underlying stream
+	//  - the payload of the message is successfully read into the supplied
+	//    buffer
 	AsyncNextMessage([]byte, AsyncMessageHandler)
 
 	// AsyncNextFrame reads and returns the next frame asynchronously.
 	//
-	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	// This call first flushes any pending control frames to the underlying
+	// stream asynchronously.
 	//
-	// This call does not block. The provided completion handler is invoked when one of the
-	// following happens:
+	// This call does not block. The provided completion handler is invoked when
+	// one of the following happens:
 	//  - an error occurs while flushing the pending operations
-	//  - an error occurs when reading/decoding the message bytes from the underlying stream
+	//  - an error occurs when reading/decoding the message bytes from the
+	//    underlying stream
 	//  - a frame is successfully read from the underlying stream
 	AsyncNextFrame(AsyncFrameHandler)
 
 	// WriteFrame writes the supplied frame to the underlying stream.
 	//
-	// This call first flushes any pending control frames to the underlying stream.
+	// This call first flushes any pending control frames to the underlying
+	// stream.
 	//
 	// This call blocks until one of the following conditions is true:
 	//  - an error occurs while flushing the pending operations
@@ -203,12 +218,14 @@ type Stream interface {
 	//  - the frame is successfully written to the underlying stream
 	WriteFrame(fr *Frame) error
 
-	// AsyncWriteFrame writes the supplied frame to the underlying stream asynchronously.
+	// AsyncWriteFrame writes the supplied frame to the underlying stream
+	// asynchronously.
 	//
-	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	// This call first flushes any pending control frames to the underlying
+	// stream asynchronously.
 	//
-	// This call does not block. The provided completion handler is invoked when one of the
-	// following happens:
+	// This call does not block. The provided completion handler is invoked when
+	// one of the following happens:
 	//  - an error occurs while flushing the pending operations
 	//  - an error occurs during the write
 	//  - the frame is successfully written to the underlying stream
@@ -217,30 +234,32 @@ type Stream interface {
 	// Write writes the supplied buffer as a single message with the given type
 	// to the underlying stream.
 	//
-	// This call first flushes any pending control frames to the underlying stream.
+	// This call first flushes any pending control frames to the underlying
+	// stream.
 	//
 	// This call blocks until one of the following conditions is true:
 	//  - an error occurs while flushing the pending operations
 	//  - an error occurs during the write
 	//  - the message is successfully written to the underlying stream
 	//
-	// The message will be written as a single frame. Fragmentation should be handled
-	// by the caller through multiple calls to AsyncWriteFrame.
+	// The message will be written as a single frame. Fragmentation should be
+	// handled by the caller through multiple calls to AsyncWriteFrame.
 	Write(b []byte, mt MessageType) error
 
-	// AsyncWrite writes the supplied buffer as a single message with the given type
-	// to the underlying stream asynchronously.
+	// AsyncWrite writes the supplied buffer as a single message with the given
+	// type to the underlying stream asynchronously.
 	//
-	// This call first flushes any pending control frames to the underlying stream asynchronously.
+	// This call first flushes any pending control frames to the underlying
+	// stream asynchronously.
 	//
-	// This call does not block. The provided completion handler is invoked when one of the
-	// following happens:
+	// This call does not block. The provided completion handler is invoked when
+	// one of the following happens:
 	//  - an error occurs while flushing the pending operations
 	//  - an error occurs during the write
 	//  - the message is successfully written to the underlying stream
 	//
-	// The message will be written as a single frame. Fragmentation should be handled
-	// by the caller through multiple calls to AsyncWriteFrame.
+	// The message will be written as a single frame. Fragmentation should be
+	// handled by the caller through multiple calls to AsyncWriteFrame.
 	AsyncWrite(b []byte, mt MessageType, cb func(err error))
 
 	// Flush writes any pending control frames to the underlying stream.
@@ -248,7 +267,8 @@ type Stream interface {
 	// This call blocks.
 	Flush() error
 
-	// Flush writes any pending control frames to the underlying stream asynchronously.
+	// Flush writes any pending control frames to the underlying stream
+	// asynchronously.
 	//
 	// This call does not block.
 	AsyncFlush(cb func(err error))
@@ -266,14 +286,16 @@ type Stream interface {
 	//	- an error occurs
 	Handshake(addr string, extraHeaders ...Header) error
 
-	// AsyncHandshake performs the WebSocket handshake asynchronously in the client role.
+	// AsyncHandshake performs the WebSocket handshake asynchronously in the
+	// client role.
 	//
-	// This call does not block. The provided completion handler is called when the request is
-	// sent and the response is received or when an error occurs.
+	// This call does not block. The provided completion handler is called when
+	// the request is sent and the response is received or when an error occurs.
 	//
-	// Regardless of  whether the asynchronous operation completes immediately or not,
-	// the handler will not be invoked from within this function. Invocation of the handler
-	// will be performed in a manner equivalent to using sonic.Post(...).
+	// Regardless of  whether the asynchronous operation completes immediately
+	// or not, the handler will not be invoked from within this function.
+	// Invocation of the handler will be performed in a manner equivalent to
+	// using sonic.Post(...).
 	AsyncHandshake(addr string, cb func(error), extraHeaders ...Header)
 
 	// Accept performs the handshake in the server role.
@@ -285,55 +307,58 @@ type Stream interface {
 
 	// AsyncAccept performs the handshake asynchronously in the server role.
 	//
-	// This call does not block. The provided completion handler is called when the request is
-	// send and the response is received or when an error occurs.
+	// This call does not block. The provided completion handler is called when
+	// the request is send and the response is received or when an error occurs.
 	//
-	// Regardless of  whether the asynchronous operation completes immediately or not,
-	// the handler will not be invoked from within this function. Invocation of the handler
-	// will be performed in a manner equivalent to using sonic.Post(...).
+	// Regardless of  whether the asynchronous operation completes immediately
+	// or not, the handler will not be invoked from within this function.
+	// Invocation of the handler will be performed in a manner equivalent to
+	// using sonic.Post(...).
 	AsyncAccept(func(error))
 
 	// AsyncClose sends a websocket close control frame asynchronously.
 	//
-	// This function is used to send a close frame which begins the WebSocket closing handshake.
-	// The session ends when both ends of the connection have sent and received a close frame.
+	// This function is used to send a close frame which begins the WebSocket
+	// closing handshake. The session ends when both ends of the connection
+	// have sent and received a close frame.
 	//
 	// The handler is called if one of the following conditions is true:
 	//	- the close frame is written
 	//	- an error occurs
 	//
-	// After beginning the closing handshake, the program should not write further message data,
-	// pings, or pongs. Instead, the program should continue reading message data until
-	// an error occurs.
+	// After beginning the closing handshake, the program should not write
+	// further message data, pings, or pongs. Instead, the program should
+	// continue reading message data until an error occurs.
 	AsyncClose(cc CloseCode, reason string, cb func(err error))
 
 	// Close sends a websocket close control frame asynchronously.
 	//
-	// This function is used to send a close frame which begins the WebSocket closing handshake.
-	// The session ends when both ends of the connection have sent and received a close frame.
+	// This function is used to send a close frame which begins the WebSocket
+	// closing handshake. The session ends when both ends of the connection
+	// have sent and received a close frame.
 	//
 	// The call blocks until one of the following conditions is true:
 	//	- the close frame is written
 	//	- an error occurs
 	//
-	// After beginning the closing handshake, the program should not write further message data,
-	// pings, or pongs. Instead, the program should continue reading message data until
-	// an error occurs.
+	// After beginning the closing handshake, the program should not write
+	// further message data, pings, or pongs. Instead, the program should
+	// continue reading message data until an error occurs.
 	Close(cc CloseCode, reason string) error
 
-	// SetControlCallback sets a function that will be invoked when a Ping/Pong/Close is received
-	// while reading a message. This callback is not invoked when AsyncNextFrame or NextFrame
-	// are called.
+	// SetControlCallback sets a function that will be invoked when a
+	// Ping/Pong/Close is received while reading a message. This callback is
+	// not invoked when AsyncNextFrame or NextFrame are called.
 	//
-	// The caller must not perform any operations on the stream in the provided callback.
+	// The caller must not perform any operations on the stream in the provided
+	// callback.
 	SetControlCallback(ControlCallback)
 
 	// ControlCallback returns the control callback set with SetControlCallback.
 	ControlCallback() ControlCallback
 
-	// SetMaxMessageSize sets the maximum size of a message that can be read from
-	// or written to a peer.
-	//
+	// SetMaxMessageSize sets the maximum size of a message that can be read
+	// from or written to a peer.
 	//  - If a message exceeds the limit while reading, the connection is
 	//    closed abnormally.
 	//  - If a message exceeds the limit while writing, the operation is
