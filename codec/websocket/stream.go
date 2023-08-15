@@ -123,7 +123,8 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewBlockingCodecConn[*Frame, *Frame](stream, codec, s.src, s.dst)
+	s.cs, err = sonic.NewBlockingCodecConn[*Frame, *Frame](
+		stream, codec, s.src, s.dst)
 	return
 }
 
@@ -227,7 +228,9 @@ func (s *WebsocketStream) asyncNextFrame(cb AsyncFrameHandler) {
 	})
 }
 
-func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, err error) {
+func (s *WebsocketStream) NextMessage(
+	b []byte,
+) (mt MessageType, readBytes int, err error) {
 	var (
 		f            *Frame
 		continuation = false
@@ -316,7 +319,11 @@ func (s *WebsocketStream) asyncNextMessage(
 
 				if readBytes > MaxMessageSize || n != f.PayloadLen() {
 					err = ErrMessageTooBig
-					s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
+					s.AsyncClose(
+						CloseGoingAway,
+						"payload too big",
+						func(err error) {},
+					)
 					cb(err, readBytes, mt)
 					return
 				}
@@ -460,7 +467,11 @@ func (s *WebsocketStream) WriteFrame(f *Frame) error {
 	}
 }
 
-func (s *WebsocketStream) AsyncWrite(b []byte, mt MessageType, cb func(err error)) {
+func (s *WebsocketStream) AsyncWrite(
+	b []byte,
+	mt MessageType,
+	cb func(err error),
+) {
 	if len(b) > MaxMessageSize {
 		cb(ErrMessageTooBig)
 		return
@@ -504,7 +515,11 @@ func (s *WebsocketStream) prepareWrite(f *Frame) {
 	s.pending = append(s.pending, f)
 }
 
-func (s *WebsocketStream) AsyncClose(cc CloseCode, reason string, cb func(err error)) {
+func (s *WebsocketStream) AsyncClose(
+	cc CloseCode,
+	reason string,
+	cb func(err error),
+) {
 	switch s.state {
 	case StateActive:
 		s.state = StateClosedByUs
@@ -699,13 +714,16 @@ func (s *WebsocketStream) dial(
 		if err == nil {
 			sc = s.conn.(syscall.Conn)
 		} else {
-			// This is needed otherwise the net.Conn interface will be pointing to a nil pointer. Calling
-			// something like CloseNextLayer will produce a panic then.
+			// This is needed otherwise the net.Conn interface will be pointing
+			// to a nil pointer. Calling something like CloseNextLayer will
+			// produce a panic then.
 			s.conn = nil
 		}
 	case "https":
 		if s.tls == nil {
-			err = fmt.Errorf("wss:// scheme endpoints require a TLS configuration")
+			err = fmt.Errorf(
+				"wss:// scheme endpoints require a TLS configuration",
+			)
 		}
 
 		if err == nil {
@@ -717,8 +735,9 @@ func (s *WebsocketStream) dial(
 			if err == nil {
 				sc = s.conn.(*tls.Conn).NetConn().(syscall.Conn)
 			} else {
-				// This is needed otherwise the net.Conn interface will be pointing to a nil pointer. Calling
-				// something like CloseNextLayer will produce a panic then.
+				// This is needed otherwise the net.Conn interface will be
+				// pointing to a nil pointer. Calling something like
+				// CloseNextLayer will produce a panic then.
 				s.conn = nil
 			}
 		}
@@ -808,8 +827,8 @@ func (s *WebsocketStream) upgrade(
 	return nil
 }
 
-// makeHandshakeKey generates the key of Sec-WebSocket-Key header as well as the expected
-// response present in Sec-WebSocket-Accept header.
+// makeHandshakeKey generates the key of Sec-WebSocket-Key header as well as the
+// expected response present in Sec-WebSocket-Accept header.
 func (s *WebsocketStream) makeHandshakeKey() (req, res string) {
 	// request
 	b := make([]byte, 16)
