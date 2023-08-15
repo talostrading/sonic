@@ -774,12 +774,14 @@ func (s *WebsocketStream) upgrade(
 	req.Header.Set("Sec-Websocket-Version", "13")
 
 	for _, header := range headers {
-		if header.Canonical {
-			req.Header.Set(header.Key, header.Value)
+		if header.CanonicalKey {
+			for _, value := range header.Values {
+				req.Header.Add(header.Key, value)
+			}
 		} else {
 			req.Header[header.Key] = append(
 				req.Header[header.Key],
-				header.Value,
+				header.Values...,
 			)
 		}
 	}
