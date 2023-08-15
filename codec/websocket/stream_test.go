@@ -192,6 +192,54 @@ func TestClientSuccessfulHandshake(t *testing.T) {
 	}
 }
 
+func TestClientSuccessfulHandshakeWithExtraHeaders(t *testing.T) {
+	srv := &MockServer{}
+
+	go func() {
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertState(t, ws, StateHandshake)
+
+	ws.AsyncHandshake(
+		"ws://localhost:8080",
+		func(err error) {
+			if err != nil {
+				assertState(t, ws, StateTerminated)
+			} else {
+				assertState(t, ws, StateActive)
+			}
+		},
+		ExtraHeader("key1-asdf", "value1", true),
+		ExtraHeader("key2-asdf", "value2", false),
+	)
+
+	for !srv.IsClosed() {
+		ioc.RunOne()
+	}
+
+	if srv.Upgrade.Header.Get("key1-asdf") != "value1" {
+		t.Fatal("invalid extra header")
+	}
+	if srv.Upgrade.Header.Get("key2-asdf") != "value2" {
+		t.Fatal("invalid extra header")
+	}
+}
+
 func TestClientReadUnfragmentedMessage(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()

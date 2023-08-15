@@ -584,7 +584,10 @@ func (s *WebsocketStream) State() StreamState {
 	return s.state
 }
 
-func (s *WebsocketStream) Handshake(addr string) (err error) {
+func (s *WebsocketStream) Handshake(
+	addr string,
+	extraHeaders ...Header,
+) (err error) {
 	if s.role != RoleClient {
 		return ErrWrongHandshakeRole
 	}
@@ -594,7 +597,7 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 	var stream sonic.Stream
 
 	done := make(chan struct{}, 1)
-	s.handshake(addr, func(rerr error, rstream sonic.Stream) {
+	s.handshake(addr, extraHeaders, func(rerr error, rstream sonic.Stream) {
 		err = rerr
 		stream = rstream
 		done <- struct{}{}
@@ -611,7 +614,11 @@ func (s *WebsocketStream) Handshake(addr string) (err error) {
 	return
 }
 
-func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
+func (s *WebsocketStream) AsyncHandshake(
+	addr string,
+	cb func(error),
+	extraHeaders ...Header,
+) {
 	if s.role != RoleClient {
 		cb(ErrWrongHandshakeRole)
 		return
@@ -622,7 +629,7 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 	// I know, this is horrible, but if you help me write a TLS client for sonic
 	// we can asynchronously dial endpoints and remove the need for a goroutine
 	go func() {
-		s.handshake(addr, func(err error, stream sonic.Stream) {
+		s.handshake(addr, extraHeaders, func(err error, stream sonic.Stream) {
 			// TODO maybe report this error somehow although this is very fatal
 			_ = s.ioc.Post(func() {
 				if err != nil {
@@ -639,6 +646,7 @@ func (s *WebsocketStream) AsyncHandshake(addr string, cb func(error)) {
 
 func (s *WebsocketStream) handshake(
 	addr string,
+	headers []Header,
 	cb func(err error, stream sonic.Stream),
 ) {
 	url, err := s.resolve(addr)
@@ -647,7 +655,7 @@ func (s *WebsocketStream) handshake(
 	} else {
 		s.dial(url, func(err error, stream sonic.Stream) {
 			if err == nil {
-				err = s.upgrade(url, stream)
+				err = s.upgrade(url, stream, headers)
 			}
 			cb(err, stream)
 		})
@@ -730,7 +738,11 @@ func (s *WebsocketStream) dial(
 	}
 }
 
-func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.Stream) error {
+func (s *WebsocketStream) upgrade(
+	uri *url.URL,
+	stream sonic.Stream,
+	headers []Header,
+) error {
 	req, err := http.NewRequest("GET", uri.String(), nil)
 	if err != nil {
 		return err
@@ -741,6 +753,17 @@ func (s *WebsocketStream) upgrade(uri *url.URL, stream sonic.Stream) error {
 	req.Header.Set("Connection", "upgrade")
 	req.Header.Set("Sec-WebSocket-Key", string(sentKey))
 	req.Header.Set("Sec-Websocket-Version", "13")
+
+	for _, header := range headers {
+		if header.Canonical {
+			req.Header.Set(header.Key, header.Value)
+		} else {
+			req.Header[header.Key] = append(
+				req.Header[header.Key],
+				header.Value,
+			)
+		}
+	}
 
 	err = req.Write(stream)
 	if err != nil {
