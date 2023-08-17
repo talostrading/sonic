@@ -775,10 +775,12 @@ func (s *WebsocketStream) upgrade(
 
 	for _, header := range headers {
 		if header.CanonicalKey {
+			req.Header.Del(header.Key)
 			for _, value := range header.Values {
 				req.Header.Add(header.Key, value)
 			}
 		} else {
+			delete(req.Header, header.Key)
 			req.Header[header.Key] = append(
 				req.Header[header.Key],
 				header.Values...,
