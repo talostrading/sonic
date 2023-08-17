@@ -554,8 +554,13 @@ func (p *UDPPeer) unblockIPv4(multicastIP, sourceIP netip.Addr) (err error) {
 func (p *UDPPeer) unblockIPv6(multicastIP, sourceIP netip.Addr) (err error) {
 	panic("IPv6 multicast peer not yet supported")
 }
+
 func (p *UDPPeer) Read(b []byte) (int, netip.AddrPort, error) {
 	return p.socket.RecvFrom(b, 0)
+}
+
+func (p *UDPPeer) SetAsyncReadBuffer(to []byte) {
+	p.read.b = to
 }
 
 func (p *UDPPeer) AsyncRead(b []byte, fn func(error, int, netip.AddrPort)) {

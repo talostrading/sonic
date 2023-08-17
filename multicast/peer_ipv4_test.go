@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"net/netip"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1971,6 +1972,127 @@ func TestUDPPeerIPv4_ReaderWriter(t *testing.T) {
 			t.Fatal("did not receive in order")
 		} else {
 			last = recv
+		}
+	}
+}
+
+func TestUDPPeerIPv4_MultipleReadersSameBuffer(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	var (
+		ips   = []string{"224.0.0.19", "224.0.0.20"}
+		ports = []int{1234, 4321}
+		addrs []netip.AddrPort
+	)
+	for i := 0; i < 2; i++ {
+		addr, err := netip.ParseAddrPort(
+			fmt.Sprintf("%s:%d", ips[i], ports[i]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		addrs = append(addrs, addr)
+	}
+
+	var (
+		chunk1, chunk2 [4]byte
+		b              []byte
+		parity         = 0
+		readers        []*UDPPeer
+
+		read []int
+	)
+
+	for i := 0; i < 2; i++ {
+		r, err := NewUDPPeer(ioc, "udp", addrs[i].String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Close()
+
+		if err := r.Join(IP(ips[i])); err != nil {
+			t.Fatalf("reader could not join %s", ips[i])
+		} else {
+			log.Printf("reader joined group %s", ips[i])
+		}
+
+		id := i
+
+		var fn func(error, int, netip.AddrPort)
+		fn = func(err error, _ int, _ netip.AddrPort) {
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			v := binary.BigEndian.Uint32(b)
+			log.Printf(
+				"reader %d read %d from %p",
+				id,
+				v,
+				b,
+			)
+			read = append(read, int(v))
+
+			parity++
+			if parity%2 == 0 {
+				b = chunk1[:]
+			} else {
+				b = chunk2[:]
+			}
+
+			for _, reader := range readers {
+				reader.SetAsyncReadBuffer(b)
+			}
+			r.AsyncRead(b, fn)
+		}
+		b = chunk1[:]
+		r.AsyncRead(b, fn)
+
+		readers = append(readers, r)
+	}
+
+	var writers []*UDPPeer
+	for i := 0; i < 2; i++ {
+		w, err := NewUDPPeer(ioc, "udp", "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer w.Close()
+
+		writers = append(writers, w)
+	}
+
+	var wb [4]byte
+	const Nops = 32
+
+	for i := 0; i < Nops; i++ {
+		time.Sleep(time.Millisecond)
+
+		ix := i % 2
+		binary.BigEndian.PutUint32(wb[:], uint32(i))
+
+		_, err := writers[ix].Write(wb[:], addrs[ix])
+		if err != nil && err != sonicerrors.ErrWouldBlock {
+			t.Fatalf("on the %d write err=%v", i, err)
+		}
+
+		for j := 0; j < Nops; j++ {
+			ioc.PollOne()
+		}
+	}
+	for j := 0; j < Nops; j++ {
+		ioc.PollOne()
+	}
+
+	// assert
+	sort.Ints(read)
+
+	if len(read) != Nops {
+		t.Fatal("did not read correctly")
+	}
+	for i := 0; i < Nops; i++ {
+		if read[i] != i {
+			t.Fatal("did not read correctly")
 		}
 	}
 }
