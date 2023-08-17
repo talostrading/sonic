@@ -220,10 +220,10 @@ func TestClientSuccessfulHandshakeWithExtraHeaders(t *testing.T) {
 	expected := map[string][]string{
 		"k1": {"v1"},
 		"k2": {"v21", "v22"},
-		"k3": {"v31", "v32"},
+		"k3": {"v32"},
 		"k4": {"v4"},
 		"k5": {"v51", "v52"},
-		"k6": {"v61", "v62"},
+		"k6": {"v62"},
 	}
 
 	ws.AsyncHandshake(
