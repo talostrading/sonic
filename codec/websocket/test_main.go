@@ -17,6 +17,7 @@ type MockServer struct {
 	ln     net.Listener
 	conn   net.Conn
 	closed int32
+	port   int32
 
 	Upgrade *http.Request
 }
@@ -26,6 +27,7 @@ func (s *MockServer) Accept(addr string) (err error) {
 	if err != nil {
 		return err
 	}
+	atomic.StoreInt32(&s.port, int32(s.ln.Addr().(*net.TCPAddr).Port))
 
 	conn, err := s.ln.Accept()
 	if err != nil {
@@ -112,6 +114,10 @@ func (s *MockServer) Close() {
 
 func (s *MockServer) IsClosed() bool {
 	return atomic.LoadInt32(&s.closed) == 1
+}
+
+func (s *MockServer) Port() int {
+	return int(atomic.LoadInt32(&s.port))
 }
 
 var _ sonic.Stream = &MockStream{}
