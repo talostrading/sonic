@@ -72,6 +72,10 @@ func TestMirroredBuffer1(t *testing.T) {
 	if !buf.Full() {
 		t.Fatal("buffer should be full")
 	}
+
+	if err := buf.Destroy(); err != nil {
+		t.Fatal("buffer should be destroyed")
+	}
 }
 
 func TestMirroredBuffer2(t *testing.T) {
@@ -105,4 +109,8 @@ func TestMirroredBuffer2(t *testing.T) {
 		b[i] = 42
 	}
 	buf.Commit(128)
+
+	if err := buf.Destroy(); err != nil {
+		t.Fatal("buffer should be destroyed")
+	}
 }
