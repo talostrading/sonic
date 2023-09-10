@@ -129,23 +129,27 @@ func (b *MirroredBuffer) Commit(n int) int {
 	}
 	b.used += n
 	b.tail += n
-	if (b.tail >= b.size) {
+	if b.tail >= b.size {
 		b.tail -= b.size
 	}
-	return n 
+	return n
 }
 
 func (b *MirroredBuffer) Consume(n int) int {
 	if used := b.UsedSpace(); n > used {
 		n = used
 	}
-	if (n == 0) {
+	if n == 0 {
 		return 0
 	}
 	b.used -= n
 	b.head += n
-	if (b.head >= b.size) {
+	if b.head >= b.size {
 		b.head -= b.size
 	}
 	return n
+}
+
+func (b *MirroredBuffer) Full() bool {
+	return b.used > 0 && b.head == b.tail
 }
