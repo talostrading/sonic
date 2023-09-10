@@ -1,11 +1,12 @@
 package sonic
 
 import (
+	"runtime"
 	"syscall"
 	"testing"
 )
 
-func TestMirroredBuffer(t *testing.T) {
+func TestMirroredBuffer1(t *testing.T) {
 	size := syscall.Getpagesize()
 
 	buf, err := NewMirroredBuffer(size)
@@ -50,7 +51,7 @@ func TestMirroredBuffer(t *testing.T) {
 	if buf.Commit(n) != n {
 		t.Fatal("wrong claim")
 	}
-	
+
 	if buf.head <= buf.tail {
 		t.Fatal("buffer should be wrapped")
 	}
@@ -71,4 +72,37 @@ func TestMirroredBuffer(t *testing.T) {
 	if !buf.Full() {
 		t.Fatal("buffer should be full")
 	}
+}
+
+func TestMirroredBuffer2(t *testing.T) {
+	size := syscall.Getpagesize()
+
+	buf, err := NewMirroredBuffer(size)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for k := 0; k < size/7*4; k++ {
+		runtime.GC()
+
+		buf.Claim(7)
+		buf.Commit(7)
+		buf.Consume(7)
+	}
+
+	var memstats runtime.MemStats
+	runtime.ReadMemStats(&memstats)
+	if memstats.NumGC != uint32(size/7*4) {
+		t.Fatal("did not GC")
+	}
+
+	if buf.UsedSpace() != 0 {
+		t.Fatal("buffer should be empty")
+	}
+
+	b := buf.Claim(128)
+	for i := 0; i < 128; i++ {
+		b[i] = 42
+	}
+	buf.Commit(128)
 }
