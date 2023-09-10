@@ -11,6 +11,8 @@ type MirroredBuffer struct {
 	size     int
 	head     int
 	tail     int
+
+	used int
 }
 
 func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
@@ -102,8 +104,23 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 	return b, nil
 }
 
-func (b *MirroredBuffer) Claim(n int) ([]byte, int) {
-	return nil, 0
+func (b *MirroredBuffer) FreeSpace() int {
+	return b.size - b.used
+}
+
+func (b *MirroredBuffer) UsedSpace() int {
+	return b.used
+}
+
+func (b *MirroredBuffer) Claim(n int) []byte {
+	free := b.FreeSpace()
+	if n > free {
+		n = free
+	}
+	if n == 0 {
+		return nil
+	}
+	return unsafe.Slice((*byte)(b.baseAddr), n)
 }
 
 func (b *MirroredBuffer) Commit() int {

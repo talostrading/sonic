@@ -6,8 +6,14 @@ import (
 )
 
 func TestMirroredBuffer(t *testing.T) {
-	_, err := NewMirroredBuffer(syscall.Getpagesize())
+	size := syscall.Getpagesize()
+	buf, err := NewMirroredBuffer(size)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	b := buf.Claim(size)
+	if b == nil {
+		t.Fatal("should claim")
 	}
 }
