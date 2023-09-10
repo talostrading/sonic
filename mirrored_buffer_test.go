@@ -1,9 +1,12 @@
 package sonic
 
 import (
+	"fmt"
 	"runtime"
 	"syscall"
 	"testing"
+
+	"github.com/talostrading/sonic/util"
 )
 
 func TestMirroredBuffer1(t *testing.T) {
@@ -113,4 +116,47 @@ func TestMirroredBuffer2(t *testing.T) {
 	if err := buf.Destroy(); err != nil {
 		t.Fatal("buffer should be destroyed")
 	}
+}
+
+func BenchmarkMirroredBuffer(b *testing.B) {
+	for n := 1; n <= 16; n++ {
+		n := n * syscall.Getpagesize()
+
+		b.Run(
+			fmt.Sprintf("byte_buffer_%s", util.ByteCountSI(int64(n))),
+			func(b *testing.B) {
+				buf := NewByteBuffer()
+				buf.Reserve(n)
+
+				letters := []byte("abcdefghijklmnopqrstuvwxyz")
+				for i := 0; i < b.N; i++ {
+					buf.Claim(func(b []byte) int {
+						return copy(b, letters[:])
+					})
+					buf.Commit(7)
+					buf.Consume(7)
+				}
+				b.ReportAllocs()
+			})
+
+		b.Run(
+			fmt.Sprintf("mirrored_buffer_%s", util.ByteCountSI(int64(n))),
+			func(b *testing.B) {
+				buf, err := NewMirroredBuffer(n)
+				if err != nil {
+					b.Fatal(err)
+				}
+
+				letters := []byte("abcdefghijklmnopqrstuvwxyz")
+				for i := 0; i < b.N; i++ {
+					b := buf.Claim(7)
+					copy(b, letters[:])
+					buf.Commit(7)
+					buf.Consume(7)
+				}
+				b.ReportAllocs()
+				buf.Destroy()
+			})
+	}
+
 }
