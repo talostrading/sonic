@@ -54,12 +54,13 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 	}
 
 	b.baseAddr = unsafe.Pointer(unsafe.SliceData(slice))
-	firstAddr := uintptr(b.baseAddr)
-	secondAddr := uintptr(b.baseAddr) + uintptr(size)
+	firstAddrPtr := uintptr(b.baseAddr)
+	secondAddr := unsafe.Add(b.baseAddr, size)
+	secondAddrPtr := uintptr(secondAddr)
 
 	addr, _, errno := syscall.Syscall6(
 		syscall.SYS_MMAP,
-		firstAddr,
+		firstAddrPtr,
 		uintptr(size),
 		uintptr(syscall.PROT_READ|syscall.PROT_WRITE),
 		uintptr(syscall.MAP_FIXED|syscall.MAP_PRIVATE),
@@ -73,13 +74,13 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	if addr != firstAddr {
+	if addr != firstAddrPtr {
 		return nil, fmt.Errorf("could not mmap first chunk")
 	}
 
 	addr, _, errno = syscall.Syscall6(
 		syscall.SYS_MMAP,
-		secondAddr,
+		secondAddrPtr,
 		uintptr(size),
 		uintptr(syscall.PROT_READ|syscall.PROT_WRITE),
 		uintptr(syscall.MAP_FIXED|syscall.MAP_PRIVATE),
@@ -93,7 +94,7 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 	if err != nil {
 		return nil, err
 	}
-	if addr != secondAddr {
+	if addr != secondAddrPtr {
 		return nil, fmt.Errorf("could not mmap second chunk")
 	}
 
