@@ -114,8 +114,7 @@ func (b *MirroredBuffer) UsedSpace() int {
 }
 
 func (b *MirroredBuffer) Claim(n int) []byte {
-	free := b.FreeSpace()
-	if n > free {
+	if free := b.FreeSpace(); n > free {
 		n = free
 	}
 	if n == 0 {
@@ -124,10 +123,29 @@ func (b *MirroredBuffer) Claim(n int) []byte {
 	return unsafe.Slice((*byte)(b.baseAddr), n)
 }
 
-func (b *MirroredBuffer) Commit() int {
-	return 0
+func (b *MirroredBuffer) Commit(n int) int {
+	if free := b.FreeSpace(); n > free {
+		n = free
+	}
+	b.used += n
+	b.tail += n
+	if (b.tail >= b.size) {
+		b.tail -= b.size
+	}
+	return n 
 }
 
-func (b *MirroredBuffer) Consume() int {
-	return 0
+func (b *MirroredBuffer) Consume(n int) int {
+	if used := b.UsedSpace(); n > used {
+		n = used
+	}
+	if (n == 0) {
+		return 0
+	}
+	b.used -= n
+	b.head += n
+	if (b.head >= b.size) {
+		b.head -= b.size
+	}
+	return n
 }
