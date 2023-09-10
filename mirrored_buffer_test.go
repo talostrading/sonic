@@ -119,7 +119,7 @@ func TestMirroredBuffer2(t *testing.T) {
 }
 
 func BenchmarkMirroredBuffer(b *testing.B) {
-	for n := 1; n <= 16; n++ {
+	for n := 1; n <= 16; n += 2 {
 		n := n * syscall.Getpagesize()
 
 		b.Run(
@@ -138,6 +138,10 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 				}
 				b.ReportAllocs()
 			})
+	}
+
+	for n := 1; n <= 16; n += 2 {
+		n := n * syscall.Getpagesize()
 
 		b.Run(
 			fmt.Sprintf("mirrored_buffer_%s", util.ByteCountSI(int64(n))),
