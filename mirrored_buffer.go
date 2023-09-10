@@ -7,6 +7,7 @@ import (
 )
 
 type MirroredBuffer struct {
+	slice    []byte
 	baseAddr unsafe.Pointer
 	size     int
 	head     int
@@ -42,7 +43,7 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 		return nil, fmt.Errorf("could not unlink %s err=%v", name, err)
 	}
 
-	slice, err := syscall.Mmap(
+	b.slice, err = syscall.Mmap(
 		-1,     // fd
 		0,      // offset
 		2*size, // size
@@ -53,7 +54,7 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 		return nil, err
 	}
 
-	b.baseAddr = unsafe.Pointer(unsafe.SliceData(slice))
+	b.baseAddr = unsafe.Pointer(unsafe.SliceData(b.slice))
 	firstAddrPtr := uintptr(b.baseAddr)
 	secondAddr := unsafe.Add(b.baseAddr, size)
 	secondAddrPtr := uintptr(secondAddr)
@@ -152,4 +153,8 @@ func (b *MirroredBuffer) Consume(n int) int {
 
 func (b *MirroredBuffer) Full() bool {
 	return b.used > 0 && b.head == b.tail
+}
+
+func (b *MirroredBuffer) Destroy() error {
+	return syscall.Munmap(b.slice)
 }
