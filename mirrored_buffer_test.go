@@ -54,4 +54,21 @@ func TestMirroredBuffer(t *testing.T) {
 	if buf.head <= buf.tail {
 		t.Fatal("buffer should be wrapped")
 	}
+
+	if buf.FreeSpace() != 1 {
+		t.Fatal("wrong free space")
+	}
+	if buf.Full() {
+		t.Fatal("buffer should not be full")
+	}
+
+	b = buf.Claim(1)
+	buf.Commit(1)
+
+	if buf.FreeSpace() != 0 || buf.UsedSpace() != size {
+		t.Fatal("wrong free/used space")
+	}
+	if !buf.Full() {
+		t.Fatal("buffer should be full")
+	}
 }
