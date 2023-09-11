@@ -119,9 +119,19 @@ func TestMirroredBuffer2(t *testing.T) {
 }
 
 func BenchmarkMirroredBuffer(b *testing.B) {
-	for n := 1; n <= 16; n += 2 {
-		n := n * syscall.Getpagesize()
+	var sizes []int
+	for i := 1; i <= 16; i += 4 {
+		sizes = append(sizes, syscall.Getpagesize()*i)
+	}
+	sizes = append(
+		sizes,
+		syscall.Getpagesize()*128,
+		syscall.Getpagesize()*256,
+		syscall.Getpagesize()*512,
+	)
 
+	for _, n := range sizes {
+		n := n
 		b.Run(
 			fmt.Sprintf("byte_buffer_%s", util.ByteCountSI(int64(n))),
 			func(b *testing.B) {
@@ -140,9 +150,8 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 			})
 	}
 
-	for n := 1; n <= 16; n += 2 {
-		n := n * syscall.Getpagesize()
-
+	for _, n := range sizes {
+		n := n
 		b.Run(
 			fmt.Sprintf("mirrored_buffer_%s", util.ByteCountSI(int64(n))),
 			func(b *testing.B) {
