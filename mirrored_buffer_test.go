@@ -12,7 +12,7 @@ import (
 func TestMirroredBuffer1(t *testing.T) {
 	size := syscall.Getpagesize()
 
-	buf, err := NewMirroredBuffer(size)
+	buf, err := NewMirroredBuffer(size, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestMirroredBuffer1(t *testing.T) {
 func TestMirroredBuffer2(t *testing.T) {
 	size := syscall.Getpagesize()
 
-	buf, err := NewMirroredBuffer(size)
+	buf, err := NewMirroredBuffer(size, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 		b.Run(
 			fmt.Sprintf("mirrored_buffer_%s", util.ByteCountSI(int64(n))),
 			func(b *testing.B) {
-				buf, err := NewMirroredBuffer(n)
+				buf, err := NewMirroredBuffer(n, false)
 				if err != nil {
 					b.Fatal(err)
 				}

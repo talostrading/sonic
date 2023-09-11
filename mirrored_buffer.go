@@ -16,20 +16,63 @@ type MirroredBuffer struct {
 	used int
 }
 
-func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
-	b := &MirroredBuffer{
+func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
+	// TODO force size to be a multiple of pages size.
+
+	b = &MirroredBuffer{
 		baseAddr: unsafe.Pointer(nil),
 		size:     size,
 		head:     0,
 		tail:     0,
 	}
 
+	// Reserve 2 * size of the process' virtual memory space.
+	//
+	// This call is needed for its return value, which is a valid mapping
+	// address. We use this address with MAP_FIXED to mirror our desired buffer
+	// below.
+	//
+	// If prefault is true, this call also allocates. If prefault is false, no
+	// allocation occurs. Instead, we defer to lazy allocation of pages in RAM
+	// through on-demand paging.
+
+	// No file backing, implies -1 as fd.
+	flags := syscall.MAP_ANONYMOUS
+
+	// Modifications to the mapping are only visible to the current process, and
+	// are not carried through to the underlying file (which is inexistent,
+	// hence -1 as fd)
+	flags |= syscall.MAP_PRIVATE
+
+	if prefault {
+		// Prefault the mapping, thus forcing physical memory to back it up.
+		flags |= syscall.MAP_POPULATE
+	}
+
+	b.slice, err = syscall.Mmap(
+		-1,                // fd
+		0,                 // offset
+		2*size,            // size
+		syscall.PROT_NONE, // we can't do anything with this mapping.
+		flags,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Now create a shared memory handle. Truncate it to size. This won't
+	// allocate but merely set the size of the shared handle. We then map that
+	// handle into memory twice: once at offset 0 and once at offset size, both
+	// wrt the address of b.slice returned by mmap above.
 	name := "/dev/shm/mirrored_buffer"
 
+	// NOTE: open(/dev/shm) is equivalent to shm_open.
+	// TODO test this on a mac. kernel params: kern.sysv.shmmax/kern.sysv.shmall
+	// TODO escape hatch if /dev/shm is not present
 	fd, err := syscall.Open(
 		name,
-		syscall.O_CREAT|syscall.O_RDWR,
-		syscall.S_IRUSR|syscall.S_IWUSR,
+		syscall.O_CREAT|syscall.O_RDWR,  // file is readable/writeable
+		syscall.S_IRUSR|syscall.S_IWUSR, // user can read/write to this file
 	)
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s err=%v", name, err)
@@ -39,34 +82,38 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 		return nil, fmt.Errorf("could not truncate %s err=%v", name, err)
 	}
 
+	// Do not persist the file handle after this process exits.
 	if err := syscall.Unlink(name); err != nil {
 		return nil, fmt.Errorf("could not unlink %s err=%v", name, err)
 	}
 
-	b.slice, err = syscall.Mmap(
-		-1,     // fd
-		0,      // offset
-		2*size, // size
-		syscall.PROT_NONE,
-		syscall.MAP_ANONYMOUS|syscall.MAP_PRIVATE|syscall.MAP_POPULATE,
-	)
-	if err != nil {
-		return nil, err
-	}
-
+	// We now map the shared memory file twice at fixed addresses wrt the
+	// b.slice above.
 	b.baseAddr = unsafe.Pointer(unsafe.SliceData(b.slice))
 	firstAddrPtr := uintptr(b.baseAddr)
 	secondAddr := unsafe.Add(b.baseAddr, size)
 	secondAddrPtr := uintptr(secondAddr)
 
+	// Can read/write to this memory.
+	prot := syscall.PROT_READ | syscall.PROT_WRITE
+
+	// Force the mapping to start at addr.
+	flags = syscall.MAP_FIXED
+
+	// Do not allow sharing the mapping across processes. Do not carry the
+	// updates to the underlying file - this is already the case as we use
+	// /dev/shm which is a temporary file system (tmpfs) backed up by RAM.
+	flags |= syscall.MAP_PRIVATE //
+
+	// Make the first mapping: offset=0 length=size.
 	addr, _, errno := syscall.Syscall6(
 		syscall.SYS_MMAP,
-		firstAddrPtr,
-		uintptr(size),
-		uintptr(syscall.PROT_READ|syscall.PROT_WRITE),
-		uintptr(syscall.MAP_FIXED|syscall.MAP_PRIVATE),
-		uintptr(fd),
-		0,
+		firstAddrPtr,   // addr
+		uintptr(size),  // size
+		uintptr(prot),  // prot
+		uintptr(flags), // flags
+		uintptr(fd),    // fd
+		0,              // offset
 	)
 	err = nil
 	if errno != 0 {
@@ -79,14 +126,15 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 		return nil, fmt.Errorf("could not mmap first chunk")
 	}
 
+	// Make the second mapping of the same file at: offset=size length=size.
 	addr, _, errno = syscall.Syscall6(
 		syscall.SYS_MMAP,
 		secondAddrPtr,
-		uintptr(size),
-		uintptr(syscall.PROT_READ|syscall.PROT_WRITE),
-		uintptr(syscall.MAP_FIXED|syscall.MAP_PRIVATE),
-		uintptr(fd),
-		0,
+		uintptr(size),  // size
+		uintptr(prot),  // prot
+		uintptr(flags), // flags
+		uintptr(fd),    // fd
+		0,              // offset
 	)
 	err = nil
 	if errno != 0 {
@@ -99,6 +147,7 @@ func NewMirroredBuffer(size int) (*MirroredBuffer, error) {
 		return nil, fmt.Errorf("could not mmap second chunk")
 	}
 
+	// We can safely closed this file descriptor per mmap manual.
 	if err := syscall.Close(fd); err != nil {
 		return nil, err
 	}
