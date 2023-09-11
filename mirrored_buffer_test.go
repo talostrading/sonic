@@ -66,7 +66,7 @@ func TestMirroredBuffer1(t *testing.T) {
 		t.Fatal("buffer should not be full")
 	}
 
-	b = buf.Claim(1)
+	buf.Claim(1)
 	buf.Commit(1)
 
 	if buf.FreeSpace() != 0 || buf.UsedSpace() != size {
