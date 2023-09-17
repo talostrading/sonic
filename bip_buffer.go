@@ -33,14 +33,11 @@ func NewBipBuffer(n int) *BipBuffer {
 	return b
 }
 
-// Zero the bytes and Reset the buffer. This can be used initially to force the
-// OS to complete the virtual to physical memory mapping for the underlying
-// byte slice.
-func (buf *BipBuffer) Zero() {
+// Prefault the buffer, forcing physical memory allocation.
+func (buf *BipBuffer) Prefault() {
 	for i := range buf.data {
 		buf.data[i] = 0
 	}
-	buf.Reset()
 }
 
 // Reset the buffer. All committed state is lost.

@@ -40,7 +40,7 @@ func NewByteBufferReader(
 	}
 
 	r.b.Reserve(bufSize)
-	r.b.Zero()
+	r.b.Prefault()
 	log.Printf(
 		"created sonic byte_buffer size=%s",
 		util.ByteCountSI(int64(bufSize)),
