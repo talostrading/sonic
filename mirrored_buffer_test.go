@@ -2,6 +2,7 @@ package sonic
 
 import (
 	"fmt"
+	"log"
 	"runtime"
 	"syscall"
 	"testing"
@@ -81,7 +82,7 @@ func TestMirroredBuffer1(t *testing.T) {
 	}
 }
 
-func TestMirroredBuffer2(t *testing.T) {
+func TestMirroredBufferGC(t *testing.T) {
 	size := syscall.Getpagesize()
 
 	buf, err := NewMirroredBuffer(size, false)
@@ -115,6 +116,37 @@ func TestMirroredBuffer2(t *testing.T) {
 
 	if err := buf.Destroy(); err != nil {
 		t.Fatal("buffer should be destroyed")
+	}
+}
+
+func TestMirroredBufferMaxSize(t *testing.T) {
+	var (
+		pageSize = syscall.Getpagesize()
+		err      error
+		size     = pageSize
+		k        = 1
+		buf      *MirroredBuffer
+	)
+	for err == nil && k < 1024*512 {
+		buf, err = NewMirroredBuffer(size*k, false)
+		buf.Destroy()
+		k++
+	}
+	if err != nil {
+		log.Printf(
+			"allocated %d pages of size=%d (%s) then err=%v",
+			k,
+			size,
+			err,
+			int64(k*size),
+		)
+	} else {
+		log.Printf(
+			"allocated %d pages of size=%d (%s)",
+			k,
+			size,
+			util.ByteCountSI(int64(k*size)),
+		)
 	}
 }
 
