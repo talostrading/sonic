@@ -10,20 +10,37 @@ type MirroredBuffer struct {
 	slice    []byte
 	baseAddr unsafe.Pointer
 	size     int
-	head     int
-	tail     int
 
+	// state
+	head int
+	tail int
 	used int
 }
 
+// NewMirroredBuffer returns a mirrored buffer of at least the passed size.
+//
+// The passed size should be a multiple of the system's page size. If it is not,
+// the buffer's size will be rounded up to the nearest multiple of the system's
+// page size, which is usually equal to 4KiB.
+//
+// If prefault is true, the memory used by the buffer is physically backed after
+// this call. This results in an immediate allocation, visible in the process'
+// resident memory. Prefaulting can be done post initialization through
+// MirroredBuffer.Prefault().
 func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
-	// TODO force size to be a multiple of pages size.
+	pageSize := syscall.Getpagesize()
+	if remainder := size % pageSize; remainder > 0 {
+		size += pageSize - remainder
+	}
 
 	b = &MirroredBuffer{
+		slice:    nil,
 		baseAddr: unsafe.Pointer(nil),
 		size:     size,
-		head:     0,
-		tail:     0,
+
+		head: 0,
+		tail: 0,
+		used: 0,
 	}
 
 	// Reserve 2 * size of the process' virtual memory space.
@@ -235,4 +252,10 @@ func (b *MirroredBuffer) Head() []byte {
 
 func (b *MirroredBuffer) Size() int {
 	return b.size
+}
+
+func (b *MirroredBuffer) Reset() {
+	b.head = 0
+	b.tail = 0
+	b.used = 0
 }

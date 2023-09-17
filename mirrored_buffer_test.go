@@ -13,8 +13,9 @@ import (
 )
 
 func TestMirroredBufferInit(t *testing.T) {
-	size := syscall.Getpagesize()
-	buf, err := NewMirroredBuffer(size, true)
+	pageSize := syscall.Getpagesize()
+
+	buf, err := NewMirroredBuffer(pageSize, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +25,82 @@ func TestMirroredBufferInit(t *testing.T) {
 		}
 	}()
 
-	if buf.Size() != size {
+	if buf.slice == nil {
+		t.Fatal("backing slice should not nil")
+	}
+	if buf.baseAddr == nil {
+		t.Fatal("backing slice's base address should not nil")
+	}
+	if buf.Size() != pageSize {
+		t.Fatal("invalid size")
+	}
+	if buf.size != pageSize {
+		t.Fatal("invalid size")
+	}
+	if buf.head != 0 {
+		t.Fatal("head should be zero")
+	}
+	if buf.tail != 0 {
+		t.Fatal("tail should be zero")
+	}
+	if buf.used != 0 {
+		t.Fatal("used should be zero")
+	}
+	if len(buf.slice) != 2*buf.Size() {
+		t.Fatal("backing slice should be twice the desired buffer size")
+	}
+}
+
+func TestMirroredBufferInitSize1(t *testing.T) {
+	pageSize := syscall.Getpagesize()
+
+	buf, err := NewMirroredBuffer(pageSize, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := buf.Destroy(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	if buf.Size() != pageSize {
+		t.Fatal("invalid size")
+	}
+}
+
+func TestMirroredBufferInitSize2(t *testing.T) {
+	pageSize := syscall.Getpagesize()
+
+	buf, err := NewMirroredBuffer(1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := buf.Destroy(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	if buf.Size() != pageSize {
+		t.Fatal("invalid size")
+	}
+}
+
+func TestMirroredBufferInitSize3(t *testing.T) {
+	pageSize := syscall.Getpagesize()
+
+	buf, err := NewMirroredBuffer(pageSize+1, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := buf.Destroy(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	if buf.Size() != pageSize*2 {
 		t.Fatal("invalid size")
 	}
 }
@@ -41,7 +117,7 @@ func TestMirroredBuffer1(t *testing.T) {
 		}
 	}()
 
-	for i := 0; i < 2 * size; i++ {
+	for i := 0; i < 2*size; i++ {
 		if buf.slice[i] != 0 {
 			t.Fatal("buffer should be zeroed")
 		}
