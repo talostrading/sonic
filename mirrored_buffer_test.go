@@ -244,5 +244,4 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 				buf.Destroy()
 			})
 	}
-
 }

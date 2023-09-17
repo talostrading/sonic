@@ -163,6 +163,13 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	return b, nil
 }
 
+// Prefault the buffer, forcing physical memory allocation.
+func (b *MirroredBuffer) Prefault() {
+	for i := range b.slice {
+		b.slice[i] = 0
+	}
+}
+
 func (b *MirroredBuffer) FreeSpace() int {
 	return b.size - b.used
 }

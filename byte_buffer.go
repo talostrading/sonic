@@ -89,17 +89,16 @@ func (b *ByteBuffer) Commit(n int) {
 	}
 }
 
-// Zero out the buffer, potentially forcing the underlying memory to be
-// allocated.
+// Prefault the buffer, forcing physical memory allocation.
 //
 // NOTE: this should be used sparingly. Even though an array is contiguous in
 // the process' virtual memory map, it is probably fragmented in main memory.
 // Iterating over the array will cause a bunch of page faults, thus triggering
 // virtual to physical memory mapping. This means that if you Reserve 1GB
-// initially, you will get nothing allocated. But if you Zero after Reserve, you
-// will get the entire 1GB allocated which is maybe not what you want in a
+// initially, you will get nothing allocated. But if you Prefault after Reserve,
+// you will get the entire 1GB allocated which is maybe not what you want in a
 // resourced constrained application.
-func (b *ByteBuffer) Zero() {
+func (b *ByteBuffer) Prefault() {
 	slice := b.data[:cap(b.data)]
 	for i := range slice {
 		slice[i] = 0
