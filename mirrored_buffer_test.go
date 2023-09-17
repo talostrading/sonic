@@ -89,7 +89,11 @@ func TestMirroredBufferRandom(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer buf.Destroy() // TODO unmap the first mapping if some others fail.
+	defer func() {
+		if err := buf.Destroy(); err != nil {
+			t.Fatalf("could not destroy buffer err=%v", err)
+		}
+	}()
 
 	var (
 		wrapped = 0
