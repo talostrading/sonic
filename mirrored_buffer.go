@@ -94,6 +94,11 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// allocate but merely set the size of the shared handle. We then map that
 	// handle into memory twice: once at offset 0 and once at offset size, both
 	// wrt the address of b.slice returned by mmap above.
+	//
+	// NOTE: we need a well defined handle, more specifically a file, to mirror.
+	// Mirroring an anonymous mapping twice won't work. Each
+	// MAP_ANONYMOUS | MAP_SHARED mapping is unique - no pages are shared with
+	// any other mapping.
 	name := "/dev/shm/sonic_mirrored_buffer"
 
 	// NOTE: open(/dev/shm) is equivalent to shm_open.
