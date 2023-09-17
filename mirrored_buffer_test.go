@@ -12,75 +12,124 @@ import (
 	"github.com/talostrading/sonic/util"
 )
 
-func TestMirroredBuffer(t *testing.T) {
+func TestMirroredBuffer1(t *testing.T) {
 	size := syscall.Getpagesize()
+	buf, err := NewMirroredBuffer(size, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := buf.Destroy(); err != nil {
+			t.Fatal(err)
+		}
+	}()
 
-	buf, err := NewMirroredBuffer(size, false)
+	buf.slice[0] = 42
+
+	if buf.slice[0] != buf.slice[size] {
+		t.Fatal("buffer should mirror the first byte")
+	}
+}
+
+func TestMirroredBuffer2(t *testing.T) {
+	size := syscall.Getpagesize()
+	buf, err := NewMirroredBuffer(size, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	n := size/2 + 1
-	b := buf.Claim(n)
-	if len(b) != n {
-		t.Fatal("wrong claim")
+	var (
+		v     byte   = 0
+		chunk        = size / 64
+		b     []byte = nil
+	)
+	{
+		b = buf.Claim(1)
+		if len(b) != 1 {
+			t.Fatal("should have claimed 1")
+		}
+		b[0] = v
+		if buf.Commit(1) != 1 {
+			t.Fatal("should have committed 1")
+		}
+		v++
 	}
+	{
+		for {
+			b = buf.Claim(chunk)
+			if b == nil {
+				t.Fatal("claimed slice should not be nil")
+			}
+			if len(b) != chunk {
+				break
+			}
 
-	for i := range b {
-		b[i] = 42
+			for i := range b {
+				b[i] = v
+			}
+			buf.Commit(chunk)
+			v++
+		}
+		if buf.FreeSpace() != chunk-1 {
+			t.Fatal("wrong free space")
+		}
+		if buf.head > buf.tail {
+			t.Fatal("buffer should not wrap")
+		}
 	}
-	if buf.Commit(n) != n {
-		t.Fatal("wrong commit")
+	{
+		if buf.Consume(1) != 1 {
+			t.Fatal("should have consumed 1")
+		}
+		if buf.FreeSpace() != chunk {
+			t.Fatalf("should have %d bytes available", chunk)
+		}
 	}
+	{
+		b = buf.Claim(chunk)
+		if len(b) != chunk {
+			t.Fatalf("should have claimed %d", chunk)
+		}
+		if buf.FreeSpace() != chunk {
+			t.Fatalf("should have %d bytes available", chunk)
+		}
+		for i := range b {
+			b[i] = v
+		}
+		if buf.Commit(chunk) != chunk {
+			t.Fatalf("should have committed %d", chunk)
+		}
+		if buf.FreeSpace() != 0 {
+			t.Fatal("should have no free space")
+		}
+		if buf.head != buf.tail {
+			t.Fatal("buffer should be wrapped and full")
+		}
+	}
+	{
+		b = buf.Head()
+		if len(b) == 0 {
+			t.Fatal("should not be zero")
+		}
 
-	if buf.Consume(n-1) != n-1 {
-		t.Fatal("wrong consume")
-	}
-	if buf.UsedSpace() != 1 {
-		t.Fatal("wrong used space")
-	}
-
-	if buf.head >= buf.tail {
-		t.Fatal("buffer should not be wrapped")
-	}
-
-	// The next slice will cross the mirror boundary.
-	n = buf.FreeSpace() - 1
-	b = buf.Claim(n)
-	if len(b) != n {
-		t.Fatal("wrong claim")
-	}
-	for i := range b {
-		b[i] = 84
-	}
-
-	if buf.Commit(n) != n {
-		t.Fatal("wrong claim")
-	}
-
-	if buf.head <= buf.tail {
-		t.Fatal("buffer should be wrapped")
-	}
-
-	if buf.FreeSpace() != 1 {
-		t.Fatal("wrong free space")
-	}
-	if buf.Full() {
-		t.Fatal("buffer should not be full")
-	}
-
-	buf.Claim(1)
-	buf.Commit(1)
-
-	if buf.FreeSpace() != 0 || buf.UsedSpace() != size {
-		t.Fatal("wrong free/used space")
-	}
-	if !buf.Full() {
-		t.Fatal("buffer should be full")
+		var (
+			offset             = buf.head
+			expectedValue byte = 1
+		)
+		for k := 0; k < size/chunk; k++ {
+			slice := b[offset+k*chunk:]
+			slice = slice[:chunk]
+			for i := range slice {
+				if slice[i] != expectedValue {
+					t.Fatal("buffer is in wrong state")
+				}
+			}
+			expectedValue++
+		}
 	}
 
 	if err := buf.Destroy(); err != nil {
-		t.Fatal("buffer should be destroyed")
+		t.Fatal(err)
 	}
 }
 
