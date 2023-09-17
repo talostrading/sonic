@@ -39,9 +39,9 @@ func TestMirroredBuffer2(t *testing.T) {
 	}
 
 	var (
-		v     byte   = 0
-		chunk        = size / 64
-		b     []byte = nil
+		v     byte = 0
+		chunk      = size / 64
+		b     []byte
 	)
 	{
 		b = buf.Claim(1)
@@ -251,24 +251,30 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 		syscall.Getpagesize()*256,
 		syscall.Getpagesize()*512,
 	)
+	letters := []byte("abcdefghijklmnopqrstuvwxyz")
 
 	for _, n := range sizes {
 		n := n
 		b.Run(
 			fmt.Sprintf("byte_buffer_%s", util.ByteCountSI(int64(n))),
 			func(b *testing.B) {
-				buf := NewByteBuffer()
-				buf.Reserve(n)
+				{
+					buf := NewByteBuffer()
+					buf.Reserve(n)
+					buf.Prefault()
 
-				letters := []byte("abcdefghijklmnopqrstuvwxyz")
-				for i := 0; i < b.N; i++ {
-					buf.Claim(func(b []byte) int {
-						return copy(b, letters[:])
-					})
-					buf.Commit(7)
-					buf.Consume(7)
+					b.ResetTimer()
+
+					for i := 0; i < b.N; i++ {
+						buf.Claim(func(b []byte) int {
+							return copy(b, letters[:])
+						})
+						buf.Commit(7)
+						buf.Consume(7)
+					}
+					b.ReportAllocs()
 				}
-				b.ReportAllocs()
+				runtime.GC()
 			})
 	}
 
@@ -277,20 +283,25 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 		b.Run(
 			fmt.Sprintf("mirrored_buffer_%s", util.ByteCountSI(int64(n))),
 			func(b *testing.B) {
-				buf, err := NewMirroredBuffer(n, false)
-				if err != nil {
-					b.Fatal(err)
-				}
+				{
+					buf, err := NewMirroredBuffer(n, false)
+					if err != nil {
+						b.Fatal(err)
+					}
+					defer buf.Destroy()
+					buf.Prefault()
 
-				letters := []byte("abcdefghijklmnopqrstuvwxyz")
-				for i := 0; i < b.N; i++ {
-					b := buf.Claim(7)
-					copy(b, letters[:])
-					buf.Commit(7)
-					buf.Consume(7)
+					b.ResetTimer()
+
+					for i := 0; i < b.N; i++ {
+						b := buf.Claim(7)
+						copy(b, letters[:])
+						buf.Commit(7)
+						buf.Consume(7)
+					}
+					b.ReportAllocs()
 				}
-				b.ReportAllocs()
-				buf.Destroy()
+				runtime.GC()
 			})
 	}
 }
