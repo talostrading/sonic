@@ -49,16 +49,27 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// address. We use this address with MAP_FIXED to mirror our desired buffer
 	// below.
 	//
-	// If prefault is true, this call also allocates. If prefault is false, no
-	// allocation occurs. Instead, we defer to lazy allocation of pages in RAM
-	// through on-demand paging.
+	// If prefault is true, this call also allocates physical memory. This will
+	// be visible in the process' resident memory.
+	// If prefault is false, no physical memory allocation occurs. Instead, we
+	// defer to lazy allocation of pages in RAM through on-demand paging.
 
 	// No file backing, implies -1 as fd.
 	flags := syscall.MAP_ANONYMOUS
 
 	// Modifications to the mapping are only visible to the current process, and
 	// are not carried through to the underlying file (which is inexistent,
-	// hence -1 as fd)
+	// hence -1 as fd).
+	//
+	// Another effect of MAP_PRIVATE is that another mmap call mapping the same
+	// virtual address space will not see the changes made to the memory by the
+	// first mapping. Under the hood, this is achieved through kernel
+	// copy-on-write, which is the default behaviour for MAP_PRIVATE mappings.
+	// That means that if the first mapping tries to modify a page shared with
+	// another mapping, the page is first copied and then changed. The first
+	// mapping will hold the modified copy, the second mapping will refer the
+	// initial page. See the MapPrivate example in tests on how this works.
+	// TODO write that example.
 	flags |= syscall.MAP_PRIVATE
 
 	if prefault {
@@ -70,7 +81,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		-1,                // fd
 		0,                 // offset
 		2*size,            // size
-		syscall.PROT_NONE, // we can't do anything with this mapping.
+		syscall.PROT_NONE, // we can't do anything with this mapping
 		flags,
 	)
 	if err != nil {
@@ -121,13 +132,14 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// Can read/write to this memory.
 	prot := syscall.PROT_READ | syscall.PROT_WRITE
 
-	// Force the mapping to start at addr.
+	// Force the mapping to start at baseAddr.
 	flags = syscall.MAP_FIXED
 
-	// Do not allow sharing the mapping across processes. Do not carry the
-	// updates to the underlying file - this is already the case as we use
-	// /dev/shm which is a temporary file system (tmpfs) backed up by RAM.
-	// fsync is no-op there.
+	// Share this mapping within the process' scope. This means any modification
+	// made to this [0, size] mapping will be visible in the mirror residing at
+	// [size, 2 * size]. This would not be possible with MAP_PRIVATE due to the
+	// copy-on-write behaviour documented above.
+	// TODO give an example in tests.
 	flags |= syscall.MAP_SHARED
 
 	// Make the first mapping: offset=0 length=size.
@@ -176,7 +188,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		return nil, fmt.Errorf("could not mmap second chunk")
 	}
 
-	// We can safely closed this file descriptor per mmap manual.
+	// We can safely closed this file descriptor per the mmap spec.
 	if err := syscall.Close(fd); err != nil {
 		_ = b.Destroy()
 		return nil, err
