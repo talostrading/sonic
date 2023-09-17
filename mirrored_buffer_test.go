@@ -12,6 +12,23 @@ import (
 	"github.com/talostrading/sonic/util"
 )
 
+func TestMirroredBufferInit(t *testing.T) {
+	size := syscall.Getpagesize()
+	buf, err := NewMirroredBuffer(size, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := buf.Destroy(); err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	if buf.Size() != size {
+		t.Fatal("invalid size")
+	}
+}
+
 func TestMirroredBuffer1(t *testing.T) {
 	size := syscall.Getpagesize()
 	buf, err := NewMirroredBuffer(size, true)
@@ -24,10 +41,24 @@ func TestMirroredBuffer1(t *testing.T) {
 		}
 	}()
 
-	buf.slice[0] = 42
+	for i := 0; i < 2 * size; i++ {
+		if buf.slice[i] != 0 {
+			t.Fatal("buffer should be zeroed")
+		}
+	}
+
+	for i := 0; i < size; i++ {
+		buf.slice[i] = 42
+	}
 
 	if buf.slice[0] != buf.slice[size] {
 		t.Fatal("buffer should mirror the first byte")
+	}
+
+	for i := 0; i < size; i++ {
+		if buf.slice[i] != buf.slice[size+i] {
+			t.Fatal("buffer is not mirrored")
+		}
 	}
 }
 
