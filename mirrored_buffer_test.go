@@ -233,10 +233,64 @@ func TestMirroredBuffer2(t *testing.T) {
 			}
 			expectedValue++
 		}
+		if b[0] != expectedValue - 1 {
+			t.Fatal("invalid head")
+		}
 	}
 
 	if err := buf.Destroy(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMirroredBuffer3(t *testing.T) {
+	buf, err := NewMirroredBuffer(syscall.Getpagesize(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := buf.Destroy(); err != nil {
+			t.Fatalf("could not destroy buffer err=%v", err)
+		}
+	}()
+
+	n := buf.Size() - 1
+	b := buf.Claim(n)
+	if len(b) != n {
+		t.Fatal("invalid claim")
+	}
+	for i := range b {
+		b[i] = 1
+	}
+	if buf.Commit(n) != n {
+		t.Fatal("invalid commit")
+	}
+
+	if buf.Consume(10) != 10 {
+		t.Fatal("invalid consume")
+	}
+
+	// This write will cross the mirror: 1 byte taken from the end, 5 from the
+	// beginning.
+	b = buf.Claim(6)
+	if len(b) != 6 {
+		t.Fatal("invalid claim")
+	}
+	for i := range b {
+		b[i] = 2
+	}
+	if buf.Commit(6) != 6 {
+		t.Fatal("invalid commit")
+	}
+
+	b = buf.Head()
+	if b[len(b)-1] != 2 {
+		t.Fatal("wrong tail")
+	}
+	for i := 0; i < 5; i++ {
+		if b[i] != 2 {
+			t.Fatal("wrong head")
+		}
 	}
 }
 
