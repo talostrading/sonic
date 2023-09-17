@@ -3,14 +3,16 @@ package sonic
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"runtime"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/talostrading/sonic/util"
 )
 
-func TestMirroredBuffer1(t *testing.T) {
+func TestMirroredBuffer(t *testing.T) {
 	size := syscall.Getpagesize()
 
 	buf, err := NewMirroredBuffer(size, false)
@@ -79,6 +81,41 @@ func TestMirroredBuffer1(t *testing.T) {
 
 	if err := buf.Destroy(); err != nil {
 		t.Fatal("buffer should be destroyed")
+	}
+}
+
+func TestMirroredBufferRandom(t *testing.T) {
+	buf, err := NewMirroredBuffer(syscall.Getpagesize(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer buf.Destroy() // TODO unmap the first mapping if some others fail.
+
+	var (
+		wrapped = 0
+		rand    = rand.New(rand.NewSource(time.Now().UnixNano()))
+		k       = 0
+	)
+
+	for wrapped == 0 || k < 1024*128 {
+		n := rand.Intn(syscall.Getpagesize())
+		b := buf.Claim(n)
+		for i := range b {
+			b[i] = byte(k % 127)
+		}
+		buf.Commit(n)
+		if buf.Full() {
+
+		} else {
+			if buf.head > buf.tail {
+				wrapped++
+			}
+		}
+		buf.Consume(n)
+		k++
+	}
+	if wrapped == 0 {
+		t.Fatal("should have wrapped")
 	}
 }
 
