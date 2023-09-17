@@ -232,3 +232,7 @@ func (b *MirroredBuffer) Destroy() error {
 func (b *MirroredBuffer) Head() []byte {
 	return b.slice[:b.size]
 }
+
+func (b *MirroredBuffer) Size() int {
+	return b.size
+}
