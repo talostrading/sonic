@@ -75,15 +75,18 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		syscall.S_IRUSR|syscall.S_IWUSR, // user can read/write to this file
 	)
 	if err != nil {
+		_ = b.Destroy()
 		return nil, fmt.Errorf("could not open %s err=%v", name, err)
 	}
 
 	if err := syscall.Truncate(name, int64(size)); err != nil {
+		_ = b.Destroy()
 		return nil, fmt.Errorf("could not truncate %s err=%v", name, err)
 	}
 
 	// Do not persist the file handle after this process exits.
 	if err := syscall.Unlink(name); err != nil {
+		_ = b.Destroy()
 		return nil, fmt.Errorf("could not unlink %s err=%v", name, err)
 	}
 
@@ -120,9 +123,11 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		err = errno
 	}
 	if err != nil {
+		_ = b.Destroy()
 		return nil, err
 	}
 	if addr != firstAddrPtr {
+		_ = b.Destroy()
 		return nil, fmt.Errorf("could not mmap first chunk")
 	}
 
@@ -141,14 +146,17 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		err = errno
 	}
 	if err != nil {
+		_ = b.Destroy()
 		return nil, err
 	}
 	if addr != secondAddrPtr {
+		_ = b.Destroy()
 		return nil, fmt.Errorf("could not mmap second chunk")
 	}
 
 	// We can safely closed this file descriptor per mmap manual.
 	if err := syscall.Close(fd); err != nil {
+		_ = b.Destroy()
 		return nil, err
 	}
 
