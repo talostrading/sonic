@@ -233,7 +233,7 @@ func TestMirroredBuffer2(t *testing.T) {
 			}
 			expectedValue++
 		}
-		if b[0] != expectedValue - 1 {
+		if b[0] != expectedValue-1 {
 			t.Fatal("invalid head")
 		}
 	}
@@ -318,13 +318,11 @@ func TestMirroredBufferRandom(t *testing.T) {
 			b[i] = byte(k % 127)
 		}
 		buf.Commit(n)
-		if buf.Full() {
 
-		} else {
-			if buf.head > buf.tail {
-				wrapped++
-			}
+		if !buf.Full() && buf.head > buf.tail {
+			wrapped++
 		}
+
 		buf.Consume(n)
 		k++
 	}
