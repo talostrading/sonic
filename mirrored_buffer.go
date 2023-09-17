@@ -97,6 +97,10 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	secondAddr := unsafe.Add(b.baseAddr, size)
 	secondAddrPtr := uintptr(secondAddr)
 
+	if int(secondAddrPtr)-int(firstAddrPtr) != size {
+		return nil, fmt.Errorf("could not compute offset addresses for chunks")
+	}
+
 	// Can read/write to this memory.
 	prot := syscall.PROT_READ | syscall.PROT_WRITE
 
@@ -106,7 +110,8 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// Do not allow sharing the mapping across processes. Do not carry the
 	// updates to the underlying file - this is already the case as we use
 	// /dev/shm which is a temporary file system (tmpfs) backed up by RAM.
-	flags |= syscall.MAP_PRIVATE //
+	// fsync is no-op there.
+	flags |= syscall.MAP_SHARED
 
 	// Make the first mapping: offset=0 length=size.
 	addr, _, errno := syscall.Syscall6(
@@ -185,7 +190,8 @@ func (b *MirroredBuffer) Claim(n int) []byte {
 	if n == 0 {
 		return nil
 	}
-	return unsafe.Slice((*byte)(b.baseAddr), n)
+	claim := b.slice[b.tail:]
+	return claim[:n]
 }
 
 func (b *MirroredBuffer) Commit(n int) int {
@@ -221,4 +227,8 @@ func (b *MirroredBuffer) Full() bool {
 
 func (b *MirroredBuffer) Destroy() error {
 	return syscall.Munmap(b.slice)
+}
+
+func (b *MirroredBuffer) Head() []byte {
+	return b.slice[:b.size]
 }
