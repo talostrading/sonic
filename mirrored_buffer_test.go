@@ -347,6 +347,40 @@ func TestMirroredBufferMaxSize(t *testing.T) {
 	}
 }
 
+func TestMirroredBufferMultiple(t *testing.T) {
+	var buffers []*MirroredBuffer
+	for i := 0; i < 8; i++ {
+		buf, err := NewMirroredBuffer(syscall.Getpagesize(), true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		buffers = append(buffers, buf)
+	}
+
+	for k, buf := range buffers {
+		b := buf.Claim(8)
+		for i := 0; i < 8; i++ {
+			b[i] = byte(k + 1)
+		}
+		buf.Commit(8)
+	}
+
+	for k, buf := range buffers {
+		b := buf.Head()
+		for i := 0; i < 8; i++ {
+			if b[i] != byte(k+1) {
+				t.Fatal("invalid buffer")
+			}
+		}
+	}
+
+	for _, buf := range buffers {
+		if err := buf.Destroy(); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkMirroredBuffer(b *testing.B) {
 	var sizes []int
 	for i := 1; i <= 16; i += 4 {

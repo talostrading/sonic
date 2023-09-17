@@ -27,6 +27,8 @@ type MirroredBuffer struct {
 // this call. This results in an immediate allocation, visible in the process'
 // resident memory. Prefaulting can be done post initialization through
 // MirroredBuffer.Prefault().
+//
+// This function must no be called concurrently.
 func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	pageSize := syscall.Getpagesize()
 	if remainder := size % pageSize; remainder > 0 {
@@ -92,7 +94,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// allocate but merely set the size of the shared handle. We then map that
 	// handle into memory twice: once at offset 0 and once at offset size, both
 	// wrt the address of b.slice returned by mmap above.
-	name := "/dev/shm/mirrored_buffer"
+	name := "/dev/shm/sonic_mirrored_buffer"
 
 	// NOTE: open(/dev/shm) is equivalent to shm_open.
 	// TODO test this on a mac. kernel params: kern.sysv.shmmax/kern.sysv.shmall
@@ -188,7 +190,9 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		return nil, fmt.Errorf("could not mmap second chunk")
 	}
 
-	// We can safely closed this file descriptor per the mmap spec.
+	// We can safely close this file descriptor per the mmap spec. Combined with
+	// the unlink syscall above, this makes it possible to reuse the
+	// name=/dev/shm/mirrored_buffer accross NewMirroredBuffer calls.
 	if err := syscall.Close(fd); err != nil {
 		_ = b.Destroy()
 		return nil, err
