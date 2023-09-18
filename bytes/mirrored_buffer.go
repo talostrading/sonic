@@ -19,6 +19,7 @@ type MirroredBuffer struct {
 	slice    []byte
 	baseAddr unsafe.Pointer
 	size     int
+	name     string
 
 	// state
 	head int
@@ -60,10 +61,9 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	}
 
 	// TODO location should be logged to syslog
-	var name string
 	for _, location := range mirroredBufferLocations {
 		if _, err = os.Stat(location); err == nil {
-			name = path.Join(location, mirroredBufferName)
+			b.name = path.Join(location, mirroredBufferName)
 			break
 		}
 	}
@@ -75,11 +75,11 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 			err,
 		)
 	}
-	if _, err := os.Stat(name); err == nil {
+	if _, err := os.Stat(b.name); err == nil {
 		fmt.Println()
 		return nil, fmt.Errorf(
 			"cannot create mirrored buffer, %s already exists",
-			name,
+			b.name,
 		)
 	}
 
@@ -93,24 +93,24 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// MAP_ANONYMOUS | MAP_SHARED mapping is unique - no pages are shared with
 	// any other mapping.
 	fd, err := syscall.Open(
-		name,
+		b.name,
 		syscall.O_CREAT|syscall.O_RDWR,  // file is readable/writeable
 		syscall.S_IRUSR|syscall.S_IWUSR, // user can read/write to this file
 	)
 	if err != nil {
 		_ = b.Destroy()
-		return nil, fmt.Errorf("could not open %s err=%v", name, err)
+		return nil, fmt.Errorf("could not open %s err=%v", b.name, err)
 	}
 
-	if err := syscall.Truncate(name, int64(size)); err != nil {
+	if err := syscall.Truncate(b.name, int64(size)); err != nil {
 		_ = b.Destroy()
-		return nil, fmt.Errorf("could not truncate %s err=%v", name, err)
+		return nil, fmt.Errorf("could not truncate %s err=%v", b.name, err)
 	}
 
 	// Do not persist the file handle after this process exits.
-	if err := syscall.Unlink(name); err != nil {
+	if err := syscall.Unlink(b.name); err != nil {
 		_ = b.Destroy()
-		return nil, fmt.Errorf("could not unlink %s err=%v", name, err)
+		return nil, fmt.Errorf("could not unlink %s err=%v", b.name, err)
 	}
 
 	// We now map the shared memory file twice at fixed addresses wrt the
@@ -267,4 +267,8 @@ func (b *MirroredBuffer) Reset() {
 	b.head = 0
 	b.tail = 0
 	b.used = 0
+}
+
+func (b *MirroredBuffer) FilesystemName() string {
+	return b.name
 }
