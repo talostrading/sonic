@@ -439,6 +439,122 @@ func TestMirroredBufferMultiple(t *testing.T) {
 	}
 }
 
+func TestMirroredBufferMmapBehaviour(t *testing.T) {
+	// This test shows the behaviour of MAP_PRIVATE and MAP_SHARED. In short,
+	// pages mmapped with MAP_PRIVATE are subject to copy on write. This is best
+	// showcased through an example:
+	// - we make two MAP_PRIVATE mappings of a file,
+	// - initially both of these mappings point to the same memory locations
+	// - we change the values of some bytes in the first private mapping. The
+	// kernel does copy on write here. It first copies the pages of memory that
+	// refer to the changed values, and then changes the values in the copies.
+	// - this leaves the second mapping unchaged.
+	// - copy on write is efficient: only the changed pages are copied
+	//
+	// There is no copy-on-write for MAP_SHARED. If we make two MAP_SHARED
+	// mappings and change the memory in one of them, the change is reflected in
+	// the other one immediately. They both point to the same pages at all
+	// times.
+
+	size := syscall.Getpagesize()
+
+	name := "/tmp/sonic_mirrored_buffer_test"
+	fd, err := syscall.Open(
+		name,
+		syscall.O_CREAT|syscall.O_RDWR,  // file is readable/writeable
+		syscall.S_IRUSR|syscall.S_IWUSR, // user can read/write to this file
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(fd)
+	if err := syscall.Truncate(name, int64(size)); err != nil {
+		t.Fatal(err)
+	}
+	if err := syscall.Unlink(name); err != nil {
+		t.Fatal(err)
+	}
+
+	mmap := func(flags int) []byte {
+		b, err := syscall.Mmap(
+			fd,
+			0,
+			size,
+			syscall.PROT_READ|syscall.PROT_WRITE,
+			flags,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+
+	var (
+		private1 = mmap(syscall.MAP_PRIVATE)[:4]
+		private2 = mmap(syscall.MAP_PRIVATE)[:4]
+		shared1  = mmap(syscall.MAP_SHARED)[:4]
+		shared2  = mmap(syscall.MAP_SHARED)[:4]
+	)
+	defer syscall.Munmap(private1)
+	defer syscall.Munmap(private2)
+	defer syscall.Munmap(shared1)
+	defer syscall.Munmap(shared2)
+
+	for i := 0; i < 4; i++ {
+		private1[i] = 0
+		private2[i] = 0
+		shared1[i] = 0
+		shared2[i] = 0
+	}
+
+	log.Printf(
+		"%v %v %v %v :: init",
+		private1,
+		private2,
+		shared1,
+		shared2,
+	)
+
+	private1[0] = 16
+	if private2[0] == 16 || shared1[0] == 16 || shared2[0] == 16 {
+		t.Fatal("invalid mapping")
+	}
+
+	log.Printf(
+		"%v %v %v %v :: private1[0]=16 ",
+		private1,
+		private2,
+		shared1,
+		shared2,
+	)
+
+	private2[0] = 32
+	if private1[0] == 32 || shared1[0] == 32 || shared2[0] == 32 {
+		t.Fatal("invalid mapping")
+	}
+
+	log.Printf(
+		"%v %v %v %v :: private2[0]=32 ",
+		private1,
+		private2,
+		shared1,
+		shared2,
+	)
+
+	shared1[0] = 64
+	if private1[0] == 64 || private2[0] == 64 || shared2[0] != 64 {
+		t.Fatal("invalid mapping")
+	}
+
+	log.Printf(
+		"%v %v %v %v :: shared1[0]=64 ",
+		private1,
+		private2,
+		shared1,
+		shared2,
+	)
+}
+
 func BenchmarkMirroredBuffer(b *testing.B) {
 	var sizes []int
 	for i := 1; i <= 16; i += 4 {

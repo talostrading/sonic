@@ -134,7 +134,8 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// made to this [0, size] mapping will be visible in the mirror residing at
 	// [size, 2 * size]. This would not be possible with MAP_PRIVATE due to the
 	// copy-on-write behaviour documented above.
-	// TODO give an example in tests.
+	//
+	// See TestMirroredBufferMmapBehaviour for a concrete example.
 	flags |= syscall.MAP_SHARED
 
 	// Make the first mapping: offset=0 length=size.
