@@ -138,19 +138,14 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	flags |= syscall.MAP_SHARED
 
 	// Make the first mapping: offset=0 length=size.
-	addr, _, errno := syscall.Syscall6(
-		syscall.SYS_MMAP,
-		firstAddrPtr,   // addr
-		uintptr(size),  // size
-		uintptr(prot),  // prot
-		uintptr(flags), // flags
-		uintptr(fd),    // fd
-		0,              // offset
+	addr, err := mmapRaw(
+		firstAddrPtr,
+		uintptr(size),
+		uintptr(prot),
+		uintptr(flags),
+		uintptr(fd),
+		0,
 	)
-	err = nil
-	if errno != 0 {
-		err = errno
-	}
 	if err != nil {
 		_ = b.Destroy()
 		return nil, err
@@ -161,19 +156,14 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	}
 
 	// Make the second mapping of the same file at: offset=size length=size.
-	addr, _, errno = syscall.Syscall6(
-		syscall.SYS_MMAP,
+	addr, err = mmapRaw(
 		secondAddrPtr,
-		uintptr(size),  // size
-		uintptr(prot),  // prot
-		uintptr(flags), // flags
-		uintptr(fd),    // fd
-		0,              // offset
+		uintptr(size),
+		uintptr(prot),
+		uintptr(flags),
+		uintptr(fd),
+		0,
 	)
-	err = nil
-	if errno != 0 {
-		err = errno
-	}
 	if err != nil {
 		_ = b.Destroy()
 		return nil, err
