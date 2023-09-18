@@ -446,10 +446,22 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 	}
 	sizes = append(
 		sizes,
-		syscall.Getpagesize()*128,
+		syscall.Getpagesize()*64,
+		syscall.Getpagesize()*127,
 		syscall.Getpagesize()*256,
 		syscall.Getpagesize()*512,
 	)
+
+	consider := 0
+	for consider < len(sizes) {
+		if sizes[consider] <= 2*1024*1024 {
+			consider++
+		} else {
+			sizes = sizes[:consider]
+			break
+		}
+	}
+
 	letters := []byte("abcdefghijklmnopqrstuvwxyz")
 
 	for _, n := range sizes {
