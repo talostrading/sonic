@@ -371,7 +371,7 @@ func TestMirroredBufferGC(t *testing.T) {
 	}
 }
 
-func TestMirroredBufferMaxSize(t *testing.T) {
+func TestMirroredBufferSizes(t *testing.T) {
 	var (
 		pageSize = syscall.Getpagesize()
 		err      error
@@ -403,6 +403,29 @@ func TestMirroredBufferMaxSize(t *testing.T) {
 			util.ByteCountSI(int64(k*size)),
 		)
 	}
+}
+
+func TestMirroredBufferHugeSize(t *testing.T) {
+	// We should be good mapping huge amounts of memory due to on-demand paging
+	// on Linux/BSD. As long as we don't prefault or write to the entire
+	// buffer...
+	var (
+		size     = 1024 * 1024 * 1024 * 1024 // 1TB
+		pageSize = syscall.Getpagesize()
+	)
+	size = (size / pageSize) * pageSize
+	buf, err := NewMirroredBuffer(size, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer buf.Destroy()
+
+	// this allocates on page
+	b := buf.Claim(128)
+	for i := range b {
+		b[i] = 128
+	}
+	b[0] = 128
 }
 
 func TestMirroredBufferMultiple(t *testing.T) {
