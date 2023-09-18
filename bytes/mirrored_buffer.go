@@ -75,6 +75,13 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 			err,
 		)
 	}
+	if _, err := os.Stat(name); err == nil {
+		fmt.Println()
+		return nil, fmt.Errorf(
+			"cannot create mirrored buffer, %s already exists",
+			name,
+		)
+	}
 
 	// Now create a shared memory handle. Truncate it to size. This won't
 	// allocate but merely set the size of the shared handle. We then map that
