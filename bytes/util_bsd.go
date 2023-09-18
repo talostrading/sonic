@@ -4,7 +4,7 @@ package bytes
 
 import "syscall"
 
-func mmapAllocate(size int, prefault bool /* noop on bsd */) ([]byte, error) {
+func mmapAllocate(size int, _ bool) ([]byte, error) {
 	// Reserve 2 * size of the process' virtual memory space.
 	//
 	// This call is needed for its return value, which is a valid mapping
