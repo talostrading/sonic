@@ -1,5 +1,16 @@
 package bytes
 
+// TODO check if ubuntu has /dev/shm
+// TODO check boost::inteprocess on escape hatches if /dev/shm is not here
+// TODO check if there's a way to detect other tmpfs on the system
+// TODO check if there is a way to not sync up the mmapped memory with the
+// backing file on non-tmpfs/standard filesystems
+// TODO ensure there's no major page faults for tmpfs filesystems
+// TODO measure the impact of major page faults for non-tmpfs mirrored buffers
+// TODO maybe escape hatch to ramfs
+// TODO frame codec with mirrored buffer and introduce CodecBuffer interface
+// (after introducing the Stream non-alloc connection)
+
 import (
 	"fmt"
 	"os"
