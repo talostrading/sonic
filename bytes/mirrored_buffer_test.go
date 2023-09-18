@@ -379,7 +379,10 @@ func TestMirroredBufferMaxSize(t *testing.T) {
 		k        = 1
 		buf      *MirroredBuffer
 	)
-	for err == nil && k < 1024*512 {
+
+	log.Printf("pagesize=%d", pageSize)
+
+	for err == nil && k < 1024*512 && size*k < 1024*1024*1024 /* 1GB */ {
 		buf, err = NewMirroredBuffer(size*k, false)
 		buf.Destroy()
 		k++
