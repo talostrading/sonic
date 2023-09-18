@@ -1,4 +1,4 @@
-package sonic
+package bytes
 
 import (
 	"fmt"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/util"
 )
 
@@ -452,7 +453,7 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 			fmt.Sprintf("byte_buffer_%s", util.ByteCountSI(int64(n))),
 			func(b *testing.B) {
 				{
-					buf := NewByteBuffer()
+					buf := sonic.NewByteBuffer()
 					buf.Reserve(n)
 					buf.Prefault()
 
