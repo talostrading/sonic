@@ -1,6 +1,5 @@
 package bytes
 
-// TODO check if ubuntu has /dev/shm
 // TODO check boost::inteprocess on escape hatches if /dev/shm is not here
 // TODO check if there's a way to detect other tmpfs on the system
 // TODO check if there is a way to not sync up the mmapped memory with the
@@ -26,6 +25,35 @@ var mirroredBufferLocations = []string{
 
 const mirroredBufferName = "sonic_mirrored_buffer"
 
+// MirroredBuffer is a circular FIFO buffer that always returns continuous byte
+// slices. It is well suited for writing protocols on top of streaming
+// transports such as TCP. This buffer does not memory copies or allocations
+// outside of initialization time.
+//
+// NOTE: A MirroredBuffer of size n will copy 2*n memory. If memory usage is a
+// concern, switch to using a sonic.ByteBuffer at the cost of higher latency.
+//
+// For protocols on top of packet based transports such as UDP, please use
+// sonic.BipBuffer instead.
+//
+// Given the caller wants a buffer of size `n`, a mirrored buffer works as
+// follows:
+// - allocate an area of size `2*n` in the process' virtual memory. Get the base
+// address of that allocation, call it `addr`
+// - create a new POSIX shared memory object of size `n` through `shm_open`
+// (this can be seen as a file that lives fully in RAM)
+// - map the shared memory object at address `addr`
+// - map the shared memory object again at address `addr+size`
+// If `n==4`, this will result in the following memory layout: |0123|0123|.
+// Any write to the right part will be reflected in the left part - the left and
+// the right bytes belong to the same object.
+//
+// We call making this double maping "mirroring". This allows us to always get a
+// continuous slice of bytes from this buffer. The CPU's memory management unit
+// will do the wrapping for us under the hood. More specifically, we can get a
+// slice refering to the bytes `2301`. The `01` bytes are taken from the mirror.
+// If we were to use a normal circular buffer, we would've gotten two slices:
+// `23` and `01`.
 type MirroredBuffer struct {
 	slice    []byte
 	baseAddr unsafe.Pointer
@@ -66,6 +94,11 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		used: 0,
 	}
 
+	// Map a virtual address space of `2*size` in the process' memory. This call
+	// can be seen as a memory allocation. The returned address (the base
+	// pointer of the returned slice) is used to map the shared memory area of
+	// of `size` twice: once at offset 0 and once at offset size wrt to the
+	// pointer of `b.slice`.
 	b.slice, err = mmapAllocate(2*size, prefault)
 	if err != nil {
 		return nil, err
