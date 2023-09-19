@@ -34,6 +34,6 @@ func (r *readReactor) onReady(err error) {
 	if err != nil {
 		r.callback(err, 0)
 	} else {
-		r.stream.AsyncRead(r.b, r.callback)
+		r.stream.asyncReadNow(r.b, r.callback)
 	}
 }

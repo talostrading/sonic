@@ -13,14 +13,21 @@ import (
 // TODO PollData should be Slot
 // TODO pendingReads/Writes should not be a map, but a slice indexed by fd.
 
+const (
+	defaultImmediate = 8
+	maxImmediate     = 128
+)
+
 type Stream struct {
 	ioc        *sonic.IO
 	fd         int
 	localAddr  net.Addr
 	remoteAddr net.Addr
 
-	readReactor *readReactor
-	slot        internal.PollData
+	immediate    int
+	maxImmediate int
+	readReactor  *readReactor
+	slot         internal.PollData
 }
 
 func newStream(
@@ -30,14 +37,23 @@ func newStream(
 	remoteAddr net.Addr,
 ) (*Stream, error) {
 	s := &Stream{
-		ioc:        ioc,
-		fd:         fd,
-		localAddr:  localAddr,
-		remoteAddr: remoteAddr,
+		ioc:          ioc,
+		fd:           fd,
+		localAddr:    localAddr,
+		remoteAddr:   remoteAddr,
+		immediate:    0,
+		maxImmediate: defaultImmediate,
 	}
 	s.readReactor = newReadReactor(s)
 	s.slot.Fd = fd
 	return s, nil
+}
+
+func (s *Stream) SetMaxDispatch(v int) *Stream {
+	if v <= maxImmediate {
+		s.maxImmediate = v
+	}
+	return s
 }
 
 func (s *Stream) Read(b []byte) (n int, err error) {
@@ -55,6 +71,23 @@ func (s *Stream) Read(b []byte) (n int, err error) {
 }
 
 func (s *Stream) AsyncRead(b []byte, callback func(error, int)) {
+	if s.immediate < s.maxImmediate {
+		s.asyncReadNow(b, func(err error, n int) {
+			s.immediate++
+			callback(err, n)
+			s.immediate--
+		})
+	} else {
+		// TODO there should be a PostUnsafe that does not use a mutex here
+		// TODO: note for edge triggered reactors
+		// TODO test this out, unsure yet how
+		s.ioc.Post(func() {
+			s.AsyncRead(b, callback)
+		})
+	}
+}
+
+func (s *Stream) asyncReadNow(b []byte, callback func(error, int)) {
 	n, err := s.Read(b)
 
 	if err == sonicerrors.ErrWouldBlock {
