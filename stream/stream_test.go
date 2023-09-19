@@ -70,16 +70,13 @@ func initTestServer(
 	}()
 
 	go func() {
-		for bs := range s.writeQueue {
-			var conn net.Conn
-			for conn == nil {
-				s.lck.Lock()
-				conn = s.conn
-				s.lck.Unlock()
+		connReady := func() bool {
+			s.lck.Lock()
+			defer s.lck.Unlock()
+			return s.conn != nil
+		}
 
-				time.Sleep(time.Millisecond)
-			}
-
+		write := func(bs [][]byte) {
 			s.lck.Lock()
 			defer s.lck.Unlock()
 
@@ -89,6 +86,13 @@ func initTestServer(
 					s.t.Error(err)
 				}
 			}
+		}
+
+		for bs := range s.writeQueue {
+			for !connReady() {
+				time.Sleep(time.Millisecond)
+			}
+			write(bs)
 		}
 	}()
 
