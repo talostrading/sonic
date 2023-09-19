@@ -131,6 +131,7 @@ func TestStreamSyncRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stream.Close()
 
 	var (
 		n int
@@ -161,6 +162,7 @@ func TestStreamAsyncRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer stream.Close()
 
 	b := make([]byte, 128)
 	stream.AsyncRead(b, func(err error, n int) {

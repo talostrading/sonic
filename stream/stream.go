@@ -68,3 +68,4 @@ func (s *Stream) AsyncRead(b []byte, callback func(error, int)) {
 
 func (s *Stream) LocalAddr() net.Addr  { return s.localAddr }
 func (s *Stream) RemoteAddr() net.Addr { return s.remoteAddr }
+func (s *Stream) Close() error         { return syscall.Close(s.fd) }
