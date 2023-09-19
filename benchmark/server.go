@@ -4,6 +4,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"time"
 )
 
 var addr = flag.String("addr", "localhost:8080", "address")
@@ -29,5 +30,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		time.Sleep(time.Millisecond)
 	}
 }
