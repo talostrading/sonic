@@ -10,11 +10,53 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
+// TODO PollData should be Slot
+// TODO pendingReads/Writes should not be a map, but a slice indexed by fd.
+
+type readReactor struct {
+	stream *Stream
+
+	b        []byte
+	callback func(error, int)
+}
+
+func newReadReactor(stream *Stream) *readReactor {
+	return &readReactor{
+		stream: stream,
+	}
+}
+
+func (r *readReactor) prepare(b []byte, callback func(error, int)) error {
+	r.b = b
+	r.callback = callback
+	r.stream.slot.Set(internal.ReadEvent, r.onReady)
+
+	if err := r.stream.ioc.SetRead(r.stream.fd, &r.stream.slot); err != nil {
+		return err
+	}
+
+	r.stream.ioc.RegisterRead(&r.stream.slot)
+
+	return nil
+}
+
+func (r *readReactor) onReady(err error) {
+	r.stream.ioc.DeregisterRead(&r.stream.slot)
+	if err != nil {
+		r.callback(err, 0)
+	} else {
+		r.stream.AsyncRead(r.b, r.callback)
+	}
+}
+
 type Stream struct {
 	ioc        *sonic.IO
 	fd         int
 	localAddr  net.Addr
 	remoteAddr net.Addr
+
+	readReactor *readReactor
+	slot        internal.PollData
 }
 
 func Connect(ioc *sonic.IO, transport, addr string) (*Stream, error) {
@@ -42,6 +84,8 @@ func newStream(
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
 	}
+	s.readReactor = newReadReactor(s)
+	s.slot.Fd = fd
 	return s, nil
 }
 
@@ -57,6 +101,18 @@ func (s *Stream) Read(b []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 	return n, nil
+}
+
+func (s *Stream) AsyncRead(b []byte, callback func(error, int)) {
+	n, err := s.Read(b)
+
+	if err == sonicerrors.ErrWouldBlock {
+		if err := s.readReactor.prepare(b, callback); err != nil {
+			callback(err, 0)
+		}
+	} else {
+		callback(err, n)
+	}
 }
 
 func (s *Stream) LocalAddr() net.Addr  { return s.localAddr }

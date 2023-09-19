@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -20,6 +21,16 @@ type testServer struct {
 
 	conn net.Conn
 	lck  sync.Mutex
+}
+
+func poll(t *testing.T, ioc *sonic.IO) {
+	n, err := ioc.PollOne()
+	if n == 0 && (err == nil || errors.Is(err, sonicerrors.ErrTimeout)) {
+		n, err = ioc.PollOne()
+	}
+	if err != nil && err != sonicerrors.ErrTimeout {
+		t.Fatal(err)
+	}
 }
 
 func initTestServer(
@@ -132,4 +143,31 @@ func TestStreamSyncRead(t *testing.T) {
 	if string(b[:n]) != "hello" {
 		t.Fatal("incorrect read")
 	}
+}
+
+func TestStreamAsyncRead(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	s, addr := initTestServer(t, "tcp")
+	defer s.close()
+	s.accept().write([]byte("hello"))
+
+	stream, err := Connect(ioc, "tcp", addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := make([]byte, 128)
+	stream.AsyncRead(b, func(err error, n int) {
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if string(b[:n]) != "hello" {
+			t.Fatal("incorrect read")
+		}
+	})
+
+	poll(t, ioc)
 }
