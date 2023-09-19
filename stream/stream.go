@@ -13,42 +13,6 @@ import (
 // TODO PollData should be Slot
 // TODO pendingReads/Writes should not be a map, but a slice indexed by fd.
 
-type readReactor struct {
-	stream *Stream
-
-	b        []byte
-	callback func(error, int)
-}
-
-func newReadReactor(stream *Stream) *readReactor {
-	return &readReactor{
-		stream: stream,
-	}
-}
-
-func (r *readReactor) prepare(b []byte, callback func(error, int)) error {
-	r.b = b
-	r.callback = callback
-	r.stream.slot.Set(internal.ReadEvent, r.onReady)
-
-	if err := r.stream.ioc.SetRead(r.stream.fd, &r.stream.slot); err != nil {
-		return err
-	}
-
-	r.stream.ioc.RegisterRead(&r.stream.slot)
-
-	return nil
-}
-
-func (r *readReactor) onReady(err error) {
-	r.stream.ioc.DeregisterRead(&r.stream.slot)
-	if err != nil {
-		r.callback(err, 0)
-	} else {
-		r.stream.AsyncRead(r.b, r.callback)
-	}
-}
-
 type Stream struct {
 	ioc        *sonic.IO
 	fd         int
@@ -57,19 +21,6 @@ type Stream struct {
 
 	readReactor *readReactor
 	slot        internal.PollData
-}
-
-func Connect(ioc *sonic.IO, transport, addr string) (*Stream, error) {
-	fd, localAddr, remoteAddr, err := internal.Connect(transport, addr)
-	if err != nil {
-		return nil, err
-	}
-	return newStream(
-		ioc,
-		fd,
-		localAddr,
-		remoteAddr,
-	)
 }
 
 func newStream(
