@@ -1,22 +1,25 @@
 package stream
 
 import (
-	"fmt"
 	"net"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
 )
+
+// TODO need to see what's the current way of testing errors for equality
 
 type testServer struct {
 	t           *testing.T
 	ln          net.Listener
 	acceptQueue chan struct{}
 	writeQueue  chan [][]byte
-	closeQueue  chan struct{}
 
 	conn net.Conn
+	lck  sync.Mutex
 }
 
 func initTestServer(
@@ -33,45 +36,47 @@ func initTestServer(
 	s.ln = ln
 	s.acceptQueue = make(chan struct{}, 1024)
 	s.writeQueue = make(chan [][]byte, 1024)
-	s.closeQueue = make(chan struct{}, 1024)
 
 	go func() {
-		defer s.ln.Close()
-		if s.conn != nil {
-			defer s.conn.Close()
+		accept := func() {
+			s.lck.Lock()
+			defer s.lck.Unlock()
+
+			if s.conn != nil {
+				s.conn.Close()
+				s.conn = nil
+			}
+
+			conn, err := s.ln.Accept()
+			if err != nil {
+				s.t.Error(err)
+			}
+			s.conn = conn
 		}
+		for range s.acceptQueue {
+			accept()
+		}
+	}()
 
-		for {
-			select {
-			case <-s.acceptQueue:
-				if s.conn != nil {
-					s.conn.Close()
-					s.conn = nil
-				}
+	go func() {
+		for bs := range s.writeQueue {
+			var conn net.Conn
+			for conn == nil {
+				s.lck.Lock()
+				conn = s.conn
+				s.lck.Unlock()
 
-				conn, err := s.ln.Accept()
+				time.Sleep(time.Millisecond)
+			}
+
+			s.lck.Lock()
+			defer s.lck.Unlock()
+
+			for _, b := range bs {
+				_, err := s.conn.Write(b) // TODO writev
 				if err != nil {
 					s.t.Error(err)
 				}
-				s.conn = conn
-			case bs := <-s.writeQueue:
-				for s.conn == nil && len(s.acceptQueue) > 0 {
-				}
-				for _, b := range bs {
-					_, err := s.conn.Write(b) // TODO writev
-					if err != nil {
-						s.t.Error(err)
-					}
-				}
-			case <-s.closeQueue:
-				s.ln.Close()
-				if s.conn != nil {
-					s.conn.Close()
-				}
-				close(s.acceptQueue)
-				close(s.writeQueue)
-				close(s.closeQueue)
-				return
 			}
 		}
 	}()
@@ -90,10 +95,16 @@ func (s *testServer) write(bs ...[]byte) *testServer {
 }
 
 func (s *testServer) close() {
-	s.closeQueue <- struct{}{}
+	s.ln.Close()
+	if s.conn != nil {
+		s.conn.Close()
+	}
+	close(s.acceptQueue)
+	close(s.writeQueue)
+	return
 }
 
-func TestStream(t *testing.T) {
+func TestStreamSyncRead(t *testing.T) {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -114,6 +125,11 @@ func TestStream(t *testing.T) {
 	for err == sonicerrors.ErrWouldBlock {
 		n, err = stream.Read(b)
 	}
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	fmt.Println(n, err)
+	if string(b[:n]) != "hello" {
+		t.Fatal("incorrect read")
+	}
 }
