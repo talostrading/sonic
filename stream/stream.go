@@ -13,6 +13,8 @@ import (
 // TODO PollData should be Slot
 // TODO pendingReads/Writes should not be a map, but a slice indexed by fd.
 
+// TODO async read all, write, async write, cancel reads/writes
+
 const (
 	defaultImmediate = 8
 	maxImmediate     = 128
