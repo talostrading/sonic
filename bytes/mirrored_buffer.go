@@ -45,8 +45,8 @@ const mirroredBufferName = "sonic_mirrored_buffer"
 // - map the shared memory object at address `addr`
 // - map the shared memory object again at address `addr+size`
 // If `n==4`, this will result in the following memory layout: |0123|0123|.
-// Any write to the right part will be reflected in the left part - the left and
-// the right bytes belong to the same object.
+// Any write to the right part will be reflected in the left part and vice versa.
+// The left bytes and the right bytes are backed by the same physical memory.
 //
 // We call making this double maping "mirroring". This allows us to always get a
 // continuous slice of bytes from this buffer. The CPU's memory management unit
