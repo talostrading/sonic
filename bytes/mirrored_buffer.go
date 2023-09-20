@@ -181,40 +181,63 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// See TestMirroredBufferMmapBehaviour for a concrete example.
 	flags |= syscall.MAP_SHARED
 
+	remap := func(
+		baseAddr,
+		size,
+		prot,
+		flags,
+		fd uintptr,
+	) error {
+		if baseAddr == 0 {
+			return fmt.Errorf(
+				"remap: baseAddr must be a valid non-zero virtual address",
+			)
+		}
+
+		addr, _, errno := syscall.Syscall6(
+			syscall.SYS_MMAP,
+			baseAddr,
+			size,
+			prot,
+			flags,
+			fd,
+			0,
+		)
+		var err error = nil
+		if errno != 0 {
+			err = errno
+		}
+		if err == nil && addr != baseAddr {
+			err = fmt.Errorf(
+				"could not remap at address=%d size=%d fd=%d",
+				baseAddr, size, fd,
+			)
+		}
+		return err
+	}
+
 	// Make the first mapping: offset=0 length=size.
-	addr, err := mmapRaw(
+	if err := remap(
 		firstAddrPtr,
 		uintptr(size),
 		uintptr(prot),
 		uintptr(flags),
 		uintptr(fd),
-		0,
-	)
-	if err != nil {
+	); err != nil {
 		_ = b.Destroy()
 		return nil, err
 	}
-	if addr != firstAddrPtr {
-		_ = b.Destroy()
-		return nil, fmt.Errorf("could not mmap first chunk")
-	}
 
 	// Make the second mapping of the same file at: offset=size length=size.
-	addr, err = mmapRaw(
+	if err := remap(
 		secondAddrPtr,
 		uintptr(size),
 		uintptr(prot),
 		uintptr(flags),
 		uintptr(fd),
-		0,
-	)
-	if err != nil {
+	); err != nil {
 		_ = b.Destroy()
 		return nil, err
-	}
-	if addr != secondAddrPtr {
-		_ = b.Destroy()
-		return nil, fmt.Errorf("could not mmap second chunk")
 	}
 
 	// We can safely close this file descriptor per the mmap spec. Combined with
