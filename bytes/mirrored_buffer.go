@@ -78,6 +78,7 @@ type MirroredBuffer struct {
 //
 // This function must no be called concurrently.
 func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
+	fd := -1
 	defer func() {
 		// NOTE: We must ensure the mapping is detroyed in case the constructor
 		// fails. This means you should never write `err :=` below. Always write
@@ -85,6 +86,13 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		// - it will get assigned to the error value defined above.
 		if err != nil {
 			_ = b.Destroy()
+		}
+		if fd >= 0 {
+			// We can safely close this file descriptor per the mmap spec.
+			// Combined with the unlink syscall below, this makes it possible to
+			// reuse the name=/dev/shm/mirrored_buffer accross NewMirroredBuffer
+			// calls.
+			_ = syscall.Close(fd)
 		}
 	}()
 
@@ -142,7 +150,6 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// Mirroring an anonymous mapping twice won't work. Each
 	// MAP_ANONYMOUS | MAP_SHARED mapping is unique - no pages are shared with
 	// any other mapping.
-	var fd int
 	fd, err = syscall.Open(
 		b.name,
 		syscall.O_CREAT|syscall.O_RDWR,  // file is readable/writeable
@@ -243,13 +250,6 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		uintptr(flags),
 		uintptr(fd),
 	); err != nil {
-		return nil, err
-	}
-
-	// We can safely close this file descriptor per the mmap spec. Combined with
-	// the unlink syscall above, this makes it possible to reuse the
-	// name=/dev/shm/mirrored_buffer accross NewMirroredBuffer calls.
-	if err = syscall.Close(fd); err != nil {
 		return nil, err
 	}
 
