@@ -157,6 +157,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 
 	// We now map the shared memory file twice at fixed addresses wrt the
 	// b.slice above.
+	/* #nosec G103 -- the use of unsafe has been audited */
 	baseAddr := unsafe.Pointer(unsafe.SliceData(b.slice))
 	firstAddrPtr := uintptr(baseAddr)
 	secondAddr := unsafe.Add(baseAddr, size)
