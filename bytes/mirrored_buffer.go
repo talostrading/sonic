@@ -78,6 +78,16 @@ type MirroredBuffer struct {
 //
 // This function must no be called concurrently.
 func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
+	defer func() {
+		// NOTE: We must ensure the mapping is detroyed in case the constructor
+		// fails. This means you should never write `err :=` below. Always write
+		// `err = `. You can safely return a new error (like with `fmt.Errorf`)
+		// - it will get assigned to the error value defined above.
+		if err != nil {
+			_ = b.Destroy()
+		}
+	}()
+
 	pageSize := syscall.Getpagesize()
 	if remainder := size % pageSize; remainder > 0 {
 		size += pageSize - remainder
@@ -110,15 +120,13 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		}
 	}
 	if err != nil {
-		_ = b.Destroy()
 		return nil, fmt.Errorf(
 			"could not create mirrored buffer, tried %v, err=%v",
 			mirroredBufferLocations,
 			err,
 		)
 	}
-	if _, err := os.Stat(b.name); err == nil {
-		fmt.Println()
+	if _, err = os.Stat(b.name); err == nil {
 		return nil, fmt.Errorf(
 			"cannot create mirrored buffer, %s already exists",
 			b.name,
@@ -134,24 +142,22 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// Mirroring an anonymous mapping twice won't work. Each
 	// MAP_ANONYMOUS | MAP_SHARED mapping is unique - no pages are shared with
 	// any other mapping.
-	fd, err := syscall.Open(
+	var fd int
+	fd, err = syscall.Open(
 		b.name,
 		syscall.O_CREAT|syscall.O_RDWR,  // file is readable/writeable
 		syscall.S_IRUSR|syscall.S_IWUSR, // user can read/write to this file
 	)
 	if err != nil {
-		_ = b.Destroy()
 		return nil, fmt.Errorf("could not open %s err=%v", b.name, err)
 	}
 
-	if err := syscall.Truncate(b.name, int64(size)); err != nil {
-		_ = b.Destroy()
+	if err = syscall.Truncate(b.name, int64(size)); err != nil {
 		return nil, fmt.Errorf("could not truncate %s err=%v", b.name, err)
 	}
 
 	// Do not persist the file handle after this process exits.
-	if err := syscall.Unlink(b.name); err != nil {
-		_ = b.Destroy()
+	if err = syscall.Unlink(b.name); err != nil {
 		return nil, fmt.Errorf("could not unlink %s err=%v", b.name, err)
 	}
 
@@ -164,7 +170,9 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	secondAddrPtr := uintptr(secondAddr)
 
 	if int(secondAddrPtr)-int(firstAddrPtr) != size {
-		return nil, fmt.Errorf("could not compute offset addresses for chunks")
+		return nil, fmt.Errorf(
+			"could not compute offset addresses for left and right mappings",
+		)
 	}
 
 	// Can read/write to this memory.
@@ -208,7 +216,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 			err = errno
 		}
 		if err == nil && addr != baseAddr {
-			err = fmt.Errorf(
+			return fmt.Errorf(
 				"could not remap at address=%d size=%d fd=%d",
 				baseAddr, size, fd,
 			)
@@ -217,34 +225,31 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	}
 
 	// Make the first mapping: offset=0 length=size.
-	if err := remap(
+	if err = remap(
 		firstAddrPtr,
 		uintptr(size),
 		uintptr(prot),
 		uintptr(flags),
 		uintptr(fd),
 	); err != nil {
-		_ = b.Destroy()
 		return nil, err
 	}
 
 	// Make the second mapping of the same file at: offset=size length=size.
-	if err := remap(
+	if err = remap(
 		secondAddrPtr,
 		uintptr(size),
 		uintptr(prot),
 		uintptr(flags),
 		uintptr(fd),
 	); err != nil {
-		_ = b.Destroy()
 		return nil, err
 	}
 
 	// We can safely close this file descriptor per the mmap spec. Combined with
 	// the unlink syscall above, this makes it possible to reuse the
 	// name=/dev/shm/mirrored_buffer accross NewMirroredBuffer calls.
-	if err := syscall.Close(fd); err != nil {
-		_ = b.Destroy()
+	if err = syscall.Close(fd); err != nil {
 		return nil, err
 	}
 
@@ -308,8 +313,14 @@ func (b *MirroredBuffer) Full() bool {
 	return b.used > 0 && b.head == b.tail
 }
 
-func (b *MirroredBuffer) Destroy() error {
-	return syscall.Munmap(b.slice)
+func (b *MirroredBuffer) Destroy() (err error) {
+	if b.slice != nil {
+		err = syscall.Munmap(b.slice)
+		if err == nil {
+			b.slice = nil
+		}
+	}
+	return nil
 }
 
 func (b *MirroredBuffer) Head() []byte {
