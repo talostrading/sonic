@@ -55,10 +55,9 @@ const mirroredBufferName = "sonic_mirrored_buffer"
 // If we were to use a normal circular buffer, we would've gotten two slices:
 // `23` and `01`.
 type MirroredBuffer struct {
-	slice    []byte
-	baseAddr unsafe.Pointer
-	size     int
-	name     string
+	slice []byte
+	size  int
+	name  string
 
 	// state
 	head int
@@ -85,9 +84,8 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	}
 
 	b = &MirroredBuffer{
-		slice:    nil,
-		baseAddr: unsafe.Pointer(nil),
-		size:     size,
+		slice: nil,
+		size:  size,
 
 		head: 0,
 		tail: 0,
@@ -159,9 +157,9 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 
 	// We now map the shared memory file twice at fixed addresses wrt the
 	// b.slice above.
-	b.baseAddr = unsafe.Pointer(unsafe.SliceData(b.slice))
-	firstAddrPtr := uintptr(b.baseAddr)
-	secondAddr := unsafe.Add(b.baseAddr, size)
+	baseAddr := unsafe.Pointer(unsafe.SliceData(b.slice))
+	firstAddrPtr := uintptr(baseAddr)
+	secondAddr := unsafe.Add(baseAddr, size)
 	secondAddrPtr := uintptr(secondAddr)
 
 	if int(secondAddrPtr)-int(firstAddrPtr) != size {

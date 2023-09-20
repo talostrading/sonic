@@ -31,9 +31,6 @@ func TestMirroredBufferInit(t *testing.T) {
 	if buf.slice == nil {
 		t.Fatal("backing slice should not nil")
 	}
-	if buf.baseAddr == nil {
-		t.Fatal("backing slice's base address should not nil")
-	}
 	if buf.Size() != pageSize {
 		t.Fatal("invalid size")
 	}
