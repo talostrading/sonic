@@ -105,9 +105,10 @@ const (
 	// This code is reserved and may not be sent.
 	CloseNone CloseCode = 0
 
-	// CloseNoStatus means no status code was provided even though one was
-	// expected.
-	// This code is reserved and may not be sent.
+	// CloseNoStatus means no status code was provided in the close frame sent
+	// by the peer, even though one was expected.
+	// This code is reserved for internal use and may not be sent in-between
+	// peers.
 	CloseNoStatus CloseCode = 1005
 
 	// CloseAbnormal means the connection was closed without receiving a close
