@@ -11,17 +11,9 @@ package bytes
 import (
 	"fmt"
 	"os"
-	"path"
 	"syscall"
 	"unsafe"
 )
-
-var mirroredBufferLocations = []string{
-	"/dev/shm",
-	"/tmp",
-}
-
-const mirroredBufferName = "sonic_mirrored_buffer"
 
 // MirroredBuffer is a circular FIFO buffer that always returns continuous byte
 // slices. It is well suited for writing protocols on top of streaming
@@ -71,9 +63,8 @@ type MirroredBuffer struct {
 // resident memory (RSS). Prefaulting can be done post initialization through
 // MirroredBuffer.Prefault().
 //
-// This function must no be called concurrently.
+// It is safe to call NewMirroredBuffer concurrently.
 func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
-	fd := -1
 	defer func() {
 		// NOTE: We must ensure the mapping is destroyed in case the constructor
 		// fails. This means you should never write `err :=` below. Always write
@@ -81,13 +72,6 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		// - it will get assigned to the error value defined above.
 		if err != nil {
 			_ = b.Destroy()
-		}
-		if fd >= 0 {
-			// We can safely close this file descriptor per the mmap spec.
-			// Combined with the unlink syscall below, this makes it possible to
-			// reuse the name=/dev/shm/mirrored_buffer accross NewMirroredBuffer
-			// calls.
-			_ = syscall.Close(fd)
 		}
 	}()
 
@@ -109,47 +93,32 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		used: 0,
 	}
 
-	b.slice, err = mmapAllocate(2*size, prefault)
+	// TODO location should be logged to syslog
+	directory := "/dev/shm"
+	if _, err = os.Stat(directory); os.IsNotExist(err) {
+		directory = ""
+	}
+	var file *os.File
+	file, err = os.CreateTemp(directory, "sonic-mirrored-buffer-")
 	if err != nil {
 		return nil, err
 	}
+	defer func() {
+		_ = os.Remove(file.Name())
+		_ = file.Close()
+	}()
 
-	// TODO location should be logged to syslog
-	for _, location := range mirroredBufferLocations {
-		if _, err = os.Stat(location); err == nil {
-			b.name = path.Join(location, mirroredBufferName)
-			break
-		}
+	if err = file.Truncate(int64(size)); err != nil {
+		return nil, err
 	}
+
+	b.name = file.Name()
+
+	// This creates the anonymous mapping - we remap this area twice, starting
+	// at the address of the returned slice.
+	b.slice, err = mmapAllocate(2*size, prefault)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"could not create mirrored buffer, tried %v, err=%v",
-			mirroredBufferLocations,
-			err,
-		)
-	}
-	if _, err = os.Stat(b.name); err == nil {
-		return nil, fmt.Errorf(
-			"cannot create mirrored buffer, %s already exists",
-			b.name,
-		)
-	}
-
-	fd, err = syscall.Open(
-		b.name,
-		syscall.O_CREAT|syscall.O_RDWR,  // file is readable/writeable
-		syscall.S_IRUSR|syscall.S_IWUSR, // user can read/write to this file
-	)
-	if err != nil {
-		return nil, fmt.Errorf("could not open %s err=%v", b.name, err)
-	}
-
-	if err = syscall.Truncate(b.name, int64(size)); err != nil {
-		return nil, fmt.Errorf("could not truncate %s err=%v", b.name, err)
-	}
-
-	if err = syscall.Unlink(b.name); err != nil {
-		return nil, fmt.Errorf("could not unlink %s err=%v", b.name, err)
+		return nil, err
 	}
 
 	// We now map the shared memory file twice at fixed addresses wrt the
@@ -217,7 +186,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		uintptr(size),
 		uintptr(prot),
 		uintptr(flags),
-		uintptr(fd),
+		file.Fd(),
 	); err != nil {
 		return nil, err
 	}
@@ -228,7 +197,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		uintptr(size),
 		uintptr(prot),
 		uintptr(flags),
-		uintptr(fd),
+		file.Fd(),
 	); err != nil {
 		return nil, err
 	}
@@ -307,6 +276,6 @@ func (b *MirroredBuffer) Reset() {
 	b.used = 0
 }
 
-func (b *MirroredBuffer) FilesystemName() string {
+func (b *MirroredBuffer) Name() string {
 	return b.name
 }

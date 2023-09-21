@@ -27,7 +27,7 @@ func TestMirroredBufferInit(t *testing.T) {
 		}
 	}()
 
-	log.Printf("mirrored buffer is in %s", buf.FilesystemName())
+	log.Printf("mirrored buffer is in %s", buf.Name())
 
 	if buf.slice == nil {
 		t.Fatal("backing slice should not nil")
