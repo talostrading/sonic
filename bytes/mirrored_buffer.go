@@ -70,7 +70,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		// fails. This means you should never write `err :=` below. Always write
 		// `err = `. You can safely return a new error (like with `fmt.Errorf`)
 		// - it will get assigned to the error value defined above.
-		if err != nil {
+		if err != nil && b != nil {
 			_ = b.Destroy()
 		}
 	}()
