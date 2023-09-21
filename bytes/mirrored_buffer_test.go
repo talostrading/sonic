@@ -2,6 +2,7 @@ package bytes
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"runtime"
@@ -577,62 +578,70 @@ func TestMirroredBufferMmapBehaviour(t *testing.T) {
 }
 
 func BenchmarkMirroredBuffer(b *testing.B) {
-	var sizes []int
-	for i := 1; i <= 16; i += 4 {
-		sizes = append(sizes, syscall.Getpagesize()*i)
-	}
-	sizes = append(
-		sizes,
-		syscall.Getpagesize()*64,
-		syscall.Getpagesize()*127,
-		syscall.Getpagesize()*256,
-		syscall.Getpagesize()*512,
+	// This benchmarks a typical workflow for a stream transport buffer. What
+	// usually happens is:
+	// - a part of the buffer is claimed (here we claim the whole buffer)
+	// - we read from the network in the claimed part. Here that is replaced
+	//   with a memcpy
+	// - the buffer now contains multiple messages that can be decoded
+	// - a decode means: commit some bytes, decode them into an internal
+	//   type and the consume them.
+
+	var (
+		toCopy = make([]byte, 1024*128) // what we copy in the claimed part
+
+		// The number of messages to decode after a Claim+memcpy
+		nMessages = []int{1, 2, 4, 8, 16, 32, 64, 128, 256, 512}
 	)
 
-	consider := 0
-	for consider < len(sizes) {
-		if sizes[consider] <= 2*1024*1024 {
-			consider++
-		} else {
-			sizes = sizes[:consider]
-			break
-		}
-	}
-
-	letters := []byte("abcdefghijklmnopqrstuvwxyz")
-
-	for _, n := range sizes {
-		n := n
+	for _, nMessage := range nMessages {
+		nMessage := nMessage
+		bytesPerMessage := len(toCopy) / nMessage
 		b.Run(
-			fmt.Sprintf("byte_buffer_%s", util.ByteCountSI(int64(n))),
+			fmt.Sprintf(
+				"byte_buffer_%s_%d",
+				util.ByteCountSI(int64(len(toCopy))),
+				nMessage,
+			),
 			func(b *testing.B) {
 				{
 					buf := sonic.NewByteBuffer()
-					buf.Reserve(n)
+					buf.Reserve(len(toCopy))
 					buf.Prefault()
 
 					b.ResetTimer()
 
+					sum := 0
 					for i := 0; i < b.N; i++ {
 						buf.Claim(func(b []byte) int {
-							return copy(b, letters[:])
+							return copy(b, toCopy)
 						})
-						buf.Commit(7)
-						buf.Consume(7)
+						for buf.WriteLen() > 0 {
+							buf.Commit(bytesPerMessage)
+							// here we would decode the bytes into an internal
+							// type
+							buf.Consume(bytesPerMessage)
+						}
 					}
 					b.ReportAllocs()
+					fmt.Fprint(io.Discard, sum)
 				}
 				runtime.GC()
 			})
 	}
 
-	for _, n := range sizes {
-		n := n
+	for _, chunk := range nMessages {
+		chunk := chunk
+		consume := len(toCopy) / chunk
 		b.Run(
-			fmt.Sprintf("mirrored_buffer_%s", util.ByteCountSI(int64(n))),
+			fmt.Sprintf(
+				"mirrored_buffer_%s_%d",
+				util.ByteCountSI(int64(len(toCopy))),
+				chunk,
+			),
 			func(b *testing.B) {
 				{
-					buf, err := NewMirroredBuffer(n, false)
+					buf, err := NewMirroredBuffer(len(toCopy), true)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -641,12 +650,18 @@ func BenchmarkMirroredBuffer(b *testing.B) {
 
 					b.ResetTimer()
 
+					sum := 0
 					for i := 0; i < b.N; i++ {
-						b := buf.Claim(7)
-						copy(b, letters[:])
-						buf.Commit(7)
-						buf.Consume(7)
+						b := buf.Claim(len(toCopy))
+						copy(b, toCopy)
+						for buf.UsedSpace() > 0 {
+							buf.Commit(consume)
+							// here we would decode the bytes into an internal
+							// type
+							buf.Consume(consume)
+						}
 					}
+					fmt.Fprint(io.Discard, sum)
 					b.ReportAllocs()
 				}
 				runtime.GC()
