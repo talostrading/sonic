@@ -214,7 +214,7 @@ func TestMirroredBuffer2(t *testing.T) {
 		}
 	}
 	{
-		b = buf.Head()
+		b = buf.slice[:buf.size]
 		if len(b) == 0 {
 			t.Fatal("should not be zero")
 		}
@@ -283,7 +283,7 @@ func TestMirroredBuffer3(t *testing.T) {
 		t.Fatal("invalid commit")
 	}
 
-	b = buf.Head()
+	b = buf.slice[:buf.size]
 	if b[len(b)-1] != 2 {
 		t.Fatal("wrong tail")
 	}
@@ -405,7 +405,8 @@ func TestMirroredBufferSizes(t *testing.T) {
 func TestMirroredBufferHugeSize(t *testing.T) {
 	// We should be good mapping huge amounts of memory due to on-demand paging
 	// on Linux/BSD. As long as we don't prefault or write to the entire
-	// buffer...
+	// buffer... Still you should not make a buffer this big in production - the
+	// system will go OOM.
 	var (
 		size     = 1024 * 1024 * 1024 * 1024 // 1TB
 		pageSize = syscall.Getpagesize()
@@ -444,7 +445,7 @@ func TestMirroredBufferMultiple(t *testing.T) {
 	}
 
 	for k, buf := range buffers {
-		b := buf.Head()
+		b := buf.slice[:buf.size]
 		for i := 0; i < 8; i++ {
 			if b[i] != byte(k+1) {
 				t.Fatal("invalid buffer")
