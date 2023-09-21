@@ -52,6 +52,9 @@ func EncodeCloseFramePayload(cc CloseCode, reason string) []byte {
 }
 
 func DecodeCloseFramePayload(b []byte) (cc CloseCode, reason string) {
+	if len(b) < 2 {
+		return CloseNoStatus, ""
+	}
 	cc = DecodeCloseCode(b[:2])
 	reason = string(b[2:])
 	return
