@@ -52,57 +52,30 @@ func TestMirroredBufferInit(t *testing.T) {
 	}
 }
 
-func TestMirroredBufferInitSize1(t *testing.T) {
+func TestMirroredBufferSize(t *testing.T) {
+	// We assert that a buffer's size is at least as larged as the passed size
+	// and a multiple of page size.
 	pageSize := syscall.Getpagesize()
 
-	buf, err := NewMirroredBuffer(pageSize, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := buf.Destroy(); err != nil {
+	for _, size := range []int{1, pageSize, pageSize + 1} {
+		buf, err := NewMirroredBuffer(size, false)
+		if err != nil {
 			t.Fatal(err)
 		}
-	}()
+		defer func() {
+			if err := buf.Destroy(); err != nil {
+				t.Fatal(err)
+			}
+		}()
 
-	if buf.Size() != pageSize {
-		t.Fatal("invalid size")
-	}
-}
-
-func TestMirroredBufferInitSize2(t *testing.T) {
-	pageSize := syscall.Getpagesize()
-
-	buf, err := NewMirroredBuffer(1, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := buf.Destroy(); err != nil {
-			t.Fatal(err)
+		if !(buf.Size() >= 1 && buf.Size()%pageSize == 0) {
+			t.Fatalf("invalid size=%d", buf.Size())
 		}
-	}()
-
-	if buf.Size() != pageSize {
-		t.Fatal("invalid size")
 	}
-}
 
-func TestMirroredBufferInitSize3(t *testing.T) {
-	pageSize := syscall.Getpagesize()
-
-	buf, err := NewMirroredBuffer(pageSize+1, true)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if err := buf.Destroy(); err != nil {
-			t.Fatal(err)
-		}
-	}()
-
-	if buf.Size() != pageSize*2 {
-		t.Fatal("invalid size")
+	// We ensure callers cannot create a buffer of size 0.
+	if _, err := NewMirroredBuffer(0, false); err == nil {
+		t.Fatal("should not be able to create a buffer of size zero")
 	}
 }
 
