@@ -7,8 +7,6 @@ package bytes
 // TODO ensure there's no major page faults for tmpfs filesystems
 // TODO measure the impact of major page faults for non-tmpfs mirrored buffers
 // TODO maybe escape hatch to ramfs
-// TODO frame codec with mirrored buffer and introduce CodecBuffer interface
-// (after introducing the Stream non-alloc connection)
 
 import (
 	"fmt"
@@ -27,33 +25,29 @@ const mirroredBufferName = "sonic_mirrored_buffer"
 
 // MirroredBuffer is a circular FIFO buffer that always returns continuous byte
 // slices. It is well suited for writing protocols on top of streaming
-// transports such as TCP. This buffer does not memory copies or allocations
+// transports such as TCP. This buffer does no memory copies or allocations
 // outside of initialization time.
 //
-// NOTE: A MirroredBuffer of size n will copy 2*n memory. If memory usage is a
-// concern, switch to using a sonic.ByteBuffer at the cost of higher latency.
+// For protocols on top of packet based transports such as UDP, use a BipBuffer
+// instead.
 //
-// For protocols on top of packet based transports such as UDP, please use
-// sonic.BipBuffer instead.
+// A MirroredBuffer maps a shared memory file twice in the process' virtual
+// memory space. The mappings are sequential. For example, a MirroredBuffer of
+// size `n` will create a shared memory file of size `n` and mmap it twice: once
+// at `addr` and once at `addr+n`. As a result, a MirroredBuffer will uses
+// `2*n` virtual memory and `n` physical memory.
 //
-// Given the caller wants a buffer of size `n`, a mirrored buffer works as
-// follows:
-// - allocate an area of size `2*n` in the process' virtual memory. Get the base
-// address of that allocation, call it `addr`
-// - create a new POSIX shared memory object of size `n` through `shm_open`
-// (this can be seen as a file that lives fully in RAM)
-// - map the shared memory object at address `addr`
-// - map the shared memory object again at address `addr+size`
-// If `n==4`, this will result in the following memory layout: |0123|0123|.
-// Any write to the right part will be reflected in the left part and vice versa.
-// The left bytes and the right bytes are backed by the same physical memory.
+// This double mapping allows us to always get a continuous slice of bytes from
+// the buffer. The CPU's memory management unit will do the wrapping for us.
 //
-// We call making this double maping "mirroring". This allows us to always get a
-// continuous slice of bytes from this buffer. The CPU's memory management unit
-// will do the wrapping for us under the hood. More specifically, we can get a
-// slice refering to the bytes `2301`. The `01` bytes are taken from the mirror.
-// If we were to use a normal circular buffer, we would've gotten two slices:
-// `23` and `01`.
+// There's a trick employed to make the double mmapping possible - this trick
+// gives us the `addr` above. Given that both mappings need to be sequential, we
+// need to mmap them at fixed virtual memory addresses. We can't arbitrarily
+// choose a virtual address - we have no guarantee that it can hold a mmaping of
+// size `2*n`. That's why we let mmap choose it for us by initially mmaping an
+// area of size `2*n` with MAP_ANONYMOUS | MAP_PRIVATE and no fd. The returned
+// address is then used to mmap the shared memory file twice, consecutively.
+// This is done in the locally defined `remap()` function in the constructor.
 type MirroredBuffer struct {
 	slice []byte
 	size  int
@@ -73,14 +67,14 @@ type MirroredBuffer struct {
 //
 // If prefault is true, the memory used by the buffer is physically backed after
 // this call. This results in an immediate allocation, visible in the process'
-// resident memory. Prefaulting can be done post initialization through
+// resident memory (RSS). Prefaulting can be done post initialization through
 // MirroredBuffer.Prefault().
 //
 // This function must no be called concurrently.
 func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	fd := -1
 	defer func() {
-		// NOTE: We must ensure the mapping is detroyed in case the constructor
+		// NOTE: We must ensure the mapping is destroyed in case the constructor
 		// fails. This means you should never write `err :=` below. Always write
 		// `err = `. You can safely return a new error (like with `fmt.Errorf`)
 		// - it will get assigned to the error value defined above.
@@ -110,11 +104,6 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		used: 0,
 	}
 
-	// Map a virtual address space of `2*size` in the process' memory. This call
-	// can be seen as a memory allocation. The returned address (the base
-	// pointer of the returned slice) is used to map the shared memory area of
-	// of `size` twice: once at offset 0 and once at offset size wrt to the
-	// pointer of `b.slice`.
 	b.slice, err = mmapAllocate(2*size, prefault)
 	if err != nil {
 		return nil, err
@@ -141,15 +130,6 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		)
 	}
 
-	// Now create a shared memory handle. Truncate it to size. This won't
-	// allocate but merely set the size of the shared handle. We then map that
-	// handle into memory twice: once at offset 0 and once at offset size, both
-	// wrt the address of b.slice returned by mmap above.
-	//
-	// NOTE: we need a well defined handle, more specifically a file, to mirror.
-	// Mirroring an anonymous mapping twice won't work. Each
-	// MAP_ANONYMOUS | MAP_SHARED mapping is unique - no pages are shared with
-	// any other mapping.
 	fd, err = syscall.Open(
 		b.name,
 		syscall.O_CREAT|syscall.O_RDWR,  // file is readable/writeable
@@ -163,7 +143,6 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		return nil, fmt.Errorf("could not truncate %s err=%v", b.name, err)
 	}
 
-	// Do not persist the file handle after this process exits.
 	if err = syscall.Unlink(b.name); err != nil {
 		return nil, fmt.Errorf("could not unlink %s err=%v", b.name, err)
 	}
@@ -171,10 +150,13 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// We now map the shared memory file twice at fixed addresses wrt the
 	// b.slice above.
 	/* #nosec G103 -- the use of unsafe has been audited */
-	baseAddr := unsafe.Pointer(unsafe.SliceData(b.slice))
-	firstAddrPtr := uintptr(baseAddr)
-	secondAddr := unsafe.Add(baseAddr, size)
-	secondAddrPtr := uintptr(secondAddr)
+	var (
+		firstAddr    = unsafe.Pointer(unsafe.SliceData(b.slice))
+		firstAddrPtr = uintptr(firstAddr)
+
+		secondAddr    = unsafe.Add(firstAddr, size)
+		secondAddrPtr = uintptr(secondAddr)
+	)
 
 	if int(secondAddrPtr)-int(firstAddrPtr) != size {
 		return nil, fmt.Errorf(
@@ -182,19 +164,12 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		)
 	}
 
-	// Can read/write to this memory.
 	prot := syscall.PROT_READ | syscall.PROT_WRITE
 
-	// Force the mapping to start at baseAddr.
-	flags := syscall.MAP_FIXED
-
-	// Share this mapping within the process' scope. This means any modification
-	// made to this [0, size] mapping will be visible in the mirror residing at
-	// [size, 2 * size]. This would not be possible with MAP_PRIVATE due to the
-	// copy-on-write behaviour documented above.
-	//
-	// See TestMirroredBufferMmapBehaviour for a concrete example.
-	flags |= syscall.MAP_SHARED
+	// See TestMirroredBufferMmapBehaviour for the behaviour of MAP_SHARED vs
+	// MAP_PRIVATE. MAP_FIXED ensures the remap takes place at the address
+	// returned by the anoymous mapping above.
+	flags := syscall.MAP_FIXED | syscall.MAP_SHARED
 
 	remap := func(
 		baseAddr,
@@ -231,7 +206,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		return err
 	}
 
-	// Make the first mapping: offset=0 length=size.
+	// First mapping at offset=0 of length=size.
 	if err = remap(
 		firstAddrPtr,
 		uintptr(size),
@@ -242,7 +217,7 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 		return nil, err
 	}
 
-	// Make the second mapping of the same file at: offset=size length=size.
+	// Second mapping of the same file at offset=size of length=size.
 	if err = remap(
 		secondAddrPtr,
 		uintptr(size),
@@ -310,7 +285,7 @@ func (b *MirroredBuffer) Consume(n int) int {
 }
 
 func (b *MirroredBuffer) Full() bool {
-	return b.used > 0 && b.head == b.tail
+	return b.used == b.size
 }
 
 func (b *MirroredBuffer) Destroy() (err error) {
@@ -321,10 +296,6 @@ func (b *MirroredBuffer) Destroy() (err error) {
 		}
 	}
 	return nil
-}
-
-func (b *MirroredBuffer) Head() []byte {
-	return b.slice[:b.size]
 }
 
 func (b *MirroredBuffer) Size() int {
