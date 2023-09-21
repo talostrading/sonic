@@ -49,9 +49,10 @@ const mirroredBufferName = "sonic_mirrored_buffer"
 // address is then used to mmap the shared memory file twice, consecutively.
 // This is done in the locally defined `remap()` function in the constructor.
 type MirroredBuffer struct {
-	slice []byte
-	size  int
-	name  string
+	slice    []byte
+	size     int
+	sizeMask int
+	name     string
 
 	// state
 	head int
@@ -94,10 +95,14 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	if remainder := size % pageSize; remainder > 0 {
 		size += pageSize - remainder
 	}
+	if size <= 0 {
+		return nil, fmt.Errorf("invalid buffer size %d", size)
+	}
 
 	b = &MirroredBuffer{
-		slice: nil,
-		size:  size,
+		slice:    nil,
+		size:     size,
+		sizeMask: size - 1,
 
 		head: 0,
 		tail: 0,
@@ -262,10 +267,7 @@ func (b *MirroredBuffer) Commit(n int) int {
 		n = free
 	}
 	b.used += n
-	b.tail += n
-	if b.tail >= b.size {
-		b.tail -= b.size
-	}
+	b.tail = (b.tail + n) & b.sizeMask
 	return n
 }
 
@@ -277,10 +279,7 @@ func (b *MirroredBuffer) Consume(n int) int {
 		return 0
 	}
 	b.used -= n
-	b.head += n
-	if b.head >= b.size {
-		b.head -= b.size
-	}
+	b.head = (b.head + n) & b.sizeMask
 	return n
 }
 
