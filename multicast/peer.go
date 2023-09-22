@@ -610,7 +610,7 @@ func (p *UDPPeer) scheduleRead(fn func(error, int, netip.AddrPort)) {
 }
 
 func (p *UDPPeer) setRead() error {
-	return p.ioc.SetRead(p.socket.RawFd(), &p.slot)
+	return p.ioc.SetRead(&p.slot)
 }
 
 func (p *UDPPeer) Write(b []byte, addr netip.AddrPort) (int, error) {
@@ -672,7 +672,7 @@ func (p *UDPPeer) scheduleWrite(fn func(error, int)) {
 }
 
 func (p *UDPPeer) setWrite() error {
-	return p.ioc.SetWrite(p.socket.RawFd(), &p.slot)
+	return p.ioc.SetWrite(&p.slot)
 }
 
 // LocalAddr of the peer. Note that the IP can be zero if addr is empty in
