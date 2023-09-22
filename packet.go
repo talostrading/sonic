@@ -139,7 +139,7 @@ func (c *packetConn) getReadHandler(b []byte, readBytes int, readAll bool, cb As
 }
 
 func (c *packetConn) setRead() error {
-	return c.ioc.poller.SetRead(c.fd, &c.pd)
+	return c.ioc.SetRead(c.fd, &c.pd)
 }
 
 func (c *packetConn) WriteTo(b []byte, to net.Addr) error {
@@ -200,7 +200,7 @@ func (c *packetConn) getWriteHandler(b []byte, to net.Addr, cb AsyncWriteCallbac
 }
 
 func (c *packetConn) setWrite() error {
-	return c.ioc.poller.SetWrite(c.fd, &c.pd)
+	return c.ioc.SetWrite(c.fd, &c.pd)
 }
 
 func (c *packetConn) Close() error {

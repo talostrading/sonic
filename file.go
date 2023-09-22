@@ -157,7 +157,7 @@ func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCal
 }
 
 func (f *file) setRead() error {
-	return f.ioc.poller.SetRead(f.fd, &f.pd)
+	return f.ioc.SetRead(f.fd, &f.pd)
 }
 
 func (f *file) AsyncWrite(b []byte, cb AsyncCallback) {
@@ -234,7 +234,7 @@ func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb Asy
 }
 
 func (f *file) setWrite() error {
-	return f.ioc.poller.SetWrite(f.fd, &f.pd)
+	return f.ioc.SetWrite(f.fd, &f.pd)
 }
 
 func (f *file) Close() error {
