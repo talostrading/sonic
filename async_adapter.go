@@ -123,13 +123,13 @@ func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, readAll bool, cb As
 	if err := a.setRead(); err != nil {
 		cb(err, readBytes)
 	} else {
-		a.ioc.pendingReads[&a.pd] = struct{}{}
+		a.ioc.RegisterRead(&a.pd)
 	}
 }
 
 func (a *AsyncAdapter) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		delete(a.ioc.pendingReads, &a.pd)
+		a.ioc.DeregisterRead(&a.pd)
 
 		if err != nil {
 			cb(err, readBytes)
@@ -190,13 +190,13 @@ func (a *AsyncAdapter) scheduleWrite(b []byte, writtenBytes int, writeAll bool, 
 	if err := a.setWrite(); err != nil {
 		cb(err, writtenBytes)
 	} else {
-		a.ioc.pendingWrites[&a.pd] = struct{}{}
+		a.ioc.RegisterWrite(&a.pd)
 	}
 }
 
 func (a *AsyncAdapter) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		delete(a.ioc.pendingWrites, &a.pd)
+		a.ioc.DeregisterWrite(&a.pd)
 
 		if err != nil {
 			cb(err, writtenBytes)

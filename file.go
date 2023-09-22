@@ -141,13 +141,13 @@ func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	if err := f.setRead(); err != nil {
 		cb(err, readBytes)
 	} else {
-		f.ioc.pendingReads[&f.pd] = struct{}{}
+		f.ioc.RegisterRead(&f.pd)
 	}
 }
 
 func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		delete(f.ioc.pendingReads, &f.pd)
+		f.ioc.DeregisterRead(&f.pd)
 		if err != nil {
 			cb(err, readBytes)
 		} else {
@@ -217,13 +217,13 @@ func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb Async
 	if err := f.setWrite(); err != nil {
 		cb(err, writtenBytes)
 	} else {
-		f.ioc.pendingWrites[&f.pd] = struct{}{}
+		f.ioc.RegisterWrite(&f.pd)
 	}
 }
 
 func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		delete(f.ioc.pendingWrites, &f.pd)
+		f.ioc.DeregisterWrite(&f.pd)
 
 		if err != nil {
 			cb(err, writtenBytes)
