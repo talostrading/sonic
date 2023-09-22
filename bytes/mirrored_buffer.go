@@ -125,45 +125,38 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	// b.slice above.
 	/* #nosec G103 -- the use of unsafe has been audited */
 	var (
-		firstAddr    = unsafe.Pointer(unsafe.SliceData(b.slice))
-		firstAddrPtr = uintptr(firstAddr)
-
-		secondAddr    = unsafe.Add(firstAddr, size)
-		secondAddrPtr = uintptr(secondAddr)
+		firstAddr  = uintptr(unsafe.Pointer(&b.slice[0]))
+		secondAddr = uintptr(unsafe.Pointer(&b.slice[size]))
 	)
 
-	if int(secondAddrPtr)-int(firstAddrPtr) != size {
+	if int(secondAddr)-int(firstAddr) != size {
 		return nil, fmt.Errorf(
 			"could not compute offset addresses for left and right mappings",
 		)
 	}
 
-	prot := syscall.PROT_READ | syscall.PROT_WRITE
-
-	// See TestMirroredBufferMmapBehaviour for the behaviour of MAP_SHARED vs
-	// MAP_PRIVATE. MAP_FIXED ensures the remap takes place at the address
-	// returned by the anoymous mapping above.
-	flags := syscall.MAP_FIXED | syscall.MAP_SHARED
-
-	remap := func(
-		baseAddr,
-		size,
-		prot,
-		flags,
-		fd uintptr,
-	) error {
+	remap := func(baseAddr uintptr) error {
 		if baseAddr == 0 {
 			return fmt.Errorf(
 				"remap: baseAddr must be a valid non-zero virtual address",
 			)
 		}
 
+		prot := syscall.PROT_READ | syscall.PROT_WRITE
+
+		// See TestMirroredBufferMmapBehaviour for the behaviour of MAP_SHARED vs
+		// MAP_PRIVATE. MAP_FIXED ensures the remap takes place at the address
+		// returned by the anoymous mapping above.
+		flags := syscall.MAP_FIXED | syscall.MAP_SHARED
+
+		fd := file.Fd()
+
 		addr, _, errno := syscall.Syscall6(
 			syscall.SYS_MMAP,
 			baseAddr,
-			size,
-			prot,
-			flags,
+			uintptr(size),
+			uintptr(prot),
+			uintptr(flags),
 			fd,
 			0,
 		)
@@ -181,24 +174,12 @@ func NewMirroredBuffer(size int, prefault bool) (b *MirroredBuffer, err error) {
 	}
 
 	// First mapping at offset=0 of length=size.
-	if err = remap(
-		firstAddrPtr,
-		uintptr(size),
-		uintptr(prot),
-		uintptr(flags),
-		file.Fd(),
-	); err != nil {
+	if err = remap(firstAddr); err != nil {
 		return nil, err
 	}
 
 	// Second mapping of the same file at offset=size of length=size.
-	if err = remap(
-		secondAddrPtr,
-		uintptr(size),
-		uintptr(prot),
-		uintptr(flags),
-		file.Fd(),
-	); err != nil {
+	if err = remap(secondAddr); err != nil {
 		return nil, err
 	}
 

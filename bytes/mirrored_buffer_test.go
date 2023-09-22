@@ -502,14 +502,23 @@ func TestMirroredBufferMmapBehaviour(t *testing.T) {
 }
 
 func BenchmarkMirroredBuffer(b *testing.B) {
-	// This benchmarks a typical workflow for a stream transport buffer. What
-	// usually happens is:
+	// This benchmarks a typical workflow for a streaming codec. What usually
+	// happens is:
 	// - a part of the buffer is claimed (here we claim the whole buffer)
 	// - we read from the network in the claimed part. Here that is replaced
 	//   with a memcpy
 	// - the buffer now contains multiple messages that can be decoded
 	// - a decode means: commit some bytes, decode them into an internal
-	//   type and the consume them.
+	//   type and the consume them
+	// - the tail of the buffer might contain a partial message - a `Consume` is
+	//   needed in order to make space for the remainder of the message before a
+	//   new network `read` is performed.
+	//
+	// (Arguably, it could be more efficient to Consume only after processing
+	// all complete messages in a `ByteBuffer`. However, we currently don't do
+	// that in production. As such, this benchmark reflects the improvements
+	// that we would get by swapping `ByteBuffer` with `MirroredBuffer` right
+	// now).
 
 	var (
 		size   = syscall.Getpagesize() * 32
