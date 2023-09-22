@@ -21,7 +21,6 @@ type AsyncAdapterHandler func(error, *AsyncAdapter)
 // underlying file descriptor.
 type AsyncAdapter struct {
 	ioc    *IO
-	fd     int
 	pd     internal.PollData
 	rw     io.ReadWriter
 	rc     syscall.RawConn
@@ -48,17 +47,13 @@ func NewAsyncAdapter(
 	}
 
 	err = rc.Control(func(fd uintptr) {
-		ifd := int(fd)
 		a := &AsyncAdapter{
-			fd:  ifd,
 			ioc: ioc,
 			rw:  rw,
 			rc:  rc,
 		}
-		a.pd.Fd = ifd
-
-		err := internal.ApplyOpts(ifd, opts...)
-
+		a.pd.Fd = int(fd)
+		err := internal.ApplyOpts(int(fd), opts...)
 		cb(err, a)
 	})
 	if err != nil {
@@ -140,7 +135,7 @@ func (a *AsyncAdapter) getReadHandler(b []byte, readBytes int, readAll bool, cb 
 }
 
 func (a *AsyncAdapter) setRead() error {
-	return a.ioc.SetRead(a.fd, &a.pd)
+	return a.ioc.SetRead(&a.pd)
 }
 
 // AsyncWrite writes data from the supplied buffer to the underlying file descriptor asynchronously.
@@ -207,7 +202,7 @@ func (a *AsyncAdapter) getWriteHandler(b []byte, writtenBytes int, writeAll bool
 }
 
 func (a *AsyncAdapter) setWrite() error {
-	return a.ioc.SetWrite(a.fd, &a.pd)
+	return a.ioc.SetWrite(&a.pd)
 }
 
 func (a *AsyncAdapter) Close() error {
@@ -215,9 +210,9 @@ func (a *AsyncAdapter) Close() error {
 		return io.EOF
 	}
 
-	_ = a.ioc.poller.Del(a.fd, &a.pd)
+	_ = a.ioc.poller.Del(&a.pd)
 
-	return syscall.Close(a.fd)
+	return syscall.Close(a.pd.Fd)
 }
 
 func (a *AsyncAdapter) AsyncClose(cb func(err error)) {
@@ -237,7 +232,7 @@ func (a *AsyncAdapter) Cancel() {
 
 func (a *AsyncAdapter) cancelReads() {
 	if a.pd.Flags&internal.ReadFlags == internal.ReadFlags {
-		err := a.ioc.poller.DelRead(a.fd, &a.pd)
+		err := a.ioc.poller.DelRead(&a.pd)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
@@ -247,7 +242,7 @@ func (a *AsyncAdapter) cancelReads() {
 
 func (a *AsyncAdapter) cancelWrites() {
 	if a.pd.Flags&internal.WriteFlags == internal.WriteFlags {
-		err := a.ioc.poller.DelWrite(a.fd, &a.pd)
+		err := a.ioc.poller.DelWrite(&a.pd)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
@@ -256,5 +251,5 @@ func (a *AsyncAdapter) cancelWrites() {
 }
 
 func (a *AsyncAdapter) RawFd() int {
-	return a.fd
+	return a.pd.Fd
 }

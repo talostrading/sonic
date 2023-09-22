@@ -69,12 +69,12 @@ func (ioc *IO) DeregisterWrite(pd *internal.PollData) {
 	delete(ioc.pendingWrites, pd)
 }
 
-func (ioc *IO) SetRead(fd int, slot *internal.PollData) error {
-	return ioc.poller.SetRead(fd, slot)
+func (ioc *IO) SetRead(slot *internal.PollData) error {
+	return ioc.poller.SetRead(slot)
 }
 
-func (ioc *IO) SetWrite(fd int, slot *internal.PollData) error {
-	return ioc.poller.SetWrite(fd, slot)
+func (ioc *IO) SetWrite(slot *internal.PollData) error {
+	return ioc.poller.SetWrite(slot)
 }
 
 // Run runs the event processing loop.

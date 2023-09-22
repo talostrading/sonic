@@ -214,8 +214,8 @@ func (p *poller) executePost() {
 	p.lck.Unlock()
 }
 
-func (p *poller) SetRead(fd int, pd *PollData) error {
-	return p.setRead(fd, syscall.EV_ADD|syscall.EV_ONESHOT, pd)
+func (p *poller) SetRead(pd *PollData) error {
+	return p.setRead(pd.Fd, syscall.EV_ADD|syscall.EV_ONESHOT, pd)
 }
 
 func (p *poller) setRead(fd int, flags uint16, pd *PollData) error {
@@ -228,40 +228,40 @@ func (p *poller) setRead(fd int, flags uint16, pd *PollData) error {
 	return nil
 }
 
-func (p *poller) SetWrite(fd int, pd *PollData) error {
+func (p *poller) SetWrite(pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&WriteFlags != WriteFlags {
 		p.pending++
 		*pdflags |= WriteFlags
-		return p.set(fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -WriteFlags, pd, 0))
+		return p.set(pd.Fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -WriteFlags, pd, 0))
 	}
 	return nil
 }
 
-func (p *poller) DelRead(fd int, pd *PollData) error {
+func (p *poller) DelRead(pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&ReadFlags == ReadFlags {
 		p.pending--
 		*pdflags ^= ReadFlags
-		return p.set(fd, createEvent(syscall.EV_DELETE, -ReadFlags, pd, 0))
+		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -ReadFlags, pd, 0))
 	}
 	return nil
 }
 
-func (p *poller) DelWrite(fd int, pd *PollData) error {
+func (p *poller) DelWrite(pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&WriteFlags == WriteFlags {
 		p.pending--
 		*pdflags ^= WriteFlags
-		return p.set(fd, createEvent(syscall.EV_DELETE, -WriteFlags, pd, 0))
+		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -WriteFlags, pd, 0))
 	}
 	return nil
 }
 
-func (p *poller) Del(fd int, pd *PollData) error {
-	err := p.DelRead(fd, pd)
+func (p *poller) Del(pd *PollData) error {
+	err := p.DelRead(pd)
 	if err == nil {
-		return p.DelWrite(fd, pd)
+		return p.DelWrite(pd)
 	}
 	return nil
 }

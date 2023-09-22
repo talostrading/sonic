@@ -57,22 +57,22 @@ type Poller interface {
 
 	// SetRead registers interest in read events on the provided
 	// file descriptor.
-	SetRead(fd int, pd *PollData) error
+	SetRead(pd *PollData) error
 
 	// SetWrite registers interest in write events on the provided
 	// file descriptor.
-	SetWrite(fd int, pd *PollData) error
+	SetWrite(pd *PollData) error
 
 	// DelRead deregisters interest in read events on the provided
 	// file descriptor.
-	DelRead(fd int, pd *PollData) error
+	DelRead(pd *PollData) error
 
 	// DelWrite deregisters interest in write events on the provided
 	// file descriptor.
-	DelWrite(fd int, pd *PollData) error
+	DelWrite(pd *PollData) error
 
 	// Del deregisters interest in all events on the provided file descriptor.
-	Del(fd int, pd *PollData) error
+	Del(pd *PollData) error
 
 	// Close closes the Poller.
 	//

@@ -89,7 +89,7 @@ func NewPoller() (Poller, error) {
 		events: make([]Event, 128),
 	}
 
-	err = p.SetRead(p.waker.Fd(), p.waker.PollData())
+	err = p.SetRead(p.waker.PollData())
 	if err != nil {
 		_ = p.waker.Close()
 		_ = syscall.Close(p.fd)
@@ -179,13 +179,13 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 
 		if flags&pd.Flags&ReadFlags == ReadFlags {
 			// TODO this errors should be reported
-			_ = p.DelRead(pd.Fd, pd)
+			_ = p.DelRead(pd)
 			pd.Cbs[ReadEvent](nil)
 		}
 
 		if flags&pd.Flags&WriteFlags == WriteFlags {
 			// TODO this errors should be reported
-			_ = p.DelWrite(pd.Fd, pd)
+			_ = p.DelWrite(pd)
 			pd.Cbs[WriteEvent](nil)
 		}
 	}
@@ -210,12 +210,12 @@ func (p *poller) dispatch() {
 	p.lck.Unlock()
 }
 
-func (p *poller) SetRead(fd int, pd *PollData) error {
-	return p.setRW(fd, pd, ReadFlags)
+func (p *poller) SetRead(pd *PollData) error {
+	return p.setRW(pd.Fd, pd, ReadFlags)
 }
 
-func (p *poller) SetWrite(fd int, pd *PollData) error {
-	return p.setRW(fd, pd, WriteFlags)
+func (p *poller) SetWrite(pd *PollData) error {
+	return p.setRW(pd.Fd, pd, WriteFlags)
 }
 
 func (p *poller) setRW(fd int, pd *PollData, flag PollFlags) error {
@@ -267,36 +267,36 @@ func (p *poller) modify(fd int, event Event) error {
 	return nil
 }
 
-func (p *poller) Del(fd int, pd *PollData) error {
-	err := p.DelRead(fd, pd)
+func (p *poller) Del(pd *PollData) error {
+	err := p.DelRead(pd)
 	if err == nil {
-		return p.DelWrite(fd, pd)
+		return p.DelWrite(pd)
 	}
 	return nil
 }
 
-func (p *poller) DelRead(fd int, pd *PollData) error {
+func (p *poller) DelRead(pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&ReadFlags == ReadFlags {
 		p.pending--
 		*pdflags ^= ReadFlags
 		if *pdflags != 0 {
-			return p.modify(fd, createEvent(*pdflags, pd))
+			return p.modify(pd.Fd, createEvent(*pdflags, pd))
 		}
-		return p.del(fd)
+		return p.del(pd.Fd)
 	}
 	return nil
 }
 
-func (p *poller) DelWrite(fd int, pd *PollData) error {
+func (p *poller) DelWrite(pd *PollData) error {
 	pdflags := &pd.Flags
 	if *pdflags&WriteFlags == WriteFlags {
 		p.pending--
 		*pdflags ^= WriteFlags
 		if *pdflags != 0 {
-			return p.modify(fd, createEvent(*pdflags, pd))
+			return p.modify(pd.Fd, createEvent(*pdflags, pd))
 		}
-		return p.del(fd)
+		return p.del(pd.Fd)
 	}
 	return nil
 }

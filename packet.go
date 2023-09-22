@@ -16,7 +16,6 @@ var _ PacketConn = &packetConn{}
 
 type packetConn struct {
 	ioc        *IO
-	fd         int
 	pd         internal.PollData
 	localAddr  net.Addr
 	remoteAddr net.Addr
@@ -44,7 +43,6 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 
 	return &packetConn{
 		ioc:       ioc,
-		fd:        fd,
 		pd:        internal.PollData{Fd: fd},
 		localAddr: localAddr,
 		closed:    0,
@@ -53,7 +51,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 
 func (c *packetConn) ReadFrom(b []byte) (n int, from net.Addr, err error) {
 	var addr syscall.Sockaddr
-	n, addr, err = syscall.Recvfrom(c.fd, b, 0)
+	n, addr, err = syscall.Recvfrom(c.pd.Fd, b, 0)
 	from = internal.FromSockaddr(addr)
 
 	if err != nil {
@@ -139,11 +137,11 @@ func (c *packetConn) getReadHandler(b []byte, readBytes int, readAll bool, cb As
 }
 
 func (c *packetConn) setRead() error {
-	return c.ioc.SetRead(c.fd, &c.pd)
+	return c.ioc.SetRead(&c.pd)
 }
 
 func (c *packetConn) WriteTo(b []byte, to net.Addr) error {
-	err := syscall.Sendto(c.fd, b, 0, internal.ToSockaddr(to))
+	err := syscall.Sendto(c.pd.Fd, b, 0, internal.ToSockaddr(to))
 	if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
 		return sonicerrors.ErrWouldBlock
 	}
@@ -200,12 +198,12 @@ func (c *packetConn) getWriteHandler(b []byte, to net.Addr, cb AsyncWriteCallbac
 }
 
 func (c *packetConn) setWrite() error {
-	return c.ioc.SetWrite(c.fd, &c.pd)
+	return c.ioc.SetWrite(&c.pd)
 }
 
 func (c *packetConn) Close() error {
 	atomic.StoreUint32(&c.closed, 1)
-	return syscall.Close(c.fd)
+	return syscall.Close(c.pd.Fd)
 }
 
 func (c *packetConn) Closed() bool {
@@ -217,5 +215,5 @@ func (c *packetConn) LocalAddr() net.Addr {
 }
 
 func (c *packetConn) RawFd() int {
-	return c.fd
+	return c.pd.Fd
 }

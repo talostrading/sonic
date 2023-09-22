@@ -50,7 +50,7 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 			_, _ = syscall.Read(t.fd, t.b[:])
 			cb()
 		})
-		err = t.poller.SetRead(t.fd, &t.pd)
+		err = t.poller.SetRead(&t.pd)
 	}
 
 	return err
@@ -62,7 +62,7 @@ func (t *Timer) Unset() error {
 	}
 	err := unix.TimerfdSettime(t.fd, 0, &unix.ItimerSpec{}, nil)
 	if err == nil {
-		err = t.poller.Del(t.fd, &t.pd)
+		err = t.poller.Del(&t.pd)
 	}
 	return err
 }
