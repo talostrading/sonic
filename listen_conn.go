@@ -72,7 +72,7 @@ func (l *listener) AsyncAccept(cb AcceptCallback) {
 func (l *listener) asyncAccept(cb AcceptCallback) {
 	l.pd.Set(internal.ReadEvent, l.handleAsyncAccept(cb))
 
-	if err := l.ioc.poller.SetRead(l.fd, &l.pd); err != nil {
+	if err := l.ioc.SetRead(l.fd, &l.pd); err != nil {
 		cb(err, nil)
 	} else {
 		l.ioc.RegisterRead(&l.pd)

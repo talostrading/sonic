@@ -140,7 +140,7 @@ func (a *AsyncAdapter) getReadHandler(b []byte, readBytes int, readAll bool, cb 
 }
 
 func (a *AsyncAdapter) setRead() error {
-	return a.ioc.poller.SetRead(a.fd, &a.pd)
+	return a.ioc.SetRead(a.fd, &a.pd)
 }
 
 // AsyncWrite writes data from the supplied buffer to the underlying file descriptor asynchronously.
@@ -207,7 +207,7 @@ func (a *AsyncAdapter) getWriteHandler(b []byte, writtenBytes int, writeAll bool
 }
 
 func (a *AsyncAdapter) setWrite() error {
-	return a.ioc.poller.SetWrite(a.fd, &a.pd)
+	return a.ioc.SetWrite(a.fd, &a.pd)
 }
 
 func (a *AsyncAdapter) Close() error {
