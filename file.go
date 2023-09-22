@@ -136,7 +136,7 @@ func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	handler := f.getReadHandler(b, readBytes, readAll, cb)
 	f.pd.Set(internal.ReadEvent, handler)
 
-	if err := f.setRead(); err != nil {
+	if err := f.ioc.SetRead(&f.pd); err != nil {
 		cb(err, readBytes)
 	} else {
 		f.ioc.RegisterRead(&f.pd)
@@ -152,10 +152,6 @@ func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCal
 			f.asyncReadNow(b, readBytes, readAll, cb)
 		}
 	}
-}
-
-func (f *file) setRead() error {
-	return f.ioc.SetRead(&f.pd)
 }
 
 func (f *file) AsyncWrite(b []byte, cb AsyncCallback) {
@@ -212,7 +208,7 @@ func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb Async
 	handler := f.getWriteHandler(b, writtenBytes, writeAll, cb)
 	f.pd.Set(internal.WriteEvent, handler)
 
-	if err := f.setWrite(); err != nil {
+	if err := f.ioc.SetWrite(&f.pd); err != nil {
 		cb(err, writtenBytes)
 	} else {
 		f.ioc.RegisterWrite(&f.pd)
@@ -229,10 +225,6 @@ func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb Asy
 			f.asyncWriteNow(b, writtenBytes, writeAll, cb)
 		}
 	}
-}
-
-func (f *file) setWrite() error {
-	return f.ioc.SetWrite(&f.pd)
 }
 
 func (f *file) Close() error {

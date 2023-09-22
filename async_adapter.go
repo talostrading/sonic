@@ -115,7 +115,7 @@ func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, readAll bool, cb As
 	handler := a.getReadHandler(b, readBytes, readAll, cb)
 	a.pd.Set(internal.ReadEvent, handler)
 
-	if err := a.setRead(); err != nil {
+	if err := a.ioc.SetRead(&a.pd); err != nil {
 		cb(err, readBytes)
 	} else {
 		a.ioc.RegisterRead(&a.pd)
@@ -132,10 +132,6 @@ func (a *AsyncAdapter) getReadHandler(b []byte, readBytes int, readAll bool, cb 
 			a.asyncReadNow(b, readBytes, readAll, cb)
 		}
 	}
-}
-
-func (a *AsyncAdapter) setRead() error {
-	return a.ioc.SetRead(&a.pd)
 }
 
 // AsyncWrite writes data from the supplied buffer to the underlying file descriptor asynchronously.
@@ -182,7 +178,7 @@ func (a *AsyncAdapter) scheduleWrite(b []byte, writtenBytes int, writeAll bool, 
 	handler := a.getWriteHandler(b, writtenBytes, writeAll, cb)
 	a.pd.Set(internal.WriteEvent, handler)
 
-	if err := a.setWrite(); err != nil {
+	if err := a.ioc.SetWrite(&a.pd); err != nil {
 		cb(err, writtenBytes)
 	} else {
 		a.ioc.RegisterWrite(&a.pd)
@@ -199,10 +195,6 @@ func (a *AsyncAdapter) getWriteHandler(b []byte, writtenBytes int, writeAll bool
 			a.asyncWriteNow(b, writtenBytes, writeAll, cb)
 		}
 	}
-}
-
-func (a *AsyncAdapter) setWrite() error {
-	return a.ioc.SetWrite(&a.pd)
 }
 
 func (a *AsyncAdapter) Close() error {
