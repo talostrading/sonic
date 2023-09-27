@@ -23,7 +23,7 @@ func PinTo(cpuID int) error {
 		return err
 	}
 
-	if cpuset.Count() != 1 {
+	if verify.Count() != 1 {
 		return fmt.Errorf("could not pin to CPU %d", cpuID)
 	}
 
