@@ -2,6 +2,6 @@
 
 package util
 
-func PinTo(int) error {
+func PinTo(...int) error {
 	return nil
 }
