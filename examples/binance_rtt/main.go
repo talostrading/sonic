@@ -70,8 +70,21 @@ func readLoop(stream websocket.Stream) {
 	stream.AsyncNextMessage(b, onRead)
 }
 
+func calculateAverageRTT(rtts []time.Duration) (time.Duration, int) {
+	totalRTT := time.Duration(0)
+	for _, rtt := range rtts {
+		totalRTT += rtt
+	}
+	numSamples := len(rtts)
+	if numSamples > 0 {
+		return totalRTT / time.Duration(numSamples), numSamples
+	}
+	return time.Duration(0), numSamples
+}
+
 func main() {
 	flag.Parse()
+	var all_rtts []time.Duration
 
 	if *streamType == "spot" {
 		subMsg = []byte(fmt.Sprintf(
@@ -146,7 +159,12 @@ func main() {
 		if mt == websocket.TypePong {
 			ts, _ := strconv.ParseInt(string(b), 10, 64)
 			rtt := time.Now().Sub(time.UnixMicro(ts))
-			fmt.Println(rtt)
+			all_rtts = append(all_rtts, rtt)
+
+			avg_rtt, num_reuqests := calculateAverageRTT(all_rtts)
+			fmt.Println("Last RTT", rtt)
+			fmt.Println("Average RTT:", avg_rtt, "Based on", num_reuqests, "requests")
+
 		}
 	})
 	if err != nil {
