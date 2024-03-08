@@ -141,7 +141,7 @@ func main() {
 	hist := util.NewTtyHist(util.TtyHistOpts{
 		Name:      "sample",
 		Scale:     "ms",
-		N:         50,
+		N:         100,
 		MinPct:    0.1,
 		Min:       1,
 		Max:       100000000,
