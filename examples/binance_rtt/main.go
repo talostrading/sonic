@@ -4,11 +4,13 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/codec/websocket"
+	"github.com/talostrading/sonic/util"
 )
 
 // example: go run main.go -t="linear" -v=false
@@ -70,17 +72,7 @@ func readLoop(stream websocket.Stream) {
 	stream.AsyncNextMessage(b, onRead)
 }
 
-func calculateAverageRTT(rtts []time.Duration) (time.Duration, int) {
-	totalRTT := time.Duration(0)
-	for _, rtt := range rtts {
-		totalRTT += rtt
-	}
-	numSamples := len(rtts)
-	if numSamples > 0 {
-		return totalRTT / time.Duration(numSamples), numSamples
-	}
-	return time.Duration(0), numSamples
-}
+
 
 func main() {
 	flag.Parse()
@@ -146,6 +138,16 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+	hist := util.NewTtyHist(util.TtyHistOpts{
+		Name:      "sample",
+		Scale:     "ms",
+		N:         50,
+		MinPct:    0.1,
+		Min:       1,
+		Max:       100000000,
+		Precision: 1,
+		Writer:    os.Stdout,
+	})
 	err = t.ScheduleRepeating(5*time.Second, func() {
 		now := []byte(strconv.FormatInt(time.Now().UnixMicro(), 10))
 		stream.AsyncWrite(now, websocket.TypePing, func(err error) {
@@ -161,9 +163,8 @@ func main() {
 			rtt := time.Now().Sub(time.UnixMicro(ts))
 			all_rtts = append(all_rtts, rtt)
 
-			avg_rtt, num_reuqests := calculateAverageRTT(all_rtts)
+			hist.Add(rtt.Milliseconds())
 			fmt.Println("Last RTT", rtt)
-			fmt.Println("Average RTT:", avg_rtt, "Based on", num_reuqests, "requests")
 
 		}
 	})
