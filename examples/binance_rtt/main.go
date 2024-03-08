@@ -16,18 +16,18 @@ import (
 var (
 	streamType = flag.String("t", "spot", "spot/inverse/linear")
 	verbose    = flag.Bool("v", false, "if true then payloads are also printed, otherwise only rtts")
+	addr       = flag.String("a", "", "if non-empty then the address we connect to. Must match the type")
 )
 
 var (
-	addr   string
 	subMsg []byte
 )
 
 var b = make([]byte, 512*1024) // contains websocket payloads
 
 func run(stream websocket.Stream) {
-	fmt.Println("connecting to", addr)
-	stream.AsyncHandshake(addr, func(err error) {
+	fmt.Println("connecting to", *addr)
+	stream.AsyncHandshake(*addr, func(err error) {
 		onHandshake(err, stream)
 	})
 }
@@ -83,8 +83,10 @@ func main() {
 }
 `,
 		))
-		addr = "wss://stream.binance.com:9443/ws"
-		fmt.Println("connecting to spot")
+		if *addr == "" {
+			*addr = "wss://stream.binance.com:9443/ws"
+		}
+		fmt.Println("connecting to spot", *addr)
 	} else if *streamType == "inverse" {
 		subMsg = []byte(fmt.Sprintf(
 			`
@@ -95,8 +97,10 @@ func main() {
 }
 `,
 		))
-		addr = "wss://dstream.binance.com/ws"
-		fmt.Println("connecting to inverse")
+		if *addr == "" {
+			*addr = "wss://dstream.binance.com/ws"
+		}
+		fmt.Println("connecting to inverse", *addr)
 	} else if *streamType == "linear" {
 		subMsg = []byte(fmt.Sprintf(
 			`
@@ -107,8 +111,10 @@ func main() {
 }
 `,
 		))
-		addr = "wss://fstream.binance.com/ws"
-		fmt.Println("connecting to linear")
+		if *addr == "" {
+			*addr = "wss://fstream.binance.com/ws"
+		}
+		fmt.Println("connecting to linear", *addr)
 	} else {
 		panic("invalid stream type. choices are: spot, inverse, linear")
 	}
@@ -116,7 +122,7 @@ func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
-	stream, err := websocket.NewWebsocketStream(ioc, &tls.Config{}, websocket.RoleClient)
+	stream, err := websocket.NewWebsocketStream(ioc, &tls.Config{InsecureSkipVerify: true}, websocket.RoleClient)
 	if err != nil {
 		panic(err)
 	}
