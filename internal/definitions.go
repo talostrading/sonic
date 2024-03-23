@@ -32,7 +32,7 @@ type ITimer interface {
 
 type Poller interface {
 	// Poll polls the status of the underlying events registered with
-	// SetRead or SetWrite, checking if any occured.
+	// SetRead or SetWrite, checking if any occurred.
 	//
 	// A call to Poll will block until either:
 	//  - an event occurs
@@ -41,7 +41,7 @@ type Poller interface {
 	Poll(timeoutMs int) (n int, err error)
 
 	// Pending returns the number of registered events which have not yet
-	// occured.
+	// occurred.
 	Pending() int64
 
 	// Post instructs the Poller to execute the provided handler in the Poller's
