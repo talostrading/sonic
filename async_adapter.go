@@ -31,7 +31,7 @@ type AsyncAdapter struct {
 // NewAsyncAdapter takes in an IO instance and an interface of syscall.Conn and io.ReadWriter
 // pertaining to the same object and invokes a completion handler which:
 //   - provides the async adapter on successful completion
-//   - provides an error if any occured when async-adapting the provided object
+//   - provides an error if any occurred when async-adapting the provided object
 //
 // See async_adapter_test.go for examples on how to setup an AsyncAdapter.
 func NewAsyncAdapter(
@@ -87,7 +87,7 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 // AsyncReadAll reads data from the underlying file descriptor into b asynchronously.
 //
 // The provided handler is invoked in the following cases:
-//   - an error occured
+//   - an error occurred
 //   - the provided buffer has been fully filled after zero or several underlying
 //     read(...) operations.
 func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
@@ -154,7 +154,7 @@ func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 // AsyncWriteAll writes data from the supplied buffer to the underlying file descriptor asynchronously.
 //
 // The provided handler is invoked in the following cases:
-//   - an error occured
+//   - an error occurred
 //   - the provided buffer has been fully written after zero or several underlying
 //     write(...) operations.
 func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {

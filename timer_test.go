@@ -162,7 +162,7 @@ outer:
 	}
 
 	if fired <= 1 {
-		t.Fatal("timer did not fire repeteadly")
+		t.Fatal("timer did not fire repeatedly")
 	}
 }
 
