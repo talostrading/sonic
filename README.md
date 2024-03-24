@@ -4,20 +4,20 @@
 
 Sonic is a Go library for network and I/O programming that provides developers with a consistent asynchronous model,
 with a focus on achieving the lowest possible latency and jitter in Go. Sonic aims to make it easy to write network
-protocols (websocket, http2, custom exchange binary) on series of bytestreams and then make use of those bytstreams
+protocols (websocket, http2, custom exchange binary) on a series of bytestreams and then make use of those bytestreams
 through multiple connections running in a **single-thread and goroutine**.
 
-Sonic is an alternative to the `net` package. It removes the need of using multiple goroutines to handle
+Sonic is an alternative to the `net` package. It removes the need to use multiple goroutines to handle
 multiple connections and reads/writes in the same process. By doing that, a single goroutine
 and thread is used to read/write from multiple connections which brings several benefits:
 
-- No need to use synchronization primitives (channels, mutexes etc.) as multiple connections can be handled in the same
+- No need to use synchronization primitives (channels, mutexes, etc.) as multiple connections can be handled in the same
   goroutine.
 - It removes the need for the Go scheduler to do any work which could slow down the program.
-- It allows latency sensitive programs to run in a hot-loop pinned to a thread on an isolated core in order to achieve
+- It allows latency-sensitive programs to run in a hot-loop pinned to a thread on an isolated core in order to achieve
   low latency and jitter.
 
-Sonic currently supports only Unix based systems.
+Sonic currently supports only Unix-based systems (BSD, macOS, Linux).
 
 ```go
 func main() {
@@ -56,7 +56,7 @@ of sonic. The builds will be put in `bin/`.
 ### UDP Multicast
 
 `sonic` offers a full-featured `UDP Multicast` peer for both `IPv4` and `IPv6`. See `multicast/peer.go`. This peer can
-read and write data to a multicast group, join a group with source-IP and network interface filtering and control its
+read and write data to a multicast group, join a group with source-IP and network interface filtering, and control its
 group membership by blocking/unblocking source-IPs at runtime.
 
 Moreover, this peer, unlike the `websocket` client, does not allocate and copy any data in any of its functions.
@@ -67,7 +67,7 @@ var (
 )
 peer.AsyncRead(b1, func(...) { ... }) // schedule an asynchronous read in b1
 // ... some other code here
-peer.SetAsyncReadBuffer(b2) // make the previsouly scheduled asynchronous read use b2 instead of b1
+peer.SetAsyncReadBuffer(b2) // make the previously scheduled asynchronous read use b2 instead of b1
 ```
 
 This is very useful when multiple `UDP` peers share the same read buffer. For example:
@@ -80,7 +80,7 @@ peer1.AsyncRead(b[:256], func(...) { updateAndProcessBuffer() })
 peer2.AsyncRead(b[:256], func(...) { updateAndProcessBuffer() })
 
 func updateAndProcessBuffer() {
-    // One of peers read something. We instruct the peers to read into the next 256 byte chunk of b such that we can
+    // One of the peers read something. We instruct the peers to read into the next 256 byte chunk of b such that we can
     // process the previous 256 bytes.
     peer1.AsyncRead(b[256:512], func(...) { updateAndProcessBuffer() })
     peer2.AsyncRead(b[256:512], func(...) { updateAndProcessBuffer() })
@@ -92,8 +92,8 @@ func updateAndProcessBuffer() {
 ### Zero-copy FIFO buffers
 
 We provide two types of FIFO buffers with zero-copy semantics. Regardless of the type, a FIFO buffer is essential when
-writing protocol encoders/decoders over UDP or TCP with Linux's socket API in order to minimize syscalls. For example,
-say we have a simple protocol where each message has a fixed size header and a variable sized payload - the length of
+writing protocol encoders/decoders over UDP or TCP with Linux's socket API to minimize syscalls. For example,
+say we have a simple protocol where each message has a fixed-size header and a variable-sized payload - the length of
 the payload is in the header. Say we read data through TCP. We then have two options:
 ```go
 // buffer in which we read; assume header size is 1 byte.
@@ -127,7 +127,7 @@ minimized - in the limit, we need just 1 syscall to read `n` messages. `option 2
 - what if the last read message was incomplete i.e. we read the header with its size, say `255`, but only had space to
   read `100` of those bytes into `b` as we're near the end of `b`.
 - to read the rest of the `255 - 100 = 155` bytes of the payload, we need to move the read `100` bytes to the beginning
-  of `b`, overwriting the already processes payloads.
+  of `b`, overwriting the already processed payloads.
 - in other words, we need FIFO semantics over `b`.
 
 The naive way of offering FIFO semantics over b would be to simply copy the `100` bytes to the beginning of the slice.
@@ -144,36 +144,36 @@ In those cases we offer two types of FIFO semantics over a byte slice, both offe
 
 This is a zero-copy FIFO buffer that works for both TCP and UDP protocols. It offers contiguous byte slices in a FIFO
 manner without care for wrapping. See `bytes/mirrored_buffer.go`. The only limitations are that the buffer size must be
-a multiple of the system's page size and the system must expose a share memory filesystem like `/dev/shm`. In short, the
+a multiple of the system's page size and the system must expose a shared memory filesystem like `/dev/shm`. In short, the
 mirrored buffer provides zero-copy FIFO semantics over a byte slice in the following way:
 
 - it creates the underlying byte slice of size `n` (where `n` is a multiple of page size) and **maps it twice,
   contiguously, in the process' virtual address space** with `mmap`.
 - there are `n` physical bytes backing up the underlying byte slice and `n * 2` virtual bytes
 - the buffer is mirrored in a sense that reading/writing to the sequence `b[n], b[n+1], ..., b[2*n-1]` is permitted and
-  in fact touches the bytes at `b[0], b[1], ..., b[n-1]`
+  in fact, touches the bytes at `b[0], b[1], ..., b[n-1]`
 
 #### Bip Buffer
 
 This is a zero-copy FIFO buffer meant solely for writing packet-based (UDP) protocols. Refer to the
 creator's [post](https://www.codeproject.com/Articles/3479/The-Bip-Buffer-The-Circular-Buffer-with-a-Twist) for an
-explanation on how it works.
+explanation of how it works.
 
 #### What is next
 
 The two buffers above are not yet standardized across sonic. TCP codecs, including `websocket`, still use the `memcpy`
-based byte buffer abstraction `byte_buffer.go` which is not that performant for large messages. The plain is to port
+based byte buffer abstraction `byte_buffer.go` which is not that performant for large messages. The plan is to port
 websocket to use the mirrored buffer by `v1.0.0`.
 
-The Bip Buffer is actively used in Talos UDP based gateways.
+The Bip Buffer is actively used in Talos UDP-based gateways.
 
 ## Peculiarities
 
 ### Async preemption
 
-If, for some reason, you have a single goroutine which ends up waiting for more than 10ms for something to happen, sonic
+If, for some reason, you have a single goroutine that ends up waiting for more than 10ms for something to happen, sonic
 will crash on Linux due to `epoll_wait` being interrupted by the signal SIGURG. This happens because, by default, the Go
-runtime non-cooperatively preempts goroutines which are idle for more than 10ms. To turn off this behaviour,
+runtime non-cooperatively preempts goroutines that are idle for more than 10ms. To turn off this behavior,
 set `GODEBUG=asyncpreemptoff=1` before running your binary.
 
 This issue has been addressed
