@@ -4,21 +4,27 @@ import (
 	"flag"
 	"net"
 	"runtime/debug"
+	"sync"
 )
 
 var n = flag.Int("n", 10, "number of connections")
+var b = make([]byte, 128)
+var lck sync.Mutex
 
 func run(conn net.Conn) {
-	b := make([]byte, 128)
 	for {
+		lck.Lock()
 		n, err := conn.Read(b)
+		lck.Unlock()
 		if err != nil {
 			panic(err)
 		}
 		if n != 128 {
 			panic("not 128")
 		}
+		lck.Lock()
 		n, err = conn.Write(b)
+		lck.Unlock()
 		if err != nil {
 			panic(err)
 		}

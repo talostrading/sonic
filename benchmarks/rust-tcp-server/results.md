@@ -30,3 +30,31 @@ min/avg/max/stddev = 12/71/569/17us
 min/avg/max/stddev = 15/71/568/17us
 min/avg/max/stddev = 10/71/569/18us
 ```
+
+with all goroutines sharing the same buffer under a lock:
+```
+min/avg/max/stddev = 11/286/5382/684us
+min/avg/max/stddev = 11/274/6497/670us
+min/avg/max/stddev = 11/279/5249/676us
+min/avg/max/stddev = 11/277/5648/676us
+min/avg/max/stddev = 11/283/6248/686us
+min/avg/max/stddev = 11/296/5176/700us
+min/avg/max/stddev = 11/286/5395/689us
+```
+```go
+lck.Lock()
+n, err := conn.Read(b)
+lck.Unlock()
+if err != nil {
+        panic(err)
+}
+if n != 128 {
+        panic("not 128")
+}
+lck.Lock()
+n, err = conn.Write(b)
+lck.Unlock()
+if err != nil {
+        panic(err)
+}
+```
