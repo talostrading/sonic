@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"runtime"
 	"runtime/debug"
 
 	"github.com/talostrading/sonic"
@@ -10,9 +11,11 @@ import (
 var n = flag.Int("n", 10, "number of connections")
 
 func main() {
+	debug.SetGCPercent(-1)
+	runtime.LockOSThread()
+
 	flag.Parse()
 
-	debug.SetGCPercent(-1)
 	ioc := sonic.MustIO()
 
 	b := make([]byte, 128)
