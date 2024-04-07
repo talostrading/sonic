@@ -8,23 +8,45 @@ import (
 )
 
 var n = flag.Int("n", 10, "number of connections")
-var b = make([]byte, 128)
-var lck sync.Mutex
+var locked = flag.Bool("lck", false, "")
+var rb = make([]byte, 128)
+var wb = make([]byte, 128)
+var rlck, wlck sync.Mutex
 
 func run(conn net.Conn) {
+	b := make([]byte, 128)
 	for {
-		lck.Lock()
 		n, err := conn.Read(b)
-		lck.Unlock()
 		if err != nil {
 			panic(err)
 		}
 		if n != 128 {
 			panic("not 128")
 		}
-		lck.Lock()
 		n, err = conn.Write(b)
-		lck.Unlock()
+		if err != nil {
+			panic(err)
+		}
+		if n != 128 {
+			panic("not 128")
+		}
+	}
+}
+
+func run_lck(conn net.Conn) {
+	for {
+		rlck.Lock()
+		n, err := conn.Read(rb)
+		rlck.Unlock()
+		if err != nil {
+			panic(err)
+		}
+		if n != 128 {
+			panic("not 128")
+		}
+		wlck.Lock()
+		n, err = conn.Write(wb)
+		wlck.Unlock()
 		if err != nil {
 			panic(err)
 		}
@@ -42,7 +64,11 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		go run(conn)
+		if *locked {
+			go run_lck(conn)
+		} else {
+			go run(conn)
+		}
 	}
 	for {
 
