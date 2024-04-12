@@ -16,16 +16,12 @@ import (
 // A goroutine must not have more than one IO. Multiple goroutines, each with
 // at most one IO can coexist in the same process.
 type IO struct {
-	poller internal.Poller
-
-	// pending* prevents the PollData owned by an object to be garbage
-	// collected while an async operation is in-flight on the object's file descriptor,
-	// in case the object goes out of scope.
-	// TODO get rid of map here. Only after subscription mechanism.
-	// Per fd you can have a list of PollData
-	pendingReads, pendingWrites map[*internal.PollData]struct{}
+	poller                      internal.Poller
+	pendingReads, pendingWrites []*internal.PollData
 	pendingTimers               map[*Timer]struct{}
 }
+
+const DefaultPendingCount = 4096
 
 func NewIO() (*IO, error) {
 	poller, err := internal.NewPoller()
@@ -33,16 +29,15 @@ func NewIO() (*IO, error) {
 		return nil, err
 	}
 
-	return &IO{
-		poller: poller,
-
-		// TODO pendingReads and pendingWrites should be merged in one. Also get rid of this map since everything
-		// is on an fd
-		pendingReads:  make(map[*internal.PollData]struct{}),
-		pendingWrites: make(map[*internal.PollData]struct{}),
-
+	ioc := &IO{
+		poller:        poller,
+		pendingReads:  make([]*internal.PollData, DefaultPendingCount),
+		pendingWrites: make([]*internal.PollData, DefaultPendingCount),
 		pendingTimers: make(map[*Timer]struct{}),
-	}, nil
+	}
+	ioc.pendingReads = ioc.pendingReads[:cap(ioc.pendingReads)]
+	ioc.pendingWrites = ioc.pendingWrites[:cap(ioc.pendingWrites)]
+	return ioc, nil
 }
 
 func MustIO() *IO {
@@ -54,19 +49,27 @@ func MustIO() *IO {
 }
 
 func (ioc *IO) RegisterRead(pd *internal.PollData) {
-	ioc.pendingReads[pd] = struct{}{}
+	if pd.Fd >= len(ioc.pendingReads) {
+		ioc.pendingReads = append(ioc.pendingReads, make([]*internal.PollData, pd.Fd-len(ioc.pendingReads)+1)...)
+		ioc.pendingReads = ioc.pendingReads[:cap(ioc.pendingReads)]
+	}
+	ioc.pendingReads[pd.Fd] = pd
 }
 
 func (ioc *IO) RegisterWrite(pd *internal.PollData) {
-	ioc.pendingWrites[pd] = struct{}{}
+	if pd.Fd >= len(ioc.pendingWrites) {
+		ioc.pendingWrites = append(ioc.pendingWrites, make([]*internal.PollData, pd.Fd-len(ioc.pendingWrites)+1)...)
+		ioc.pendingWrites = ioc.pendingWrites[:cap(ioc.pendingWrites)]
+	}
+	ioc.pendingWrites[pd.Fd] = pd
 }
 
 func (ioc *IO) DeregisterRead(pd *internal.PollData) {
-	delete(ioc.pendingReads, pd)
+	ioc.pendingReads[pd.Fd] = nil
 }
 
 func (ioc *IO) DeregisterWrite(pd *internal.PollData) {
-	delete(ioc.pendingWrites, pd)
+	ioc.pendingWrites[pd.Fd] = nil
 }
 
 func (ioc *IO) SetRead(slot *internal.PollData) error {
