@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/talostrading/sonic/internal"
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
@@ -265,6 +266,52 @@ func TestRunWarm(t *testing.T) {
 			// something happened before `Close()`ing the reactor.
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestResizePending(t *testing.T) {
+	ioc := MustIO()
+
+	called := 0
+	handler := func(error) {
+		called++
+	}
+
+	var slots []*internal.PollData
+	for i := 0; i < 2*DefaultPendingCount; i++ {
+		slots = append(slots, &internal.PollData{Fd: i})
+		slots[len(slots)-1].Cbs[internal.ReadEvent] = handler
+	}
+
+	for i := 0; i < DefaultPendingCount; i++ {
+		ioc.RegisterRead(slots[i])
+		ioc.RegisterWrite(slots[i])
+	}
+	if len(ioc.pendingReads) != DefaultPendingCount {
+		t.Fatal("pending reads should not have been resized")
+	}
+	if len(ioc.pendingWrites) != DefaultPendingCount {
+		t.Fatal("pending writes should not have been resized")
+	}
+
+	for i := DefaultPendingCount; i < 2*DefaultPendingCount; i++ {
+		ioc.RegisterRead(slots[i])
+		ioc.RegisterWrite(slots[i])
+	}
+	if len(ioc.pendingReads) < 2*DefaultPendingCount {
+		t.Fatal("pending reads should have been resized")
+	}
+	if len(ioc.pendingWrites) < 2*DefaultPendingCount {
+		t.Fatal("pending writes should have been resized")
+	}
+
+	for i := 0; i < 2*DefaultPendingCount; i++ {
+		ioc.pendingReads[i].Cbs[internal.ReadEvent](nil)
+		ioc.pendingWrites[i].Cbs[internal.ReadEvent](nil)
+	}
+
+	if called < 2*DefaultPendingCount*2 /* read + write */ {
+		t.Fatal("handler not called enough times")
 	}
 }
 
