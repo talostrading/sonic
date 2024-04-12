@@ -11,12 +11,18 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-// IO executes scheduled asynchronous operations on a goroutine.
+// IO is the executor of all asynchronous operations and the way any object can schedule them. It runs fully in the
+// calling goroutine.
 //
-// A goroutine must not have more than one IO. Multiple goroutines, each with
-// at most one IO can coexist in the same process.
+// A goroutine must not have more than one IO. There might be multiple IOs in the same process, each within its own
+// goroutine.
 type IO struct {
-	poller                      internal.Poller
+	poller internal.Poller
+
+	// The below structures keep a pointer to a PollData struct usually owned by an object capable of asynchronous
+	// operations (essentially any object taking an IO* on construction). Keeping a PollData pointer keeps the owning
+	// object in the GC's object graph while an asynchronous operation is in progress. This ensures PollData references
+	// valid memory when an asynchronous operation completes and the object is already out of scope.
 	pendingReads, pendingWrites []*internal.PollData
 	pendingTimers               map[*Timer]struct{}
 }
@@ -89,10 +95,8 @@ func (ioc *IO) Run() error {
 	}
 }
 
-// RunPending runs the event processing loop to execute all the pending handlers.
-//
-// Subsequent handlers scheduled to run on a successful completion of the
-// pending operation will not be executed.
+// RunPending runs the event processing loop to execute all the pending handlers. The function returns (and the event
+// loop stops running) when there are no more operations to complete.
 func (ioc *IO) RunPending() error {
 	for {
 		if ioc.poller.Pending() <= 0 {
@@ -106,9 +110,9 @@ func (ioc *IO) RunPending() error {
 	return nil
 }
 
-// RunOne runs the event processing loop to execute at most one handler
+// RunOne runs the event processing loop to execute at most one handler.
 //
-// This blocks the calling goroutine until one event is ready to process
+// This call blocks the calling goroutine until an event occurs.
 func (ioc *IO) RunOne() (err error) {
 	_, err = ioc.poll(-1)
 	return
@@ -121,10 +125,9 @@ func checkTimeout(t time.Duration) error {
 	return nil
 }
 
-// RunOneFor runs the event processing loop for a specified duration to execute at
-// most one handler. The provided duration should not be lower than a millisecond.
+// RunOneFor runs the event processing loop for the given duration. The duration must not be lower than 1ms.
 //
-// This blocks the calling goroutine until one event is ready to process.
+// This call blocks the calling goroutine until an event occurs.
 func (ioc *IO) RunOneFor(dur time.Duration) (err error) {
 	if err := checkTimeout(dur); err != nil {
 		return err
@@ -139,13 +142,11 @@ const (
 	WarmDefaultTimeout    = time.Millisecond
 )
 
-// RunWarm runs the reactor in a combined busy-wait and yielding mode, meaning that if the current cycle
-// does not process anything, the reactor will busy-wait for at most `busyCycles` more which we call the warm-period.
-// After `busyCycles` cycles of not processing anything, the reactor is out of the warm-period and falls back to
-// yielding with the provided timeout. If at any moment an event occurs and something is processed, the reactor restarts
-// its warm-period.
-//
-// RunWarm should be invoked with the above defaults: WarmDefaultBusyCycles and WarmDefaultTimeout.
+// RunWarm runs the event loop in a combined busy-wait and yielding mode, meaning that if the current cycle does not
+// process anything, the event-loop will busy-wait for at most `busyCycles` which we call the warm-state. After
+// `busyCycles` of not processing anything, the event-loop is out of the warm-state and falls back to yielding with the
+// provided timeout. If at any moment an event occurs and something is processed, the  event-loop transitions to its
+// warm-state.
 func (ioc *IO) RunWarm(busyCycles int, timeout time.Duration) (err error) {
 	if busyCycles <= 0 {
 		return fmt.Errorf("busyCycles must be greater than 0")
@@ -180,8 +181,6 @@ func (ioc *IO) RunWarm(busyCycles int, timeout time.Duration) (err error) {
 			i++
 		}
 	}
-
-	return nil
 }
 
 // Poll runs the event processing loop to execute ready handlers.
