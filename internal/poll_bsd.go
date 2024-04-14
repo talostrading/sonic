@@ -4,6 +4,7 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -12,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/util"
 )
 
 var oneByte = [1]byte{0}
@@ -22,6 +24,15 @@ const (
 	PollerReadEvent  = -PollerEvent(syscall.EVFILT_READ)
 	PollerWriteEvent = -PollerEvent(syscall.EVFILT_WRITE)
 )
+
+func init() {
+	if !util.IsPowerOfTwo(int(PollerReadEvent)) {
+		panic(fmt.Sprintf("PollerReadEvent=%d is not a power of two", PollerReadEvent))
+	}
+	if !util.IsPowerOfTwo(int(PollerWriteEvent)) {
+		panic(fmt.Sprintf("PollerWriteEvent=%d is not a power of two", PollerWriteEvent))
+	}
+}
 
 var _ Poller = &poller{}
 

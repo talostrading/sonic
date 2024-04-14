@@ -4,6 +4,7 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"unsafe"
 
 	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/talostrading/sonic/util"
 )
 
 type PollerEvent uint32
@@ -20,6 +22,15 @@ const (
 	PollerReadEvent  = PollerEvent(syscall.EPOLLIN)
 	PollerWriteEvent = PollerEvent(syscall.EPOLLOUT)
 )
+
+func init() {
+	if !util.IsPowerOfTwo(int(PollerReadEvent)) {
+		panic(fmt.Sprintf("PollerReadEvent=%d is not a power of two", PollerReadEvent))
+	}
+	if !util.IsPowerOfTwo(int(PollerWriteEvent)) {
+		panic(fmt.Sprintf("PollerWriteEvent=%d is not a power of two", PollerWriteEvent))
+	}
+}
 
 type Event struct {
 	Mask uint32
