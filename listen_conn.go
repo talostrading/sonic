@@ -73,13 +73,13 @@ func (l *listener) asyncAccept(cb AcceptCallback) {
 	if err := l.ioc.SetRead(&l.pd); err != nil {
 		cb(err, nil)
 	} else {
-		l.ioc.RegisterRead(&l.pd)
+		l.ioc.Register(&l.pd)
 	}
 }
 
 func (l *listener) handleAsyncAccept(cb AcceptCallback) internal.Handler {
 	return func(err error) {
-		l.ioc.DeregisterRead(&l.pd)
+		l.ioc.Deregister(&l.pd)
 
 		if err != nil {
 			cb(err, nil)

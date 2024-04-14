@@ -2,12 +2,12 @@ package sonic
 
 import (
 	"errors"
+	"github.com/talostrading/sonic/internal"
 	"log"
 	"runtime"
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic/internal"
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
@@ -269,49 +269,50 @@ func TestRunWarm(t *testing.T) {
 	}
 }
 
-func TestResizePending(t *testing.T) {
+func TestIOPending(t *testing.T) {
 	ioc := MustIO()
-
-	called := 0
-	handler := func(error) {
-		called++
-	}
+	defer ioc.Close()
 
 	var slots []*internal.PollData
-	for i := 0; i < 2*DefaultPendingCount; i++ {
+
+	for i := 0; i < 4096; i++ {
+		if ioc.pending.static[i] != nil {
+			t.Fatal("expected static pending element to be nil")
+		}
 		slots = append(slots, &internal.PollData{Fd: i})
-		slots[len(slots)-1].Cbs[internal.ReadEvent] = handler
+		ioc.Register(slots[len(slots)-1])
+		if ioc.pending.static[i] == nil {
+			t.Fatal("expected static pending element to be non-nil")
+		}
 	}
 
-	for i := 0; i < DefaultPendingCount; i++ {
-		ioc.RegisterRead(slots[i])
-		ioc.RegisterWrite(slots[i])
-	}
-	if len(ioc.pendingReads) != DefaultPendingCount {
-		t.Fatal("pending reads should not have been resized")
-	}
-	if len(ioc.pendingWrites) != DefaultPendingCount {
-		t.Fatal("pending writes should not have been resized")
+	if len(ioc.pending.dynamic) != 0 {
+		t.Fatal("pending dynamic should have length 0")
 	}
 
-	for i := DefaultPendingCount; i < 2*DefaultPendingCount; i++ {
-		ioc.RegisterRead(slots[i])
-		ioc.RegisterWrite(slots[i])
+	for i := 4096; i < 8192; i++ {
+		slots = append(slots, &internal.PollData{Fd: i})
+		ioc.Register(slots[len(slots)-1])
 	}
-	if len(ioc.pendingReads) < 2*DefaultPendingCount {
-		t.Fatal("pending reads should have been resized")
-	}
-	if len(ioc.pendingWrites) < 2*DefaultPendingCount {
-		t.Fatal("pending writes should have been resized")
+	if len(ioc.pending.dynamic) != 4096 {
+		t.Fatal("pending dynamic should have 4096 entries")
 	}
 
-	for i := 0; i < 2*DefaultPendingCount; i++ {
-		ioc.pendingReads[i].Cbs[internal.ReadEvent](nil)
-		ioc.pendingWrites[i].Cbs[internal.ReadEvent](nil)
+	for i := 0; i < 8192; i++ {
+		ioc.Deregister(slots[i])
+		if i < 4096 {
+			if ioc.pending.static[i] != nil {
+				t.Fatal("pending static element should be nil")
+			}
+		}
 	}
-
-	if called < 2*DefaultPendingCount*2 /* read + write */ {
-		t.Fatal("handler not called enough times")
+	if len(ioc.pending.dynamic) != 0 {
+		t.Fatal("pending dynamic should have length 0")
+	}
+	for _, slot := range ioc.pending.static {
+		if slot != nil {
+			t.Fatal("static slot should be nil")
+		}
 	}
 }
 

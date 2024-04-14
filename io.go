@@ -23,11 +23,21 @@ type IO struct {
 	// operations (essentially any object taking an IO* on construction). Keeping a PollData pointer keeps the owning
 	// object in the GC's object graph while an asynchronous operation is in progress. This ensures PollData references
 	// valid memory when an asynchronous operation completes and the object is already out of scope.
-	pendingReads, pendingWrites []*internal.PollData
-	pendingTimers               map[*Timer]struct{}
-}
+	pending struct {
+		// The kernel allocates a process' descriptors from a fixed range that is [0, 1024) by default. Unprivileged
+		// users can bump this range to [0, 4096). The below array should cover 99% of the cases and makes for cheap
+		// PollData lookups.
+		//
+		// See https://github.com/torvalds/linux/blob/5939d45155bb405ab212ef82992a8695b35f6662/fs/file.c#L499 for how
+		// file descriptors are bound by a fixed range whose upper limit is controlled through RLIMIT_NOFILE.
+		static [4096]*internal.PollData
 
-const DefaultPendingCount = 4096
+		// This map covers the 1%, the degenerate case. Any PollData whose file descriptor is greater than or equal to
+		// 4096 goes here.
+		dynamic map[*internal.PollData]struct{}
+	}
+	pendingTimers map[*Timer]struct{} // XXX: should be embedded into the above pending struct
+}
 
 func NewIO() (*IO, error) {
 	poller, err := internal.NewPoller()
@@ -35,15 +45,10 @@ func NewIO() (*IO, error) {
 		return nil, err
 	}
 
-	ioc := &IO{
+	return &IO{
 		poller:        poller,
-		pendingReads:  make([]*internal.PollData, DefaultPendingCount),
-		pendingWrites: make([]*internal.PollData, DefaultPendingCount),
 		pendingTimers: make(map[*Timer]struct{}),
-	}
-	ioc.pendingReads = ioc.pendingReads[:cap(ioc.pendingReads)]
-	ioc.pendingWrites = ioc.pendingWrites[:cap(ioc.pendingWrites)]
-	return ioc, nil
+	}, nil
 }
 
 func MustIO() *IO {
@@ -54,30 +59,26 @@ func MustIO() *IO {
 	return ioc
 }
 
-func (ioc *IO) RegisterRead(pd *internal.PollData) {
-	if pd.Fd >= len(ioc.pendingReads) {
-		ioc.pendingReads = append(ioc.pendingReads, make([]*internal.PollData, pd.Fd-len(ioc.pendingReads)+1)...)
-		ioc.pendingReads = ioc.pendingReads[:cap(ioc.pendingReads)]
+func (ioc *IO) Register(pd *internal.PollData) {
+	if pd.Fd >= len(ioc.pending.static) {
+		if ioc.pending.dynamic == nil {
+			ioc.pending.dynamic = make(map[*internal.PollData]struct{})
+		}
+		ioc.pending.dynamic[pd] = struct{}{}
+	} else {
+		ioc.pending.static[pd.Fd] = pd
 	}
-	ioc.pendingReads[pd.Fd] = pd
 }
 
-func (ioc *IO) RegisterWrite(pd *internal.PollData) {
-	if pd.Fd >= len(ioc.pendingWrites) {
-		ioc.pendingWrites = append(ioc.pendingWrites, make([]*internal.PollData, pd.Fd-len(ioc.pendingWrites)+1)...)
-		ioc.pendingWrites = ioc.pendingWrites[:cap(ioc.pendingWrites)]
+func (ioc *IO) Deregister(pd *internal.PollData) {
+	if pd.Fd >= len(ioc.pending.static) {
+		delete(ioc.pending.dynamic, pd)
+	} else {
+		ioc.pending.static[pd.Fd] = nil
 	}
-	ioc.pendingWrites[pd.Fd] = pd
 }
 
-func (ioc *IO) DeregisterRead(pd *internal.PollData) {
-	ioc.pendingReads[pd.Fd] = nil
-}
-
-func (ioc *IO) DeregisterWrite(pd *internal.PollData) {
-	ioc.pendingWrites[pd.Fd] = nil
-}
-
+// XXX SetRead/SetWrite should be on internal.PollData
 func (ioc *IO) SetRead(slot *internal.PollData) error {
 	return ioc.poller.SetRead(slot)
 }
