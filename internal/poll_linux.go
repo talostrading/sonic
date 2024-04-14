@@ -4,6 +4,7 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"sync"
@@ -20,6 +21,17 @@ const (
 	PollerReadEvent  = PollerEvent(syscall.EPOLLIN)
 	PollerWriteEvent = PollerEvent(syscall.EPOLLOUT)
 )
+
+func init() {
+	// The read and write events are used to set/unset bits in a Slot's event mask. We dispatch the read/write handler
+	// based on this event mask, so we must ensure they don't overlap.
+	if PollerReadEvent|PollerWriteEvent == PollerReadEvent || PollerReadEvent|PollerWriteEvent == PollerWriteEvent {
+		panic(fmt.Sprintf(
+			"PollerReadEvent=%d and PollerWriteEvent=%d overlap",
+			PollerReadEvent, PollerWriteEvent,
+		))
+	}
+}
 
 type Event struct {
 	Mask uint32
