@@ -604,7 +604,7 @@ func (p *UDPPeer) scheduleRead(fn func(error, int, netip.AddrPort)) {
 			fn(err, 0, netip.AddrPort{})
 		} else {
 			p.stats.async.scheduledReads++
-			p.ioc.RegisterRead(&p.slot)
+			p.ioc.Register(&p.slot)
 		}
 	}
 }
@@ -662,7 +662,7 @@ func (p *UDPPeer) scheduleWrite(fn func(error, int)) {
 		if err := p.ioc.SetWrite(&p.slot); err != nil {
 			fn(err, 0)
 		} else {
-			p.ioc.RegisterWrite(&p.slot)
+			p.ioc.Register(&p.slot)
 		}
 	}
 }

@@ -11,7 +11,7 @@ type readReactor struct {
 }
 
 func (r *readReactor) on(err error) {
-	r.peer.ioc.DeregisterRead(&r.peer.slot)
+	r.peer.ioc.Deregister(&r.peer.slot)
 
 	if err != nil {
 		r.fn(err, 0, netip.AddrPort{})
@@ -28,7 +28,7 @@ type writeReactor struct {
 }
 
 func (r *writeReactor) on(err error) {
-	r.peer.ioc.DeregisterWrite(&r.peer.slot)
+	r.peer.ioc.Deregister(&r.peer.slot)
 
 	if err != nil {
 		r.fn(err, 0)

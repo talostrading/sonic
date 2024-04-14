@@ -120,13 +120,13 @@ func (c *packetConn) scheduleRead(b []byte, readBytes int, readAll bool, cb Asyn
 	if err := c.ioc.SetRead(&c.pd); err != nil {
 		cb(err, readBytes, nil)
 	} else {
-		c.ioc.RegisterRead(&c.pd)
+		c.ioc.Register(&c.pd)
 	}
 }
 
 func (c *packetConn) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncReadCallbackPacket) internal.Handler {
 	return func(err error) {
-		c.ioc.DeregisterRead(&c.pd)
+		c.ioc.Deregister(&c.pd)
 
 		if err != nil {
 			cb(err, readBytes, nil)
@@ -177,13 +177,13 @@ func (c *packetConn) scheduleWrite(b []byte, to net.Addr, cb AsyncWriteCallbackP
 	if err := c.ioc.SetWrite(&c.pd); err != nil {
 		cb(err)
 	} else {
-		c.ioc.RegisterWrite(&c.pd)
+		c.ioc.Register(&c.pd)
 	}
 }
 
 func (c *packetConn) getWriteHandler(b []byte, to net.Addr, cb AsyncWriteCallbackPacket) internal.Handler {
 	return func(err error) {
-		c.ioc.DeregisterWrite(&c.pd)
+		c.ioc.Deregister(&c.pd)
 
 		if err != nil {
 			cb(err)
