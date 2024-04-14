@@ -16,11 +16,11 @@ import (
 
 var oneByte = [1]byte{0}
 
-type PollFlags int16
+type PollerEvent int16
 
 const (
-	ReadFlags  = -PollFlags(syscall.EVFILT_READ)
-	WriteFlags = -PollFlags(syscall.EVFILT_WRITE)
+	PollerReadEvent  = -PollerEvent(syscall.EVFILT_READ)
+	PollerWriteEvent = -PollerEvent(syscall.EVFILT_WRITE)
 )
 
 var _ Poller = &poller{}
@@ -171,7 +171,7 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	for i := 0; i < n; i++ {
 		event := &p.events[i]
 
-		flags := -PollFlags(event.Filter)
+		events := -PollerEvent(event.Filter)
 
 		/* #nosec G103 -- the use of unsafe has been audited */
 		pd := (*PollData)(unsafe.Pointer(event.Udata))
@@ -181,16 +181,16 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 			continue
 		}
 
-		if flags&pd.Flags&ReadFlags == ReadFlags {
+		if events&pd.Events&PollerReadEvent == PollerReadEvent {
 			p.pending--
-			pd.Flags ^= ReadFlags
-			pd.Cbs[ReadEvent](nil)
+			pd.Events ^= PollerReadEvent
+			pd.Handlers[ReadEvent](nil)
 		}
 
-		if flags&pd.Flags&WriteFlags == WriteFlags {
+		if events&pd.Events&PollerWriteEvent == PollerWriteEvent {
 			p.pending--
-			pd.Flags ^= WriteFlags
-			pd.Cbs[WriteEvent](nil)
+			pd.Events ^= PollerWriteEvent
+			pd.Handlers[WriteEvent](nil)
 		}
 	}
 
@@ -219,41 +219,41 @@ func (p *poller) SetRead(pd *PollData) error {
 }
 
 func (p *poller) setRead(fd int, flags uint16, pd *PollData) error {
-	pdflags := &pd.Flags
-	if *pdflags&ReadFlags != ReadFlags {
+	events := &pd.Events
+	if *events&PollerReadEvent != PollerReadEvent {
 		p.pending++
-		*pdflags |= ReadFlags
-		return p.set(fd, createEvent(flags, -ReadFlags, pd, 0))
+		*events |= PollerReadEvent
+		return p.set(fd, createEvent(flags, -PollerReadEvent, pd, 0))
 	}
 	return nil
 }
 
 func (p *poller) SetWrite(pd *PollData) error {
-	pdflags := &pd.Flags
-	if *pdflags&WriteFlags != WriteFlags {
+	events := &pd.Events
+	if *events&PollerWriteEvent != PollerWriteEvent {
 		p.pending++
-		*pdflags |= WriteFlags
-		return p.set(pd.Fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -WriteFlags, pd, 0))
+		*events |= PollerWriteEvent
+		return p.set(pd.Fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -PollerWriteEvent, pd, 0))
 	}
 	return nil
 }
 
 func (p *poller) DelRead(pd *PollData) error {
-	pdflags := &pd.Flags
-	if *pdflags&ReadFlags == ReadFlags {
+	events := &pd.Events
+	if *events&PollerReadEvent == PollerReadEvent {
 		p.pending--
-		*pdflags ^= ReadFlags
-		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -ReadFlags, pd, 0))
+		*events ^= PollerReadEvent
+		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -PollerReadEvent, pd, 0))
 	}
 	return nil
 }
 
 func (p *poller) DelWrite(pd *PollData) error {
-	pdflags := &pd.Flags
-	if *pdflags&WriteFlags == WriteFlags {
+	events := &pd.Events
+	if *events&PollerWriteEvent == PollerWriteEvent {
 		p.pending--
-		*pdflags ^= WriteFlags
-		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -WriteFlags, pd, 0))
+		*events ^= PollerWriteEvent
+		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -PollerWriteEvent, pd, 0))
 	}
 	return nil
 }
@@ -272,7 +272,7 @@ func (p *poller) set(fd int, ev syscall.Kevent_t) error {
 	return nil
 }
 
-func createEvent(flags uint16, filter PollFlags, pd *PollData, dur time.Duration) syscall.Kevent_t {
+func createEvent(flags uint16, filter PollerEvent, pd *PollData, dur time.Duration) syscall.Kevent_t {
 	ev := syscall.Kevent_t{
 		Flags:  flags,
 		Filter: int16(filter),

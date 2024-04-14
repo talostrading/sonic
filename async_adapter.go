@@ -223,22 +223,22 @@ func (a *AsyncAdapter) Cancel() {
 }
 
 func (a *AsyncAdapter) cancelReads() {
-	if a.pd.Flags&internal.ReadFlags == internal.ReadFlags {
+	if a.pd.Events&internal.PollerReadEvent == internal.PollerReadEvent {
 		err := a.ioc.poller.DelRead(&a.pd)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		a.pd.Cbs[internal.ReadEvent](err)
+		a.pd.Handlers[internal.ReadEvent](err)
 	}
 }
 
 func (a *AsyncAdapter) cancelWrites() {
-	if a.pd.Flags&internal.WriteFlags == internal.WriteFlags {
+	if a.pd.Events&internal.PollerWriteEvent == internal.PollerWriteEvent {
 		err := a.ioc.poller.DelWrite(&a.pd)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		a.pd.Cbs[internal.WriteEvent](err)
+		a.pd.Handlers[internal.WriteEvent](err)
 	}
 }
 
