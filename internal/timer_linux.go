@@ -57,7 +57,7 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 }
 
 func (t *Timer) Unset() error {
-	if t.pd.Flags&ReadFlags != ReadFlags {
+	if t.pd.Events&PollerReadEvent != PollerReadEvent {
 		return nil
 	}
 	err := unix.TimerfdSettime(t.fd, 0, &unix.ItimerSpec{}, nil)

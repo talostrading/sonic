@@ -42,20 +42,20 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 
 	if err == nil {
 		t.poller.pending++
-		t.pd.Flags |= ReadFlags
+		t.pd.Events |= PollerReadEvent
 	}
 
 	return err
 }
 
 func (t *Timer) Unset() error {
-	if t.pd.Flags&ReadFlags != ReadFlags {
+	if t.pd.Events&PollerReadEvent != PollerReadEvent {
 		return nil
 	}
 
 	// We should actually be calling poller.Del but that besides EV_DELETE we also need EV_DISABLE for a timer,
 	// so we delete it here.
-	t.pd.Flags ^= ReadFlags
+	t.pd.Events ^= PollerReadEvent
 	t.poller.pending--
 
 	return t.poller.set(t.fd, createEvent(

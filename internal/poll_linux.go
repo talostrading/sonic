@@ -14,25 +14,22 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
-type PollFlags uint32
+type PollerEvent uint32
 
 const (
-	ReadFlags  = PollFlags(syscall.EPOLLIN)
-	WriteFlags = PollFlags(syscall.EPOLLOUT)
+	PollerReadEvent  = PollerEvent(syscall.EPOLLIN)
+	PollerWriteEvent = PollerEvent(syscall.EPOLLOUT)
 )
 
 type Event struct {
-	Flags uint32
-	Data  [8]byte
+	Mask uint32
+	Data [8]byte
 }
 
-func createEvent(flags PollFlags, pd *PollData) Event {
-	ev := Event{
-		Flags: uint32(flags),
-	}
+func createEvent(event PollerEvent, pd *PollData) Event {
+	ev := Event{Mask: uint32(event)}
 	/* #nosec G103 -- the use of unsafe has been audited */
 	*(**PollData)(unsafe.Pointer(&ev.Data)) = pd
-
 	return ev
 }
 
@@ -42,7 +39,7 @@ type poller struct {
 	// fd is the file descriptor returned by calling epoll_create1(0).
 	fd int
 
-	// events contains the events which occured.
+	// events contains the events which occurred.
 	// events is a subset of changelist.
 	events []Event
 
@@ -168,7 +165,7 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	for i := 0; i < int(n); i++ {
 		event := &p.events[i]
 
-		flags := PollFlags(event.Flags)
+		events := PollerEvent(event.Mask)
 		/* #nosec G103 -- the use of unsafe has been audited */
 		pd := *(**PollData)(unsafe.Pointer(&event.Data))
 
@@ -177,16 +174,16 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 			continue
 		}
 
-		if flags&pd.Flags&ReadFlags == ReadFlags {
+		if events&pd.Events&PollerReadEvent == PollerReadEvent {
 			// TODO this errors should be reported
 			_ = p.DelRead(pd)
-			pd.Cbs[ReadEvent](nil)
+			pd.Handlers[ReadEvent](nil)
 		}
 
-		if flags&pd.Flags&WriteFlags == WriteFlags {
+		if events&pd.Events&PollerWriteEvent == PollerWriteEvent {
 			// TODO this errors should be reported
 			_ = p.DelWrite(pd)
-			pd.Cbs[WriteEvent](nil)
+			pd.Handlers[WriteEvent](nil)
 		}
 	}
 
@@ -211,25 +208,25 @@ func (p *poller) dispatch() {
 }
 
 func (p *poller) SetRead(pd *PollData) error {
-	return p.setRW(pd.Fd, pd, ReadFlags)
+	return p.setRW(pd.Fd, pd, PollerReadEvent)
 }
 
 func (p *poller) SetWrite(pd *PollData) error {
-	return p.setRW(pd.Fd, pd, WriteFlags)
+	return p.setRW(pd.Fd, pd, PollerWriteEvent)
 }
 
-func (p *poller) setRW(fd int, pd *PollData, flag PollFlags) error {
-	pdflags := &pd.Flags
-	if *pdflags&flag != flag {
+func (p *poller) setRW(fd int, pd *PollData, flag PollerEvent) error {
+	events := &pd.Events
+	if *events&flag != flag {
 		p.pending++
 
-		oldFlags := *pdflags
-		*pdflags |= flag
+		oldEvents := *events
+		*events |= flag
 
-		if oldFlags == 0 {
-			return p.add(fd, createEvent(*pdflags, pd))
+		if oldEvents == 0 {
+			return p.add(fd, createEvent(*events, pd))
 		}
-		return p.modify(fd, createEvent(*pdflags, pd))
+		return p.modify(fd, createEvent(*events, pd))
 	}
 	return nil
 }
@@ -276,12 +273,12 @@ func (p *poller) Del(pd *PollData) error {
 }
 
 func (p *poller) DelRead(pd *PollData) error {
-	pdflags := &pd.Flags
-	if *pdflags&ReadFlags == ReadFlags {
+	events := &pd.Events
+	if *events&PollerReadEvent == PollerReadEvent {
 		p.pending--
-		*pdflags ^= ReadFlags
-		if *pdflags != 0 {
-			return p.modify(pd.Fd, createEvent(*pdflags, pd))
+		*events ^= PollerReadEvent
+		if *events != 0 {
+			return p.modify(pd.Fd, createEvent(*events, pd))
 		}
 		return p.del(pd.Fd)
 	}
@@ -289,12 +286,12 @@ func (p *poller) DelRead(pd *PollData) error {
 }
 
 func (p *poller) DelWrite(pd *PollData) error {
-	pdflags := &pd.Flags
-	if *pdflags&WriteFlags == WriteFlags {
+	events := &pd.Events
+	if *events&PollerWriteEvent == PollerWriteEvent {
 		p.pending--
-		*pdflags ^= WriteFlags
-		if *pdflags != 0 {
-			return p.modify(pd.Fd, createEvent(*pdflags, pd))
+		*events ^= PollerWriteEvent
+		if *events != 0 {
+			return p.modify(pd.Fd, createEvent(*events, pd))
 		}
 		return p.del(pd.Fd)
 	}

@@ -13,15 +13,22 @@ const (
 type Handler func(error)
 
 type PollData struct {
-	// Fd is the file descriptor associated with an instance of PollData
-	Fd  int               // must set by callers
-	Cbs [MaxEvent]Handler // must set by callers
+	Fd int // A file descriptor which uniquely identifies a Slot. Callers must set it up at construction time.
 
-	Flags PollFlags // must NOT be set by callers, instead set by the platform specific poller
+	// Events registered with this Slot. Essentially a bitmask. It can contain a read event, a write event, or both.
+	// Every event from here has a corresponding Handler in Handlers.
+	//
+	// Defined by Poller, which is platform-specific. Since this is a bitmask, the Poller guarantees that each
+	// platform-specific event is a power of two.
+	Events PollerEvent
+
+	// Callbacks registered with this Slot. The poller dispatches the appropriate read or write callback when it
+	// receives an event that's in Events.
+	Handlers [MaxEvent]Handler
 }
 
 func (pd *PollData) Set(et EventType, h Handler) {
-	pd.Cbs[et] = h
+	pd.Handlers[et] = h
 }
 
 type ITimer interface {

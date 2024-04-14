@@ -254,22 +254,22 @@ func (f *file) Cancel() {
 }
 
 func (f *file) cancelReads() {
-	if f.pd.Flags&internal.ReadFlags == internal.ReadFlags {
+	if f.pd.Events&internal.PollerReadEvent == internal.PollerReadEvent {
 		err := f.ioc.poller.DelRead(&f.pd)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		f.pd.Cbs[internal.ReadEvent](err)
+		f.pd.Handlers[internal.ReadEvent](err)
 	}
 }
 
 func (f *file) cancelWrites() {
-	if f.pd.Flags&internal.WriteFlags == internal.WriteFlags {
+	if f.pd.Events&internal.PollerWriteEvent == internal.PollerWriteEvent {
 		err := f.ioc.poller.DelWrite(&f.pd)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		f.pd.Cbs[internal.WriteEvent](err)
+		f.pd.Handlers[internal.WriteEvent](err)
 	}
 }
 
