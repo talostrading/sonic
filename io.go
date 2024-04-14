@@ -78,7 +78,6 @@ func (ioc *IO) Deregister(slot *internal.Slot) {
 	}
 }
 
-// XXX SetRead/SetWrite should be on internal.Slot
 func (ioc *IO) SetRead(slot *internal.Slot) error {
 	return ioc.poller.SetRead(slot)
 }

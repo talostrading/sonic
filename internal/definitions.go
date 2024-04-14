@@ -38,8 +38,8 @@ type ITimer interface {
 }
 
 type Poller interface {
-	// Poll polls the status of the underlying events registered with
-	// SetRead or SetWrite, checking if any occurred.
+	// Poll polls the status of the underlying events registered with SetRead or SetWrite, returning if any events
+	// occurred.
 	//
 	// A call to Poll will block until either:
 	//  - an event occurs
@@ -47,49 +47,41 @@ type Poller interface {
 	//  - the timeout expires
 	Poll(timeoutMs int) (n int, err error)
 
-	// Pending returns the number of registered events which have not yet
-	// occurred.
+	// Pending returns the number of registered events which have not yet occurred.
 	Pending() int64
 
-	// Post instructs the Poller to execute the provided handler in the Poller's
-	// goroutine in the next Poll call.
+	// Post instructs the Poller to execute the provided handler in the Poller's goroutine in the next Poll call.
 	//
-	// Post is safe for concurrent use by multiple goroutines.
+	// Post is safe for concurrent use.
 	Post(func()) error
 
 	// Posted returns the number of handlers registered with Post.
 	//
-	// Posted is safe for concurrent use by multiple goroutines.
+	// Posted is safe for concurrent use.
 	Posted() int
 
-	// SetRead registers interest in read events on the provided
-	// file descriptor.
+	// SetRead registers interest in read events on the provided slot.
 	SetRead(slot *Slot) error
 
-	// SetWrite registers interest in write events on the provided
-	// file descriptor.
+	// SetWrite registers interest in write events on the provided slot.
 	SetWrite(slot *Slot) error
 
-	// DelRead deregisters interest in read events on the provided
-	// file descriptor.
+	// DelRead deregisters interest in read events on the provided slot.
 	DelRead(slot *Slot) error
 
-	// DelWrite deregisters interest in write events on the provided
-	// file descriptor.
+	// DelWrite deregisters interest in write events on the provided slot.
 	DelWrite(slot *Slot) error
 
-	// Del deregisters interest in all events on the provided file descriptor.
+	// Del deregisters interest in all events on the provided slot.
 	Del(slot *Slot) error
 
-	// Close closes the Poller.
+	// Close closes the Poller. No calls to Poll should be made after Close.
 	//
-	// No calls to Poll should be make after Close.
-	//
-	// Close is safe for concurrent use by multiple goroutines.
+	// Close is safe for concurrent use.
 	Close() error
 
 	// Closed returns true if the Poller has been closed.
 	//
-	// Closed is safe for concurrent use by multiple goroutines.
+	// Closed is safe for concurrent use.
 	Closed() bool
 }
