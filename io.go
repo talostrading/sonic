@@ -19,22 +19,22 @@ import (
 type IO struct {
 	poller internal.Poller
 
-	// The below structures keep a pointer to a PollData struct usually owned by an object capable of asynchronous
-	// operations (essentially any object taking an IO* on construction). Keeping a PollData pointer keeps the owning
-	// object in the GC's object graph while an asynchronous operation is in progress. This ensures PollData references
+	// The below structures keep a pointer to a Slot struct usually owned by an object capable of asynchronous
+	// operations (essentially any object taking an IO* on construction). Keeping a Slot pointer keeps the owning
+	// object in the GC's object graph while an asynchronous operation is in progress. This ensures Slot references
 	// valid memory when an asynchronous operation completes and the object is already out of scope.
 	pending struct {
 		// The kernel allocates a process' descriptors from a fixed range that is [0, 1024) by default. Unprivileged
 		// users can bump this range to [0, 4096). The below array should cover 99% of the cases and makes for cheap
-		// PollData lookups.
+		// Slot lookups.
 		//
 		// See https://github.com/torvalds/linux/blob/5939d45155bb405ab212ef82992a8695b35f6662/fs/file.c#L499 for how
 		// file descriptors are bound by a fixed range whose upper limit is controlled through RLIMIT_NOFILE.
-		static [4096]*internal.PollData
+		static [4096]*internal.Slot
 
-		// This map covers the 1%, the degenerate case. Any PollData whose file descriptor is greater than or equal to
+		// This map covers the 1%, the degenerate case. Any Slot whose file descriptor is greater than or equal to
 		// 4096 goes here.
-		dynamic map[*internal.PollData]struct{}
+		dynamic map[*internal.Slot]struct{}
 	}
 	pendingTimers map[*Timer]struct{} // XXX: should be embedded into the above pending struct
 }
@@ -59,31 +59,31 @@ func MustIO() *IO {
 	return ioc
 }
 
-func (ioc *IO) Register(pd *internal.PollData) {
-	if pd.Fd >= len(ioc.pending.static) {
+func (ioc *IO) Register(slot *internal.Slot) {
+	if slot.Fd >= len(ioc.pending.static) {
 		if ioc.pending.dynamic == nil {
-			ioc.pending.dynamic = make(map[*internal.PollData]struct{})
+			ioc.pending.dynamic = make(map[*internal.Slot]struct{})
 		}
-		ioc.pending.dynamic[pd] = struct{}{}
+		ioc.pending.dynamic[slot] = struct{}{}
 	} else {
-		ioc.pending.static[pd.Fd] = pd
+		ioc.pending.static[slot.Fd] = slot
 	}
 }
 
-func (ioc *IO) Deregister(pd *internal.PollData) {
-	if pd.Fd >= len(ioc.pending.static) {
-		delete(ioc.pending.dynamic, pd)
+func (ioc *IO) Deregister(slot *internal.Slot) {
+	if slot.Fd >= len(ioc.pending.static) {
+		delete(ioc.pending.dynamic, slot)
 	} else {
-		ioc.pending.static[pd.Fd] = nil
+		ioc.pending.static[slot.Fd] = nil
 	}
 }
 
-// XXX SetRead/SetWrite should be on internal.PollData
-func (ioc *IO) SetRead(slot *internal.PollData) error {
+// XXX SetRead/SetWrite should be on internal.Slot
+func (ioc *IO) SetRead(slot *internal.Slot) error {
 	return ioc.poller.SetRead(slot)
 }
 
-func (ioc *IO) SetWrite(slot *internal.PollData) error {
+func (ioc *IO) SetWrite(slot *internal.Slot) error {
 	return ioc.poller.SetWrite(slot)
 }
 

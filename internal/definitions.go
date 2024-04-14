@@ -12,7 +12,7 @@ const (
 
 type Handler func(error)
 
-type PollData struct {
+type Slot struct {
 	Fd int // A file descriptor which uniquely identifies a Slot. Callers must set it up at construction time.
 
 	// Events registered with this Slot. Essentially a bitmask. It can contain a read event, a write event, or both.
@@ -27,8 +27,8 @@ type PollData struct {
 	Handlers [MaxEvent]Handler
 }
 
-func (pd *PollData) Set(et EventType, h Handler) {
-	pd.Handlers[et] = h
+func (s *Slot) Set(et EventType, h Handler) {
+	s.Handlers[et] = h
 }
 
 type ITimer interface {
@@ -64,22 +64,22 @@ type Poller interface {
 
 	// SetRead registers interest in read events on the provided
 	// file descriptor.
-	SetRead(pd *PollData) error
+	SetRead(slot *Slot) error
 
 	// SetWrite registers interest in write events on the provided
 	// file descriptor.
-	SetWrite(pd *PollData) error
+	SetWrite(slot *Slot) error
 
 	// DelRead deregisters interest in read events on the provided
 	// file descriptor.
-	DelRead(pd *PollData) error
+	DelRead(slot *Slot) error
 
 	// DelWrite deregisters interest in write events on the provided
 	// file descriptor.
-	DelWrite(pd *PollData) error
+	DelWrite(slot *Slot) error
 
 	// Del deregisters interest in all events on the provided file descriptor.
-	Del(pd *PollData) error
+	Del(slot *Slot) error
 
 	// Close closes the Poller.
 	//

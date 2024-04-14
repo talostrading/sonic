@@ -26,10 +26,10 @@ type Event struct {
 	Data [8]byte
 }
 
-func createEvent(event PollerEvent, pd *PollData) Event {
+func createEvent(event PollerEvent, slot *Slot) Event {
 	ev := Event{Mask: uint32(event)}
 	/* #nosec G103 -- the use of unsafe has been audited */
-	*(**PollData)(unsafe.Pointer(&ev.Data)) = pd
+	*(**Slot)(unsafe.Pointer(&ev.Data)) = slot
 	return ev
 }
 
@@ -86,7 +86,7 @@ func NewPoller() (Poller, error) {
 		events: make([]Event, 128),
 	}
 
-	err = p.SetRead(p.waker.PollData())
+	err = p.SetRead(p.waker.Slot())
 	if err != nil {
 		_ = p.waker.Close()
 		_ = syscall.Close(p.fd)
@@ -167,23 +167,23 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 
 		events := PollerEvent(event.Mask)
 		/* #nosec G103 -- the use of unsafe has been audited */
-		pd := *(**PollData)(unsafe.Pointer(&event.Data))
+		slot := *(**Slot)(unsafe.Pointer(&event.Data))
 
-		if pd.Fd == p.waker.Fd() {
+		if slot.Fd == p.waker.Fd() {
 			p.dispatch()
 			continue
 		}
 
-		if events&pd.Events&PollerReadEvent == PollerReadEvent {
+		if events&slot.Events&PollerReadEvent == PollerReadEvent {
 			// TODO this errors should be reported
-			_ = p.DelRead(pd)
-			pd.Handlers[ReadEvent](nil)
+			_ = p.DelRead(slot)
+			slot.Handlers[ReadEvent](nil)
 		}
 
-		if events&pd.Events&PollerWriteEvent == PollerWriteEvent {
+		if events&slot.Events&PollerWriteEvent == PollerWriteEvent {
 			// TODO this errors should be reported
-			_ = p.DelWrite(pd)
-			pd.Handlers[WriteEvent](nil)
+			_ = p.DelWrite(slot)
+			slot.Handlers[WriteEvent](nil)
 		}
 	}
 
@@ -207,16 +207,16 @@ func (p *poller) dispatch() {
 	p.lck.Unlock()
 }
 
-func (p *poller) SetRead(pd *PollData) error {
-	return p.setRW(pd.Fd, pd, PollerReadEvent)
+func (p *poller) SetRead(slot *Slot) error {
+	return p.setRW(slot.Fd, slot, PollerReadEvent)
 }
 
-func (p *poller) SetWrite(pd *PollData) error {
-	return p.setRW(pd.Fd, pd, PollerWriteEvent)
+func (p *poller) SetWrite(slot *Slot) error {
+	return p.setRW(slot.Fd, slot, PollerWriteEvent)
 }
 
-func (p *poller) setRW(fd int, pd *PollData, flag PollerEvent) error {
-	events := &pd.Events
+func (p *poller) setRW(fd int, slot *Slot, flag PollerEvent) error {
+	events := &slot.Events
 	if *events&flag != flag {
 		p.pending++
 
@@ -224,9 +224,9 @@ func (p *poller) setRW(fd int, pd *PollData, flag PollerEvent) error {
 		*events |= flag
 
 		if oldEvents == 0 {
-			return p.add(fd, createEvent(*events, pd))
+			return p.add(fd, createEvent(*events, slot))
 		}
-		return p.modify(fd, createEvent(*events, pd))
+		return p.modify(fd, createEvent(*events, slot))
 	}
 	return nil
 }
@@ -264,36 +264,36 @@ func (p *poller) modify(fd int, event Event) error {
 	return nil
 }
 
-func (p *poller) Del(pd *PollData) error {
-	err := p.DelRead(pd)
+func (p *poller) Del(slot *Slot) error {
+	err := p.DelRead(slot)
 	if err == nil {
-		return p.DelWrite(pd)
+		return p.DelWrite(slot)
 	}
 	return nil
 }
 
-func (p *poller) DelRead(pd *PollData) error {
-	events := &pd.Events
+func (p *poller) DelRead(slot *Slot) error {
+	events := &slot.Events
 	if *events&PollerReadEvent == PollerReadEvent {
 		p.pending--
 		*events ^= PollerReadEvent
 		if *events != 0 {
-			return p.modify(pd.Fd, createEvent(*events, pd))
+			return p.modify(slot.Fd, createEvent(*events, slot))
 		}
-		return p.del(pd.Fd)
+		return p.del(slot.Fd)
 	}
 	return nil
 }
 
-func (p *poller) DelWrite(pd *PollData) error {
-	events := &pd.Events
+func (p *poller) DelWrite(slot *Slot) error {
+	events := &slot.Events
 	if *events&PollerWriteEvent == PollerWriteEvent {
 		p.pending--
 		*events ^= PollerWriteEvent
 		if *events != 0 {
-			return p.modify(pd.Fd, createEvent(*events, pd))
+			return p.modify(slot.Fd, createEvent(*events, slot))
 		}
-		return p.del(pd.Fd)
+		return p.del(slot.Fd)
 	}
 	return nil
 }

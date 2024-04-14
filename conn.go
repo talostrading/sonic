@@ -49,7 +49,7 @@ func newConn(
 	localAddr, remoteAddr net.Addr,
 ) *conn {
 	return &conn{
-		file:       &file{ioc: ioc, pd: internal.PollData{Fd: fd}},
+		file:       &file{ioc: ioc, slot: internal.Slot{Fd: fd}},
 		fd:         fd,
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,

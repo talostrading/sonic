@@ -95,7 +95,7 @@ func NewPoller() (Poller, error) {
 		events:  make([]syscall.Kevent_t, 128),
 	}
 
-	err = p.setRead(p.waker.ReadFd(), syscall.EV_ADD, &p.waker.pd)
+	err = p.setRead(p.waker.ReadFd(), syscall.EV_ADD, &p.waker.slot)
 	if err != nil {
 		_ = p.waker.Close()
 		_ = syscall.Close(kqueueFd)
@@ -174,23 +174,23 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		events := -PollerEvent(event.Filter)
 
 		/* #nosec G103 -- the use of unsafe has been audited */
-		pd := (*PollData)(unsafe.Pointer(event.Udata))
+		slot := (*Slot)(unsafe.Pointer(event.Udata))
 
-		if pd.Fd == p.waker.ReadFd() {
+		if slot.Fd == p.waker.ReadFd() {
 			p.executePost()
 			continue
 		}
 
-		if events&pd.Events&PollerReadEvent == PollerReadEvent {
+		if events&slot.Events&PollerReadEvent == PollerReadEvent {
 			p.pending--
-			pd.Events ^= PollerReadEvent
-			pd.Handlers[ReadEvent](nil)
+			slot.Events ^= PollerReadEvent
+			slot.Handlers[ReadEvent](nil)
 		}
 
-		if events&pd.Events&PollerWriteEvent == PollerWriteEvent {
+		if events&slot.Events&PollerWriteEvent == PollerWriteEvent {
 			p.pending--
-			pd.Events ^= PollerWriteEvent
-			pd.Handlers[WriteEvent](nil)
+			slot.Events ^= PollerWriteEvent
+			slot.Handlers[WriteEvent](nil)
 		}
 	}
 
@@ -214,54 +214,54 @@ func (p *poller) executePost() {
 	p.lck.Unlock()
 }
 
-func (p *poller) SetRead(pd *PollData) error {
-	return p.setRead(pd.Fd, syscall.EV_ADD|syscall.EV_ONESHOT, pd)
+func (p *poller) SetRead(slot *Slot) error {
+	return p.setRead(slot.Fd, syscall.EV_ADD|syscall.EV_ONESHOT, slot)
 }
 
-func (p *poller) setRead(fd int, flags uint16, pd *PollData) error {
-	events := &pd.Events
+func (p *poller) setRead(fd int, flags uint16, slot *Slot) error {
+	events := &slot.Events
 	if *events&PollerReadEvent != PollerReadEvent {
 		p.pending++
 		*events |= PollerReadEvent
-		return p.set(fd, createEvent(flags, -PollerReadEvent, pd, 0))
+		return p.set(fd, createEvent(flags, -PollerReadEvent, slot, 0))
 	}
 	return nil
 }
 
-func (p *poller) SetWrite(pd *PollData) error {
-	events := &pd.Events
+func (p *poller) SetWrite(slot *Slot) error {
+	events := &slot.Events
 	if *events&PollerWriteEvent != PollerWriteEvent {
 		p.pending++
 		*events |= PollerWriteEvent
-		return p.set(pd.Fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -PollerWriteEvent, pd, 0))
+		return p.set(slot.Fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -PollerWriteEvent, slot, 0))
 	}
 	return nil
 }
 
-func (p *poller) DelRead(pd *PollData) error {
-	events := &pd.Events
+func (p *poller) DelRead(slot *Slot) error {
+	events := &slot.Events
 	if *events&PollerReadEvent == PollerReadEvent {
 		p.pending--
 		*events ^= PollerReadEvent
-		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -PollerReadEvent, pd, 0))
+		return p.set(slot.Fd, createEvent(syscall.EV_DELETE, -PollerReadEvent, slot, 0))
 	}
 	return nil
 }
 
-func (p *poller) DelWrite(pd *PollData) error {
-	events := &pd.Events
+func (p *poller) DelWrite(slot *Slot) error {
+	events := &slot.Events
 	if *events&PollerWriteEvent == PollerWriteEvent {
 		p.pending--
 		*events ^= PollerWriteEvent
-		return p.set(pd.Fd, createEvent(syscall.EV_DELETE, -PollerWriteEvent, pd, 0))
+		return p.set(slot.Fd, createEvent(syscall.EV_DELETE, -PollerWriteEvent, slot, 0))
 	}
 	return nil
 }
 
-func (p *poller) Del(pd *PollData) error {
-	err := p.DelRead(pd)
+func (p *poller) Del(slot *Slot) error {
+	err := p.DelRead(slot)
 	if err == nil {
-		return p.DelWrite(pd)
+		return p.DelWrite(slot)
 	}
 	return nil
 }
@@ -272,7 +272,7 @@ func (p *poller) set(fd int, ev syscall.Kevent_t) error {
 	return nil
 }
 
-func createEvent(flags uint16, filter PollerEvent, pd *PollData, dur time.Duration) syscall.Kevent_t {
+func createEvent(flags uint16, filter PollerEvent, slot *Slot, dur time.Duration) syscall.Kevent_t {
 	ev := syscall.Kevent_t{
 		Flags:  flags,
 		Filter: int16(filter),
@@ -283,9 +283,9 @@ func createEvent(flags uint16, filter PollerEvent, pd *PollData, dur time.Durati
 		ev.Data = dur.Nanoseconds()
 	}
 
-	if pd != nil {
+	if slot != nil {
 		/* #nosec G103 -- the use of unsafe has been audited */
-		ev.Udata = (*byte)(unsafe.Pointer(pd)) // not touched by the kernel
+		ev.Udata = (*byte)(unsafe.Pointer(slot)) // not touched by the kernel
 	}
 
 	return ev

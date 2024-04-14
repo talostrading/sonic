@@ -14,7 +14,7 @@ var _ File = &file{}
 
 type file struct {
 	ioc    *IO
-	pd     internal.PollData
+	slot   internal.Slot
 	closed uint32
 
 	// dispatched tracks how callback are currently on the stack.
@@ -32,14 +32,14 @@ func Open(ioc *IO, path string, flags int, mode os.FileMode) (File, error) {
 	}
 
 	f := &file{
-		ioc: ioc,
-		pd:  internal.PollData{Fd: fd},
+		ioc:  ioc,
+		slot: internal.Slot{Fd: fd},
 	}
 	return f, nil
 }
 
 func (f *file) Read(b []byte) (int, error) {
-	n, err := syscall.Read(f.pd.Fd, b)
+	n, err := syscall.Read(f.slot.Fd, b)
 
 	if err != nil {
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
@@ -61,7 +61,7 @@ func (f *file) Read(b []byte) (int, error) {
 }
 
 func (f *file) Write(b []byte) (int, error) {
-	n, err := syscall.Write(f.pd.Fd, b)
+	n, err := syscall.Write(f.slot.Fd, b)
 
 	if err != nil {
 		if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
@@ -134,18 +134,18 @@ func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	}
 
 	handler := f.getReadHandler(b, readBytes, readAll, cb)
-	f.pd.Set(internal.ReadEvent, handler)
+	f.slot.Set(internal.ReadEvent, handler)
 
-	if err := f.ioc.SetRead(&f.pd); err != nil {
+	if err := f.ioc.SetRead(&f.slot); err != nil {
 		cb(err, readBytes)
 	} else {
-		f.ioc.Register(&f.pd)
+		f.ioc.Register(&f.slot)
 	}
 }
 
 func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		f.ioc.Deregister(&f.pd)
+		f.ioc.Deregister(&f.slot)
 		if err != nil {
 			cb(err, readBytes)
 		} else {
@@ -206,18 +206,18 @@ func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb Async
 	}
 
 	handler := f.getWriteHandler(b, writtenBytes, writeAll, cb)
-	f.pd.Set(internal.WriteEvent, handler)
+	f.slot.Set(internal.WriteEvent, handler)
 
-	if err := f.ioc.SetWrite(&f.pd); err != nil {
+	if err := f.ioc.SetWrite(&f.slot); err != nil {
 		cb(err, writtenBytes)
 	} else {
-		f.ioc.Register(&f.pd)
+		f.ioc.Register(&f.slot)
 	}
 }
 
 func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		f.ioc.Deregister(&f.pd)
+		f.ioc.Deregister(&f.slot)
 
 		if err != nil {
 			cb(err, writtenBytes)
@@ -232,12 +232,12 @@ func (f *file) Close() error {
 		return io.EOF
 	}
 
-	err := f.ioc.poller.Del(&f.pd)
+	err := f.ioc.poller.Del(&f.slot)
 	if err != nil {
 		return err
 	}
 
-	return syscall.Close(f.pd.Fd)
+	return syscall.Close(f.slot.Fd)
 }
 
 func (f *file) Closed() bool {
@@ -245,7 +245,7 @@ func (f *file) Closed() bool {
 }
 
 func (f *file) Seek(offset int64, whence int) (int64, error) {
-	return syscall.Seek(f.pd.Fd, offset, whence)
+	return syscall.Seek(f.slot.Fd, offset, whence)
 }
 
 func (f *file) Cancel() {
@@ -254,25 +254,25 @@ func (f *file) Cancel() {
 }
 
 func (f *file) cancelReads() {
-	if f.pd.Events&internal.PollerReadEvent == internal.PollerReadEvent {
-		err := f.ioc.poller.DelRead(&f.pd)
+	if f.slot.Events&internal.PollerReadEvent == internal.PollerReadEvent {
+		err := f.ioc.poller.DelRead(&f.slot)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		f.pd.Handlers[internal.ReadEvent](err)
+		f.slot.Handlers[internal.ReadEvent](err)
 	}
 }
 
 func (f *file) cancelWrites() {
-	if f.pd.Events&internal.PollerWriteEvent == internal.PollerWriteEvent {
-		err := f.ioc.poller.DelWrite(&f.pd)
+	if f.slot.Events&internal.PollerWriteEvent == internal.PollerWriteEvent {
+		err := f.ioc.poller.DelWrite(&f.slot)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		f.pd.Handlers[internal.WriteEvent](err)
+		f.slot.Handlers[internal.WriteEvent](err)
 	}
 }
 
 func (f *file) RawFd() int {
-	return f.pd.Fd
+	return f.slot.Fd
 }

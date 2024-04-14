@@ -14,7 +14,7 @@ var _ Listener = &listener{}
 
 type listener struct {
 	ioc  *IO
-	pd   internal.PollData
+	slot internal.Slot
 	addr net.Addr
 
 	dispatched int
@@ -42,7 +42,7 @@ func Listen(
 
 	l := &listener{
 		ioc:  ioc,
-		pd:   internal.PollData{Fd: fd},
+		slot: internal.Slot{Fd: fd},
 		addr: listenAddr,
 	}
 	return l, nil
@@ -68,18 +68,18 @@ func (l *listener) AsyncAccept(cb AcceptCallback) {
 }
 
 func (l *listener) asyncAccept(cb AcceptCallback) {
-	l.pd.Set(internal.ReadEvent, l.handleAsyncAccept(cb))
+	l.slot.Set(internal.ReadEvent, l.handleAsyncAccept(cb))
 
-	if err := l.ioc.SetRead(&l.pd); err != nil {
+	if err := l.ioc.SetRead(&l.slot); err != nil {
 		cb(err, nil)
 	} else {
-		l.ioc.Register(&l.pd)
+		l.ioc.Register(&l.slot)
 	}
 }
 
 func (l *listener) handleAsyncAccept(cb AcceptCallback) internal.Handler {
 	return func(err error) {
-		l.ioc.Deregister(&l.pd)
+		l.ioc.Deregister(&l.slot)
 
 		if err != nil {
 			cb(err, nil)
@@ -91,7 +91,7 @@ func (l *listener) handleAsyncAccept(cb AcceptCallback) internal.Handler {
 }
 
 func (l *listener) accept() (Conn, error) {
-	fd, addr, err := syscall.Accept(l.pd.Fd)
+	fd, addr, err := syscall.Accept(l.slot.Fd)
 
 	if err != nil {
 		_ = syscall.Close(fd)
@@ -113,8 +113,8 @@ func (l *listener) accept() (Conn, error) {
 }
 
 func (l *listener) Close() error {
-	_ = l.ioc.poller.Del(&l.pd)
-	return syscall.Close(l.pd.Fd)
+	_ = l.ioc.poller.Del(&l.slot)
+	return syscall.Close(l.slot.Fd)
 }
 
 func (l *listener) Addr() net.Addr {
@@ -122,5 +122,5 @@ func (l *listener) Addr() net.Addr {
 }
 
 func (l *listener) RawFd() int {
-	return l.pd.Fd
+	return l.slot.Fd
 }

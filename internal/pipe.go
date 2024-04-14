@@ -9,7 +9,7 @@ import (
 
 type Pipe struct {
 	pipe [2]int
-	pd   PollData
+	slot Slot
 }
 
 func NewPipe() (*Pipe, error) {
@@ -17,7 +17,7 @@ func NewPipe() (*Pipe, error) {
 	if err := syscall.Pipe(p.pipe[:]); err != nil {
 		return nil, err
 	}
-	p.pd.Fd = p.pipe[0]
+	p.slot.Fd = p.pipe[0]
 	return p, nil
 }
 
@@ -51,8 +51,8 @@ func (p *Pipe) WriteFd() int {
 	return p.pipe[1]
 }
 
-func (p *Pipe) PollData() *PollData {
-	return &p.pd
+func (p *Pipe) Slot() *Slot {
+	return &p.slot
 }
 
 func (p *Pipe) Close() error {
