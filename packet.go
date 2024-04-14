@@ -16,7 +16,7 @@ var _ PacketConn = &packetConn{}
 
 type packetConn struct {
 	ioc        *IO
-	pd         internal.PollData
+	slot       internal.Slot
 	localAddr  net.Addr
 	remoteAddr net.Addr
 	closed     uint32
@@ -43,7 +43,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 
 	return &packetConn{
 		ioc:       ioc,
-		pd:        internal.PollData{Fd: fd},
+		slot:      internal.Slot{Fd: fd},
 		localAddr: localAddr,
 		closed:    0,
 	}, nil
@@ -51,7 +51,7 @@ func NewPacketConn(ioc *IO, network, addr string, opts ...sonicopts.Option) (Pac
 
 func (c *packetConn) ReadFrom(b []byte) (n int, from net.Addr, err error) {
 	var addr syscall.Sockaddr
-	n, addr, err = syscall.Recvfrom(c.pd.Fd, b, 0)
+	n, addr, err = syscall.Recvfrom(c.slot.Fd, b, 0)
 	from = internal.FromSockaddr(addr)
 
 	if err != nil {
@@ -115,18 +115,18 @@ func (c *packetConn) scheduleRead(b []byte, readBytes int, readAll bool, cb Asyn
 	}
 
 	handler := c.getReadHandler(b, readBytes, readAll, cb)
-	c.pd.Set(internal.ReadEvent, handler)
+	c.slot.Set(internal.ReadEvent, handler)
 
-	if err := c.ioc.SetRead(&c.pd); err != nil {
+	if err := c.ioc.SetRead(&c.slot); err != nil {
 		cb(err, readBytes, nil)
 	} else {
-		c.ioc.Register(&c.pd)
+		c.ioc.Register(&c.slot)
 	}
 }
 
 func (c *packetConn) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncReadCallbackPacket) internal.Handler {
 	return func(err error) {
-		c.ioc.Deregister(&c.pd)
+		c.ioc.Deregister(&c.slot)
 
 		if err != nil {
 			cb(err, readBytes, nil)
@@ -137,7 +137,7 @@ func (c *packetConn) getReadHandler(b []byte, readBytes int, readAll bool, cb As
 }
 
 func (c *packetConn) WriteTo(b []byte, to net.Addr) error {
-	err := syscall.Sendto(c.pd.Fd, b, 0, internal.ToSockaddr(to))
+	err := syscall.Sendto(c.slot.Fd, b, 0, internal.ToSockaddr(to))
 	if err == syscall.EWOULDBLOCK || err == syscall.EAGAIN {
 		return sonicerrors.ErrWouldBlock
 	}
@@ -172,18 +172,18 @@ func (c *packetConn) scheduleWrite(b []byte, to net.Addr, cb AsyncWriteCallbackP
 	}
 
 	handler := c.getWriteHandler(b, to, cb)
-	c.pd.Set(internal.WriteEvent, handler)
+	c.slot.Set(internal.WriteEvent, handler)
 
-	if err := c.ioc.SetWrite(&c.pd); err != nil {
+	if err := c.ioc.SetWrite(&c.slot); err != nil {
 		cb(err)
 	} else {
-		c.ioc.Register(&c.pd)
+		c.ioc.Register(&c.slot)
 	}
 }
 
 func (c *packetConn) getWriteHandler(b []byte, to net.Addr, cb AsyncWriteCallbackPacket) internal.Handler {
 	return func(err error) {
-		c.ioc.Deregister(&c.pd)
+		c.ioc.Deregister(&c.slot)
 
 		if err != nil {
 			cb(err)
@@ -195,7 +195,7 @@ func (c *packetConn) getWriteHandler(b []byte, to net.Addr, cb AsyncWriteCallbac
 
 func (c *packetConn) Close() error {
 	atomic.StoreUint32(&c.closed, 1)
-	return syscall.Close(c.pd.Fd)
+	return syscall.Close(c.slot.Fd)
 }
 
 func (c *packetConn) Closed() bool {
@@ -207,5 +207,5 @@ func (c *packetConn) LocalAddr() net.Addr {
 }
 
 func (c *packetConn) RawFd() int {
-	return c.pd.Fd
+	return c.slot.Fd
 }

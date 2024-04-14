@@ -9,8 +9,8 @@ import (
 )
 
 type EventFd struct {
-	fd int
-	pd PollData
+	fd   int
+	slot Slot
 }
 
 func NewEventFd(nonBlocking bool) (*EventFd, error) {
@@ -27,7 +27,7 @@ func NewEventFd(nonBlocking bool) (*EventFd, error) {
 	e := &EventFd{
 		fd: int(fd),
 	}
-	e.pd.Fd = e.fd
+	e.slot.Fd = e.fd
 	return e, nil
 }
 
@@ -44,8 +44,8 @@ func (e *EventFd) Fd() int {
 	return e.fd
 }
 
-func (e *EventFd) PollData() *PollData {
-	return &e.pd
+func (e *EventFd) Slot() *Slot {
+	return &e.slot
 }
 
 func (e *EventFd) Close() error {

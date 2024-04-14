@@ -21,7 +21,7 @@ type AsyncAdapterHandler func(error, *AsyncAdapter)
 // underlying file descriptor.
 type AsyncAdapter struct {
 	ioc    *IO
-	pd     internal.PollData
+	slot   internal.Slot
 	rw     io.ReadWriter
 	rc     syscall.RawConn
 	closed uint32
@@ -52,7 +52,7 @@ func NewAsyncAdapter(
 			rw:  rw,
 			rc:  rc,
 		}
-		a.pd.Fd = int(fd)
+		a.slot.Fd = int(fd)
 		err := internal.ApplyOpts(int(fd), opts...)
 		cb(err, a)
 	})
@@ -113,18 +113,18 @@ func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, readAll bool, cb As
 	}
 
 	handler := a.getReadHandler(b, readBytes, readAll, cb)
-	a.pd.Set(internal.ReadEvent, handler)
+	a.slot.Set(internal.ReadEvent, handler)
 
-	if err := a.ioc.SetRead(&a.pd); err != nil {
+	if err := a.ioc.SetRead(&a.slot); err != nil {
 		cb(err, readBytes)
 	} else {
-		a.ioc.Register(&a.pd)
+		a.ioc.Register(&a.slot)
 	}
 }
 
 func (a *AsyncAdapter) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		a.ioc.Deregister(&a.pd)
+		a.ioc.Deregister(&a.slot)
 
 		if err != nil {
 			cb(err, readBytes)
@@ -176,18 +176,18 @@ func (a *AsyncAdapter) scheduleWrite(b []byte, writtenBytes int, writeAll bool, 
 	}
 
 	handler := a.getWriteHandler(b, writtenBytes, writeAll, cb)
-	a.pd.Set(internal.WriteEvent, handler)
+	a.slot.Set(internal.WriteEvent, handler)
 
-	if err := a.ioc.SetWrite(&a.pd); err != nil {
+	if err := a.ioc.SetWrite(&a.slot); err != nil {
 		cb(err, writtenBytes)
 	} else {
-		a.ioc.Register(&a.pd)
+		a.ioc.Register(&a.slot)
 	}
 }
 
 func (a *AsyncAdapter) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
-		a.ioc.Deregister(&a.pd)
+		a.ioc.Deregister(&a.slot)
 
 		if err != nil {
 			cb(err, writtenBytes)
@@ -202,9 +202,9 @@ func (a *AsyncAdapter) Close() error {
 		return io.EOF
 	}
 
-	_ = a.ioc.poller.Del(&a.pd)
+	_ = a.ioc.poller.Del(&a.slot)
 
-	return syscall.Close(a.pd.Fd)
+	return syscall.Close(a.slot.Fd)
 }
 
 func (a *AsyncAdapter) AsyncClose(cb func(err error)) {
@@ -223,25 +223,25 @@ func (a *AsyncAdapter) Cancel() {
 }
 
 func (a *AsyncAdapter) cancelReads() {
-	if a.pd.Events&internal.PollerReadEvent == internal.PollerReadEvent {
-		err := a.ioc.poller.DelRead(&a.pd)
+	if a.slot.Events&internal.PollerReadEvent == internal.PollerReadEvent {
+		err := a.ioc.poller.DelRead(&a.slot)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		a.pd.Handlers[internal.ReadEvent](err)
+		a.slot.Handlers[internal.ReadEvent](err)
 	}
 }
 
 func (a *AsyncAdapter) cancelWrites() {
-	if a.pd.Events&internal.PollerWriteEvent == internal.PollerWriteEvent {
-		err := a.ioc.poller.DelWrite(&a.pd)
+	if a.slot.Events&internal.PollerWriteEvent == internal.PollerWriteEvent {
+		err := a.ioc.poller.DelWrite(&a.slot)
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		a.pd.Handlers[internal.WriteEvent](err)
+		a.slot.Handlers[internal.WriteEvent](err)
 	}
 }
 
 func (a *AsyncAdapter) RawFd() int {
-	return a.pd.Fd
+	return a.slot.Fd
 }

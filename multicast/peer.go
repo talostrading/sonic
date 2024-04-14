@@ -30,7 +30,7 @@ type UDPPeer struct {
 	ttl        uint8
 	all        bool
 
-	slot internal.PollData
+	slot internal.Slot
 
 	sockAddr   syscall.Sockaddr
 	closed     bool

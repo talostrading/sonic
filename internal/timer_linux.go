@@ -15,7 +15,7 @@ var _ ITimer = &Timer{}
 type Timer struct {
 	fd     int
 	poller Poller
-	pd     PollData
+	slot   Slot
 	b      [8]byte
 }
 
@@ -29,7 +29,7 @@ func NewTimer(p Poller) (*Timer, error) {
 		fd:     fd,
 		poller: p.(*poller),
 	}
-	t.pd.Fd = t.fd
+	t.slot.Fd = t.fd
 	return t, nil
 }
 
@@ -46,23 +46,23 @@ func (t *Timer) Set(dur time.Duration, cb func()) error {
 	}, nil)
 	if err == nil {
 		// TODO error checking here
-		t.pd.Set(ReadEvent, func(error) {
+		t.slot.Set(ReadEvent, func(error) {
 			_, _ = syscall.Read(t.fd, t.b[:])
 			cb()
 		})
-		err = t.poller.SetRead(&t.pd)
+		err = t.poller.SetRead(&t.slot)
 	}
 
 	return err
 }
 
 func (t *Timer) Unset() error {
-	if t.pd.Events&PollerReadEvent != PollerReadEvent {
+	if t.slot.Events&PollerReadEvent != PollerReadEvent {
 		return nil
 	}
 	err := unix.TimerfdSettime(t.fd, 0, &unix.ItimerSpec{}, nil)
 	if err == nil {
-		err = t.poller.Del(&t.pd)
+		err = t.poller.Del(&t.slot)
 	}
 	return err
 }

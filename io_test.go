@@ -273,13 +273,13 @@ func TestIOPending(t *testing.T) {
 	ioc := MustIO()
 	defer ioc.Close()
 
-	var slots []*internal.PollData
+	var slots []*internal.Slot
 
 	for i := 0; i < 4096; i++ {
 		if ioc.pending.static[i] != nil {
 			t.Fatal("expected static pending element to be nil")
 		}
-		slots = append(slots, &internal.PollData{Fd: i})
+		slots = append(slots, &internal.Slot{Fd: i})
 		ioc.Register(slots[len(slots)-1])
 		if ioc.pending.static[i] == nil {
 			t.Fatal("expected static pending element to be non-nil")
@@ -291,7 +291,7 @@ func TestIOPending(t *testing.T) {
 	}
 
 	for i := 4096; i < 8192; i++ {
-		slots = append(slots, &internal.PollData{Fd: i})
+		slots = append(slots, &internal.Slot{Fd: i})
 		ioc.Register(slots[len(slots)-1])
 	}
 	if len(ioc.pending.dynamic) != 4096 {
