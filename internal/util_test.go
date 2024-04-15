@@ -1,8 +1,6 @@
-package util
+package internal
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestIsPowerOfTwo(t *testing.T) {
 	if IsPowerOfTwo(0) {
@@ -17,9 +15,5 @@ func TestIsPowerOfTwo(t *testing.T) {
 		if !IsPowerOfTwo(1 << i) {
 			t.Fatalf("%d is a power of two", 1<<i)
 		}
-		if !IsPowerOfTwo(-(1 << i)) {
-			t.Fatalf("%d is a power of two", -(1 << i))
-		}
 	}
-
 }

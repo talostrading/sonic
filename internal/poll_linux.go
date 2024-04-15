@@ -13,7 +13,6 @@ import (
 	"unsafe"
 
 	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/util"
 )
 
 type PollerEvent uint32
@@ -24,10 +23,16 @@ const (
 )
 
 func init() {
-	if !util.IsPowerOfTwo(int(PollerReadEvent)) {
+	if PollerReadEvent == PollerWriteEvent {
+		panic("poller read event == poller write event")
+	}
+
+	// The read and write events are used to set/unset bits in a Slot's event mask. We dispatch the read/write handler
+	// based on this event mask, so we must ensure these are powers of two.
+	if !IsPowerOfTwo(int(PollerReadEvent)) {
 		panic(fmt.Sprintf("PollerReadEvent=%d is not a power of two", PollerReadEvent))
 	}
-	if !util.IsPowerOfTwo(int(PollerWriteEvent)) {
+	if !IsPowerOfTwo(int(PollerWriteEvent)) {
 		panic(fmt.Sprintf("PollerWriteEvent=%d is not a power of two", PollerWriteEvent))
 	}
 }
