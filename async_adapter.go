@@ -228,7 +228,7 @@ func (a *AsyncAdapter) cancelReads() {
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		a.slot.Handlers[internal.ReadEvent](err)
+		a.slot.DispatchRead(err)
 	}
 }
 
@@ -238,7 +238,7 @@ func (a *AsyncAdapter) cancelWrites() {
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		a.slot.Handlers[internal.WriteEvent](err)
+		a.slot.DispatchWrite(err)
 	}
 }
 

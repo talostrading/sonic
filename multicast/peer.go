@@ -563,6 +563,50 @@ func (p *UDPPeer) SetAsyncReadBuffer(to []byte) {
 	p.read.b = to
 }
 
+func (p *UDPPeer) CancelRead() error {
+	return p.ioc.CancelRead(&p.slot)
+}
+
+func (p *UDPPeer) CancelWrite() error {
+	return p.ioc.CancelWrite(&p.slot)
+}
+
+func (p *UDPPeer) AsyncReadMulti(b []byte, fn func(error, int, netip.AddrPort)) {
+	p.read.b = b
+	p.read.fn = fn
+
+	p.slot.SetMulti(internal.ReadEvent, p.read.onMulti)
+	if err := p.ioc.SetReadMulti(&p.slot); err != nil {
+		fn(err, 0, netip.AddrPort{})
+	} else {
+		p.ioc.Register(&p.slot)
+		p.asyncReadMulti(b, fn)
+	}
+}
+
+func (p *UDPPeer) asyncReadMulti(b []byte, fn func(error, int, netip.AddrPort)) {
+	if p.dispatched < sonic.MaxCallbackDispatch {
+		p.asyncReadMultiNow(b, func(err error, n int, addr netip.AddrPort) {
+			p.dispatched++
+			fn(err, n, addr)
+			p.dispatched--
+		})
+	}
+	// else: we don't need to do anything as the descriptor is in multishot mode, meaning it's already registered for
+	// future reads.
+}
+
+func (p *UDPPeer) asyncReadMultiNow(b []byte, fn func(error, int, netip.AddrPort)) {
+	n, addr, err := p.Read(b)
+	if err == nil {
+		fn(err, n, addr)
+		p.asyncReadMulti(b, fn) // TODO provide context
+	} else if err != sonicerrors.ErrWouldBlock {
+		_ = p.CancelRead()
+		fn(err, 0, netip.AddrPort{})
+	}
+}
+
 func (p *UDPPeer) AsyncRead(b []byte, fn func(error, int, netip.AddrPort)) {
 	p.read.b = b
 	p.read.fn = fn
@@ -611,6 +655,44 @@ func (p *UDPPeer) scheduleRead(fn func(error, int, netip.AddrPort)) {
 
 func (p *UDPPeer) Write(b []byte, addr netip.AddrPort) (int, error) {
 	return p.socket.SendTo(b, 0, addr)
+}
+
+func (p *UDPPeer) AsyncWriteMulti(b []byte, addr netip.AddrPort, fn func(error, int)) {
+	p.write.b = b
+	p.write.addr = addr
+	p.write.fn = fn
+
+	p.slot.SetMulti(internal.WriteEvent, p.write.onMulti)
+	if err := p.ioc.SetWriteMulti(&p.slot); err != nil {
+		fn(err, 0)
+	} else {
+		p.ioc.Register(&p.slot)
+		p.asyncWriteMulti(b, addr, fn)
+	}
+}
+
+func (p *UDPPeer) asyncWriteMulti(b []byte, addr netip.AddrPort, fn func(error, int)) {
+	if p.dispatched < sonic.MaxCallbackDispatch {
+		p.asyncWriteMultiNow(b, addr, func(err error, n int) {
+			p.dispatched++
+			fn(err, n)
+			p.dispatched--
+		})
+	}
+	// else: we don't need to do anything as the descriptor is in multishot mode, meaning it's already registered for
+	// future writes.
+}
+
+func (p *UDPPeer) asyncWriteMultiNow(b []byte, addr netip.AddrPort, fn func(error, int)) {
+	n, err := p.Write(b, addr)
+
+	if err == nil {
+		fn(err, n)
+		p.asyncWriteMulti(b, addr, fn) // TODO provide context here
+	} else if err != sonicerrors.ErrWouldBlock {
+		_ = p.CancelWrite()
+		fn(err, 0)
+	}
 }
 
 func (p *UDPPeer) AsyncWrite(

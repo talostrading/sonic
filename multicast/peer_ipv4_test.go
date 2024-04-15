@@ -2096,3 +2096,287 @@ func TestUDPPeerIPv4_MultipleReadersSameBuffer(t *testing.T) {
 		}
 	}
 }
+
+func pollUntil(ioc *sonic.IO) {
+	start := time.Now()
+	for time.Now().Sub(start) < 100*time.Millisecond {
+		n, _ := ioc.PollOne()
+		if n > 0 {
+			return
+		}
+	}
+}
+
+func TestAsyncReadMulti(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastAddr, err := netip.ParseAddrPort("224.0.0.13:1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := NewUDPPeer(ioc, "udp", multicastAddr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Join(IP(multicastAddr.Addr().String())); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		read []uint32
+		rb   = make([]byte, 4)
+	)
+
+	r.AsyncReadMulti(rb, func(err error, n int, addr netip.AddrPort) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		read = append(read, binary.LittleEndian.Uint32(rb))
+	})
+
+	for i := 0; i < 10; i++ {
+		wb := make([]byte, 4)
+		binary.LittleEndian.PutUint32(wb, uint32(i))
+		n, err := w.Write(wb, multicastAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 4 {
+			t.Fatal("did not write 4 bytes")
+		}
+
+		pollUntil(ioc)
+	}
+
+	if len(read) != 10 {
+		t.Fatal("did not read")
+	}
+
+	for i := 0; i < 10; i++ {
+		if read[i] != uint32(i) {
+			t.Fatal("did not read correctly")
+		}
+	}
+}
+
+func TestAsyncReadMultiCancel(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastAddr, err := netip.ParseAddrPort("224.0.0.13:1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := NewUDPPeer(ioc, "udp", multicastAddr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := r.Join(IP(multicastAddr.Addr().String())); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		read []uint32
+		rb   = make([]byte, 4)
+	)
+
+	r.AsyncReadMulti(rb, func(err error, n int, addr netip.AddrPort) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		read = append(read, binary.LittleEndian.Uint32(rb))
+		if len(read) == 5 {
+			if err := r.CancelRead(); err != nil {
+				t.Fatal(err)
+			}
+		}
+	})
+
+	for i := 0; i < 10; i++ {
+		wb := make([]byte, 4)
+		binary.LittleEndian.PutUint32(wb, uint32(i))
+		n, err := w.Write(wb, multicastAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 4 {
+			t.Fatal("did not write 4 bytes")
+		}
+
+		pollUntil(ioc)
+	}
+
+	if len(read) != 5 {
+		t.Fatal("did not read")
+	}
+
+	for i := 0; i < 5; i++ {
+		if read[i] != uint32(i) {
+			t.Fatal("did not read correctly")
+		}
+	}
+}
+
+func readUntil(r *UDPPeer, b []byte) error {
+	start := time.Now()
+	for time.Now().Sub(start) < 100*time.Millisecond {
+		n, _, err := r.Read(b)
+		if err != nil && err != sonicerrors.ErrWouldBlock {
+			return err
+		}
+		if n > 0 {
+			return nil
+		}
+	}
+	return sonicerrors.ErrTimeout
+}
+
+func TestAsyncWriteMulti(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastAddr, err := netip.ParseAddrPort("224.0.0.13:1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := NewUDPPeer(ioc, "udp", multicastAddr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Join(IP(multicastAddr.Addr().String())); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		wb           = make([]byte, 4)
+		index uint32 = 0
+	)
+	binary.LittleEndian.PutUint32(wb, index)
+	w.AsyncWriteMulti(wb, multicastAddr, func(err error, n int) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 4 {
+			t.Fatal("did not write everything")
+		}
+		index++
+		binary.LittleEndian.PutUint32(wb, index)
+	})
+
+	var read []uint32
+	for i := 0; i < 10; i++ {
+		pollUntil(ioc)
+
+		rb := make([]byte, 4)
+		if err := readUntil(r, rb); err != nil {
+			t.Fatal(err)
+		}
+		read = append(read, binary.LittleEndian.Uint32(rb))
+	}
+
+	if len(read) != 10 {
+		t.Fatal("did not write correctly")
+	}
+	for i := 0; i < 10; i++ {
+		if read[i] != uint32(i) {
+			t.Fatal("did not read correctly")
+		}
+	}
+}
+
+func TestAsyncWriteMultiCancel(t *testing.T) {
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	multicastAddr, err := netip.ParseAddrPort("224.0.0.13:1234")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w, err := NewUDPPeer(ioc, "udp", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := NewUDPPeer(ioc, "udp", multicastAddr.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Join(IP(multicastAddr.Addr().String())); err != nil {
+		t.Fatal(err)
+	}
+
+	var (
+		wb           = make([]byte, 4)
+		index uint32 = 0
+	)
+	binary.LittleEndian.PutUint32(wb, index)
+	w.AsyncWriteMulti(wb, multicastAddr, func(err error, n int) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 4 {
+			t.Fatal("did not write everything")
+		}
+		index++
+		if index == 5 {
+			if err := w.CancelWrite(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		binary.LittleEndian.PutUint32(wb, index)
+	})
+
+	var (
+		read         []uint32
+		readTimeouts = 0
+	)
+
+	for i := 0; i < 10; i++ {
+		pollUntil(ioc)
+
+		rb := make([]byte, 4)
+		if err := readUntil(r, rb); err != nil {
+			if err == sonicerrors.ErrTimeout {
+				readTimeouts++
+				continue
+			} else {
+				t.Fatal(err)
+			}
+		}
+		read = append(read, binary.LittleEndian.Uint32(rb))
+	}
+
+	if readTimeouts != 5 {
+		t.Fatal("did not cancel write correctly")
+	}
+	if len(read) != 5 {
+		t.Fatal("did not write correctly")
+	}
+	for i := 0; i < 5; i++ {
+		if read[i] != uint32(i) {
+			t.Fatal("did not read correctly")
+		}
+	}
+}

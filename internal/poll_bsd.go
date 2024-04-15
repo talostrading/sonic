@@ -43,7 +43,7 @@ type poller struct {
 	// changes contains events we want to watch for
 	changes []syscall.Kevent_t
 
-	// events contains the events which occured.
+	// events contains the events which occurred.
 	// events is a subset of changelist.
 	events []syscall.Kevent_t
 
@@ -193,15 +193,19 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		}
 
 		if events&slot.Events&PollerReadEvent == PollerReadEvent {
-			p.pending--
-			slot.Events ^= PollerReadEvent
-			slot.Handlers[ReadEvent](nil)
+			if !slot.Handlers[ReadEvent].multishot {
+				p.pending--
+				slot.Events ^= PollerReadEvent
+			}
+			slot.Handlers[ReadEvent].fn(nil)
 		}
 
 		if events&slot.Events&PollerWriteEvent == PollerWriteEvent {
-			p.pending--
-			slot.Events ^= PollerWriteEvent
-			slot.Handlers[WriteEvent](nil)
+			if !slot.Handlers[WriteEvent].multishot {
+				p.pending--
+				slot.Events ^= PollerWriteEvent
+			}
+			slot.Handlers[WriteEvent].fn(nil)
 		}
 	}
 
@@ -229,6 +233,10 @@ func (p *poller) SetRead(slot *Slot) error {
 	return p.setRead(slot.Fd, syscall.EV_ADD|syscall.EV_ONESHOT, slot)
 }
 
+func (p *poller) SetReadMulti(slot *Slot) error {
+	return p.setRead(slot.Fd, syscall.EV_ADD, slot)
+}
+
 func (p *poller) setRead(fd int, flags uint16, slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerReadEvent != PollerReadEvent {
@@ -240,11 +248,19 @@ func (p *poller) setRead(fd int, flags uint16, slot *Slot) error {
 }
 
 func (p *poller) SetWrite(slot *Slot) error {
+	return p.setWrite(slot.Fd, syscall.EV_ADD|syscall.EV_ONESHOT, slot)
+}
+
+func (p *poller) SetWriteMulti(slot *Slot) error {
+	return p.setWrite(slot.Fd, syscall.EV_ADD, slot)
+}
+
+func (p *poller) setWrite(fd int, flags uint16, slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerWriteEvent != PollerWriteEvent {
 		p.pending++
 		*events |= PollerWriteEvent
-		return p.set(slot.Fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -PollerWriteEvent, slot, 0))
+		return p.set(fd, createEvent(flags, -PollerWriteEvent, slot, 0))
 	}
 	return nil
 }

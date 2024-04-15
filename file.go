@@ -259,7 +259,7 @@ func (f *file) cancelReads() {
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		f.slot.Handlers[internal.ReadEvent](err)
+		f.slot.DispatchRead(err)
 	}
 }
 
@@ -269,7 +269,7 @@ func (f *file) cancelWrites() {
 		if err == nil {
 			err = sonicerrors.ErrCancelled
 		}
-		f.slot.Handlers[internal.WriteEvent](err)
+		f.slot.DispatchWrite(err)
 	}
 }
 

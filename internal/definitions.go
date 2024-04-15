@@ -24,11 +24,28 @@ type Slot struct {
 
 	// Callbacks registered with this Slot. The poller dispatches the appropriate read or write callback when it
 	// receives an event that's in Events.
-	Handlers [MaxEvent]Handler
+	Handlers [MaxEvent]struct {
+		fn        Handler
+		multishot bool
+	}
 }
 
 func (s *Slot) Set(et EventType, h Handler) {
-	s.Handlers[et] = h
+	s.Handlers[et].fn = h
+	s.Handlers[et].multishot = false
+}
+
+func (s *Slot) SetMulti(et EventType, h Handler) {
+	s.Handlers[et].fn = h
+	s.Handlers[et].multishot = true
+}
+
+func (s *Slot) DispatchRead(err error) {
+	s.Handlers[ReadEvent].fn(err)
+}
+
+func (s *Slot) DispatchWrite(err error) {
+	s.Handlers[WriteEvent].fn(err)
 }
 
 type ITimer interface {
@@ -63,8 +80,12 @@ type Poller interface {
 	// SetRead registers interest in read events on the provided slot.
 	SetRead(slot *Slot) error
 
+	SetReadMulti(slot *Slot) error
+
 	// SetWrite registers interest in write events on the provided slot.
 	SetWrite(slot *Slot) error
+
+	SetWriteMulti(slot *Slot) error
 
 	// DelRead deregisters interest in read events on the provided slot.
 	DelRead(slot *Slot) error

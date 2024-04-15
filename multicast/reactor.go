@@ -20,6 +20,14 @@ func (r *readReactor) on(err error) {
 	}
 }
 
+func (r *readReactor) onMulti(err error) {
+	if err != nil {
+		r.fn(err, 0, netip.AddrPort{})
+	} else {
+		r.peer.asyncReadMultiNow(r.b, r.fn)
+	}
+}
+
 type writeReactor struct {
 	peer *UDPPeer
 	b    []byte
@@ -36,3 +44,13 @@ func (r *writeReactor) on(err error) {
 		r.peer.asyncWriteNow(r.b, r.addr, r.fn)
 	}
 }
+
+func (r *writeReactor) onMulti(err error) {
+	if err != nil {
+		r.fn(err, 0)
+	} else {
+		r.peer.asyncWriteMultiNow(r.b, r.addr, r.fn)
+	}
+}
+
+// TODO provide context on why we don't need to guard the stack in here.
