@@ -12,10 +12,47 @@ import (
 
 var _ File = &file{}
 
+type fileReadReactor struct {
+	file      *file
+	b         []byte
+	fn        AsyncCallback
+	readBytes int
+	readAll   bool
+}
+
+func (r *fileReadReactor) on(err error) {
+	r.file.ioc.Deregister(&r.file.slot)
+	if err != nil {
+		r.fn(err, r.readBytes)
+	} else {
+		r.file.asyncReadNow(r.b, r.readBytes, r.readAll, r.fn)
+	}
+}
+
+type fileWriteReactor struct {
+	file         *file
+	b            []byte
+	fn           AsyncCallback
+	writtenBytes int
+	writeAll     bool
+}
+
+func (r *fileWriteReactor) on(err error) {
+	r.file.ioc.Deregister(&r.file.slot)
+
+	if err != nil {
+		r.fn(err, r.writtenBytes)
+	} else {
+		r.file.asyncWriteNow(r.b, r.writtenBytes, r.writeAll, r.fn)
+	}
+}
+
 type file struct {
-	ioc    *IO
-	slot   internal.Slot
-	closed uint32
+	ioc          *IO
+	slot         internal.Slot
+	closed       uint32
+	readReactor  *fileReadReactor
+	writeReactor *fileWriteReactor
 
 	// dispatched tracks how callback are currently on the stack.
 	// If the fd has a lot of data to read/write and the caller nests
@@ -91,6 +128,10 @@ func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
+	f.readReactor.b = b
+	f.readReactor.fn = cb
+	f.readReactor.readAll = readAll
+
 	if f.dispatched < MaxCallbackDispatch {
 		f.asyncReadNow(b, 0, readAll, func(err error, n int) {
 			f.dispatched++
@@ -98,7 +139,7 @@ func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
 			f.dispatched--
 		})
 	} else {
-		f.scheduleRead(b, 0, readAll, cb)
+		f.scheduleRead(0, cb)
 	}
 }
 
@@ -121,36 +162,25 @@ func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallb
 	if err == sonicerrors.ErrWouldBlock {
 		// If readAll == true then read some without errors.
 		// We schedule an asynchronous read.
-		f.scheduleRead(b, readBytes, readAll, cb)
+		f.scheduleRead(readBytes, cb)
 	} else {
 		cb(err, readBytes)
 	}
 }
 
-func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (f *file) scheduleRead(readBytes int, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
-	handler := f.getReadHandler(b, readBytes, readAll, cb)
-	f.slot.Set(internal.ReadEvent, handler)
+	f.readReactor.readBytes = readBytes
+	f.slot.Set(internal.ReadEvent, f.readReactor.on)
 
 	if err := f.ioc.SetRead(&f.slot); err != nil {
 		cb(err, readBytes)
 	} else {
 		f.ioc.Register(&f.slot)
-	}
-}
-
-func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
-	return func(err error) {
-		f.ioc.Deregister(&f.slot)
-		if err != nil {
-			cb(err, readBytes)
-		} else {
-			f.asyncReadNow(b, readBytes, readAll, cb)
-		}
 	}
 }
 
@@ -163,6 +193,10 @@ func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
+	f.writeReactor.b = b
+	f.writeReactor.fn = cb
+	f.writeReactor.writeAll = writeAll
+
 	if f.dispatched < MaxCallbackDispatch {
 		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
 			f.dispatched++
@@ -170,7 +204,7 @@ func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
 			f.dispatched--
 		})
 	} else {
-		f.scheduleWrite(b, 0, writeAll, cb)
+		f.scheduleWrite(0, cb)
 	}
 }
 
@@ -193,37 +227,25 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 	if err == sonicerrors.ErrWouldBlock {
 		// If writeAll == true then wrote some without errors.
 		// We schedule an asynchronous write.
-		f.scheduleWrite(b, writtenBytes, writeAll, cb)
+		f.scheduleWrite(writtenBytes, cb)
 	} else {
 		cb(err, writtenBytes)
 	}
 }
 
-func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (f *file) scheduleWrite(writtenBytes int, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
-	handler := f.getWriteHandler(b, writtenBytes, writeAll, cb)
-	f.slot.Set(internal.WriteEvent, handler)
+	f.writeReactor.writtenBytes = writtenBytes
+	f.slot.Set(internal.WriteEvent, f.writeReactor.on)
 
 	if err := f.ioc.SetWrite(&f.slot); err != nil {
 		cb(err, writtenBytes)
 	} else {
 		f.ioc.Register(&f.slot)
-	}
-}
-
-func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
-	return func(err error) {
-		f.ioc.Deregister(&f.slot)
-
-		if err != nil {
-			cb(err, writtenBytes)
-		} else {
-			f.asyncWriteNow(b, writtenBytes, writeAll, cb)
-		}
 	}
 }
 

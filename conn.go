@@ -48,12 +48,20 @@ func newConn(
 	fd int,
 	localAddr, remoteAddr net.Addr,
 ) *conn {
-	return &conn{
-		file:       &file{ioc: ioc, slot: internal.Slot{Fd: fd}},
+	conn := &conn{
+		file: &file{
+			ioc:        ioc,
+			slot:       internal.Slot{Fd: fd},
+			closed:     0,
+			dispatched: 0,
+		},
 		fd:         fd,
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
 	}
+	conn.file.readReactor = &fileReadReactor{file: conn.file}
+	conn.file.writeReactor = &fileWriteReactor{file: conn.file}
+	return conn
 }
 
 func (c *conn) LocalAddr() net.Addr {
