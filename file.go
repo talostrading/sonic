@@ -29,6 +29,14 @@ func (r *fileReadReactor) on(err error) {
 	}
 }
 
+func (r *fileReadReactor) onMulti(err error) {
+	if err != nil {
+		r.fn(err, 0)
+	} else {
+		r.file.asyncReadMulti(r.b, r.fn)
+	}
+}
+
 type fileWriteReactor struct {
 	file         *file
 	b            []byte
@@ -117,6 +125,42 @@ func (f *file) Write(b []byte) (int, error) {
 	}
 
 	return n, err
+}
+
+func (f *file) AsyncReadMulti(b []byte, cb AsyncCallback) {
+	f.readReactor.b = b
+	f.readReactor.fn = cb
+
+	f.slot.Set(internal.ReadEvent, f.readReactor.onMulti)
+	f.slot.Multishot = true
+	if err := f.ioc.SetRead(&f.slot); err != nil {
+		cb(err, 0)
+	} else {
+		f.ioc.Register(&f.slot)
+	}
+
+	f.asyncReadMulti(b, cb)
+}
+
+func (f *file) asyncReadMulti(b []byte, cb AsyncCallback) {
+	if f.dispatched < MaxCallbackDispatch {
+		f.asyncReadMultiNow(b, func(err error, n int) {
+			f.dispatched++
+			cb(err, n)
+			f.dispatched--
+		})
+	}
+}
+
+func (f *file) asyncReadMultiNow(b []byte, cb AsyncCallback) {
+	n, err := f.Read(b)
+
+	if err == nil {
+		cb(nil, n)
+		f.asyncReadMulti(b, cb)
+	} else if err != sonicerrors.ErrWouldBlock {
+		cb(err, 0)
+	}
 }
 
 func (f *file) AsyncRead(b []byte, cb AsyncCallback) {

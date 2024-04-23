@@ -349,3 +349,56 @@ func TestConnWriteHandlesError(t *testing.T) {
 		t.Fatal("test did not run to completion")
 	}
 }
+
+func TestConnAsyncReadMulti(t *testing.T) {
+	marker := make(chan struct{}, 1)
+
+	go func() {
+		ln, err := net.Listen("tcp", "localhost:8088")
+		if err != nil {
+			panic(err)
+		}
+		defer ln.Close()
+
+		marker <- struct{}{}
+
+		conn, err := ln.Accept()
+		if err != nil {
+			panic(err)
+		}
+		defer conn.Close()
+
+		for i := 0; i < 10; i++ {
+			_, err := conn.Write([]byte(fmt.Sprintf("hello-%d", i)))
+			if err != nil {
+				panic(err)
+			}
+		}
+	}()
+	<-marker
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	conn, err := Dial(ioc, "tcp", "localhost:8088")
+	if err != nil {
+		panic(err)
+	}
+
+	done := false
+	b := make([]byte, 1024)
+	conn.AsyncReadMulti(b, func(err error, n int) {
+		if err != nil {
+			if err == io.EOF {
+				done = true
+			} else {
+				panic(err)
+			}
+		} else {
+			fmt.Println(string(b[:7]))
+		}
+	})
+	for !done {
+		ioc.PollOne()
+	}
+}

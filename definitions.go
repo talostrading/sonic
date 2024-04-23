@@ -39,6 +39,7 @@ type AsyncReader interface {
 	// Implementations must not retain b. Ownership of b must be retained by the caller,
 	// which must guarantee that it remains valid until the handler is called.
 	AsyncRead(b []byte, cb AsyncCallback)
+	AsyncReadMulti(b []byte, cb AsyncCallback)
 
 	// AsyncReadAll reads len(b) bytes into b asynchronously.
 	AsyncReadAll(b []byte, cb AsyncCallback)

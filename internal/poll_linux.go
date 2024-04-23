@@ -187,8 +187,10 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		}
 
 		if events&slot.Events&PollerReadEvent == PollerReadEvent {
-			// TODO this errors should be reported
-			_ = p.DelRead(slot)
+			if !slot.Multishot {
+				// TODO this errors should be reported
+				_ = p.DelRead(slot)
+			}
 			slot.Handlers[ReadEvent](nil)
 		}
 

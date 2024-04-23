@@ -89,6 +89,10 @@ func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
 	a.scheduleRead(b, 0, true, cb)
 }
 
+func (a *AsyncAdapter) AsyncReadMulti(b []byte, cb AsyncCallback) {
+	panic("not yet supported")
+}
+
 func (a *AsyncAdapter) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
 	n, err := a.rw.Read(b[readBytes:])
 	readBytes += n
