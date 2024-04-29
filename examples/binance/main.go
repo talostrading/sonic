@@ -13,7 +13,7 @@ var subscriptionMessage = []byte(
 {
   "id": 1,
   "method": "SUBSCRIBE",
-  "params": [ "bnbbtc@depth@0ms" ]
+  "params": [ "bnbbtc@depth" ]
 }
 `)
 
