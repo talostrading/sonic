@@ -81,6 +81,12 @@ type WebsocketStream struct {
 	// Optional callback invoked when a control frame is received.
 	ccb ControlCallback
 
+	// Optional callback invoked when an upgrade request is sent.
+	upReqCb UpgradeRequestCallback
+
+	// Optional callback invoked when an upgrade response is received.
+	upResCb UpgradeResponseCallback
+
 	// Used to establish a TCP connection to the peer with a timeout.
 	dialer *net.Dialer
 
@@ -788,6 +794,10 @@ func (s *WebsocketStream) upgrade(
 		}
 	}
 
+	if s.upReqCb != nil {
+		s.upReqCb(req)
+	}
+
 	err = req.Write(stream)
 	if err != nil {
 		return err
@@ -819,6 +829,10 @@ func (s *WebsocketStream) upgrade(
 		_, _ = s.src.Write(s.hb[resLen:])
 	}
 	s.hb = s.hb[:0]
+
+	if s.upResCb != nil {
+		s.upResCb(res)
+	}
 
 	if !IsUpgradeRes(res) {
 		return ErrCannotUpgrade
@@ -865,6 +879,22 @@ func (s *WebsocketStream) SetControlCallback(ccb ControlCallback) {
 
 func (s *WebsocketStream) ControlCallback() ControlCallback {
 	return s.ccb
+}
+
+func (s *WebsocketStream) SetUpgradeRequestCallback(upReqCb UpgradeRequestCallback) {
+	s.upReqCb = upReqCb
+}
+
+func (s *WebsocketStream) UpgradeRequestCallback() UpgradeRequestCallback {
+	return s.upReqCb
+}
+
+func (s *WebsocketStream) SetUpgradeResponseCallback(upResCb UpgradeResponseCallback) {
+	s.upResCb = upResCb
+}
+
+func (s *WebsocketStream) UpgradeResponseCallback() UpgradeResponseCallback {
+	return s.upResCb
 }
 
 func (s *WebsocketStream) SetMaxMessageSize(bytes int) {
