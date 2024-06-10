@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"net"
+	"net/http"
 	"time"
 
 	"github.com/talostrading/sonic"
@@ -107,6 +108,8 @@ func (s StreamState) String() string {
 type AsyncMessageHandler = func(err error, n int, mt MessageType)
 type AsyncFrameHandler = func(err error, f *Frame)
 type ControlCallback = func(mt MessageType, payload []byte)
+type UpgradeRequestCallback = func(req *http.Request)
+type UpgradeResponseCallback = func(res *http.Response)
 
 type Header struct {
 	Key          string
@@ -356,6 +359,24 @@ type Stream interface {
 
 	// ControlCallback returns the control callback set with SetControlCallback.
 	ControlCallback() ControlCallback
+
+	// SetUpgradeRequestCallback sets a function that will be invoked during the handshake
+	// just before the upgrade request is sent.
+	//
+	// The caller must not perform any operations on the stream in the provided callback.
+	SetUpgradeRequestCallback(callback UpgradeRequestCallback)
+
+	// UpgradeRequestCallback returns the callback set with SetUpgradeRequestCallback.
+	UpgradeRequestCallback() UpgradeRequestCallback
+
+	// SetUpgradeResponseCallback sets a function that will be invoked during the handshake
+	// just after the upgrade response is received.
+	//
+	// The caller must not perform any operations on the stream in the provided callback.
+	SetUpgradeResponseCallback(callback UpgradeResponseCallback)
+
+	// UpgradeResponseCallback returns the callback set with SetUpgradeResponseCallback.
+	UpgradeResponseCallback() UpgradeResponseCallback
 
 	// SetMaxMessageSize sets the maximum size of a message that can be read
 	// from or written to a peer.
