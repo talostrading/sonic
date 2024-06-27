@@ -1,0 +1,8 @@
+.ipynb_checkpoints/
+measurements.ipynb
+new-workspace.jupyterlab-workspace
+*.csv
+results*/
+*.txt
+*.log
+*.png

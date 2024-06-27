@@ -25,6 +25,8 @@ type Slot struct {
 	// Callbacks registered with this Slot. The poller dispatches the appropriate read or write callback when it
 	// receives an event that's in Events.
 	Handlers [MaxEvent]Handler
+
+	Multishot bool
 }
 
 func (s *Slot) Set(et EventType, h Handler) {
