@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"io"
+	"net/http"
 	"testing"
 	"time"
 
@@ -174,6 +175,20 @@ func TestClientSuccessfulHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	var upgReqCbCalled, upgResCbCalled bool
+	ws.SetUpgradeRequestCallback(func(req *http.Request) {
+		upgReqCbCalled = true
+		if val := req.Header.Get("Upgrade"); val != "websocket" {
+			t.Fatalf("invalid Upgrade header in request: given=%s expected=%s", val, "websocket")
+		}
+	})
+	ws.SetUpgradeResponseCallback(func(res *http.Response) {
+		upgResCbCalled = true
+		if val := res.Header.Get("Upgrade"); val != "websocket" {
+			t.Fatalf("invalid Upgrade header in response: given=%s expected=%s", val, "websocket")
+		}
+	})
+
 	assertState(t, ws, StateHandshake)
 
 	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
@@ -181,6 +196,12 @@ func TestClientSuccessfulHandshake(t *testing.T) {
 			assertState(t, ws, StateTerminated)
 		} else {
 			assertState(t, ws, StateActive)
+			if !upgReqCbCalled {
+				t.Fatal("upgrade request callback not invoked")
+			}
+			if !upgResCbCalled {
+				t.Fatal("upgrade response callback not invoked")
+			}
 		}
 	})
 
