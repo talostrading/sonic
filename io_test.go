@@ -316,6 +316,32 @@ func TestIOPending(t *testing.T) {
 	}
 }
 
+func TestSetUnsetRead(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	pipe, err := internal.NewPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pipe.ReadFd() != pipe.Slot().Fd {
+		t.Fatal("pipe must be identified by its read end file descriptor")
+	}
+
+	for i := 0; i < 100; i++ {
+		if err := ioc.SetRead(pipe.Slot()); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < 100; i++ {
+		if err := ioc.UnsetRead(pipe.Slot()); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func BenchmarkPollOne(b *testing.B) {
 	ioc := MustIO()
 	defer ioc.Close()

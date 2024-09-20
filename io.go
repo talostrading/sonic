@@ -82,8 +82,16 @@ func (ioc *IO) SetRead(slot *internal.Slot) error {
 	return ioc.poller.SetRead(slot)
 }
 
+func (ioc *IO) UnsetRead(slot *internal.Slot) error {
+	return ioc.poller.DelRead(slot)
+}
+
 func (ioc *IO) SetWrite(slot *internal.Slot) error {
 	return ioc.poller.SetWrite(slot)
+}
+
+func (ioc *IO) UnsetWrite(slot *internal.Slot) error {
+	return ioc.poller.DelWrite(slot)
 }
 
 // Run runs the event processing loop.
