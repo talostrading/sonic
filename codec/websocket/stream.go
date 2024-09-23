@@ -53,7 +53,7 @@ type WebsocketStream struct {
 	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
-	cs *sonic.BlockingCodecConn[*Frame, *Frame]
+	cs *sonic.CodecConn[*Frame, *Frame]
 
 	// Websocket role: client or server.
 	role Role
@@ -129,8 +129,7 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewBlockingCodecConn[*Frame, *Frame](
-		stream, codec, s.src, s.dst)
+	s.cs, err = sonic.NewCodecConn[*Frame, *Frame](stream, codec, s.src, s.dst)
 	return
 }
 
@@ -195,14 +194,6 @@ func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
 }
 
 func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
-	// TODO for later: here we flush first since we might need to reply
-	// to ping/pong/close immediately, and only after that we try to
-	// async read.
-	//
-	// I think we can just flush asynchronously while reading asynchronously at
-	// the same time. I'm pretty sure this will work with a BlockingCodecConn.
-	//
-	// Not entirely sure about a NonblockingCodecStream.
 	s.AsyncFlush(func(err error) {
 		if errors.Is(err, ErrMessageTooBig) {
 			s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
