@@ -6,39 +6,28 @@ import (
 )
 
 type Encoder[Item any] interface {
-	// Encode encodes the given item into the `dst` byte stream.
+	// Encode the given `Item` into the given buffer.
 	//
 	// Implementations should:
-	// - Commit the bytes into the read area of `dst`.
-	// - ensure `dst` is big enough to hold the serialized item by
-	//   calling dst.Reserve(...)
+	// - Commit() the bytes into the given buffer if the encoding is successful.
+	// - Ensure the given buffer is big enough to hold the serialized `Item`s by calling `Reserve(...)`.
 	Encode(item Item, dst *ByteBuffer) error
 }
 
 type Decoder[Item any] interface {
-	// Decode decodes the given stream into an `Item`.
-	//
-	// An implementation of Codec takes a byte stream that has already
-	// been buffered in `src` and decodes the data into a stream of
-	// `Item` objects.
-	//
-	// Implementations should return an empty Item and ErrNeedMore if
-	// there are not enough bytes to decode into an Item.
+	// Decode the next `Item`, if any, from the provided buffer. If there are not enough bytes to decode an `Item`,
+	// implementations should return an empty `Item` along with `ErrNeedMore`. `CodecConn` will then know to read more
+	// bytes before calling `Decode(...)` again.
 	Decode(src *ByteBuffer) (Item, error)
 }
 
-// Codec defines a generic interface through which one can encode/decode
-// a raw stream of bytes.
-//
-// Implementations are optionally able to track their state which enables
-// writing both stateful and stateless parsers.
+// Codec groups together and Encoder and a Decoder for a CodecConn.
 type Codec[Enc, Dec any] interface {
 	Encoder[Enc]
 	Decoder[Dec]
 }
 
-// CodecConn handles the decoding/encoding of bytes funneled through a
-// provided blocking file descriptor.
+// CodecConn reads/writes `Item`s through the provided `Codec`. For an example, see `codec/frame.go`.
 type CodecConn[Enc, Dec any] struct {
 	stream Stream
 	codec  Codec[Enc, Dec]
@@ -54,8 +43,6 @@ func NewCodecConn[Enc, Dec any](
 	codec Codec[Enc, Dec],
 	src, dst *ByteBuffer,
 ) (*CodecConn[Enc, Dec], error) {
-	// Works on both blocking and nonblocking fds.
-
 	c := &CodecConn[Enc, Dec]{
 		stream: stream,
 		codec:  codec,
