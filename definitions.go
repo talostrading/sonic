@@ -6,14 +6,10 @@ import (
 )
 
 const (
-	// MaxCallbackDispatch is the maximum number of callbacks which can be
-	// placed onto the stack for immediate invocation.
+	// MaxCallbackDispatch is the maximum number of callbacks that can exist on a stack-frame when asynchronous
+	// operations can be completed immediately.
 	MaxCallbackDispatch int = 32
 )
-
-// TODO this is quite a mess right now. Properly define what a Conn, Stream,
-// PacketConn is and what should the async adapter return, as more than TCP
-// streams can be "async-adapted".
 
 type AsyncCallback func(error, int)
 type AcceptCallback func(error, Conn)
@@ -21,45 +17,36 @@ type AcceptPacketCallback func(error, PacketConn)
 
 // AsyncReader is the interface that wraps the AsyncRead and AsyncReadAll methods.
 type AsyncReader interface {
-	// AsyncRead reads up to len(b) bytes into b asynchronously.
+	// AsyncRead reads up to `len(b)` bytes into `b` asynchronously.
 	//
-	// This call should not block. The provided completion handler is called
-	// in the following cases:
-	//  - a read of n bytes completes
-	//  - an error occurs
+	// This call should not block. The provided completion handler is called in the following cases:
+	// - a read of up to `n` bytes completes
+	// - an error occurs
 	//
-	// Callers should always process the n > 0 bytes returned before considering
-	// the error err.
+	// Callers should always process the returned bytes before considering the error err. Implementations of AsyncRead
+	// are discouraged from invoking the handler with 0 bytes and a nil error.
 	//
-	// Implementation of AsyncRead are discouraged from invoking the handler
-	// with a zero byte count with a nil error, except when len(b) == 0.
-	// Callers should treat a return of 0 and nil as indicating that nothing
-	// happened; in particular, it does not indicate EOF.
-	//
-	// Implementations must not retain b. Ownership of b must be retained by the caller,
-	// which must guarantee that it remains valid until the handler is called.
+	// Ownership of the byte slice must be retained by callers, which must guarantee that it remains valid until the
+	// callback is invoked.
 	AsyncRead(b []byte, cb AsyncCallback)
 
-	// AsyncReadAll reads len(b) bytes into b asynchronously.
+	// AsyncReadAll reads exactly `len(b)` bytes into b asynchronously.
 	AsyncReadAll(b []byte, cb AsyncCallback)
 }
 
-// AsyncWriter is the interface that wraps the AsyncRead and AsyncReadAll methods.
+// AsyncWriter is the interface that wraps the AsyncWrite and AsyncWriteAll methods.
 type AsyncWriter interface {
-	// AsyncWrite writes up to len(b) bytes into the underlying data stream asynchronously.
+	// AsyncWrite writes up to `len(b)` bytes from `b` asynchronously.
 	//
-	// This call should not block. The provided completion handler is called in the following cases:
-	//  - a write of n bytes completes
+	// This call does not block. The provided completion handler is called in the following cases:
+	//  - a write of up to `n` bytes completes
 	//  - an error occurs
 	//
-	// AsyncWrite must provide a non-nil error if it writes n < len(b) bytes.
-	//
-	// Implementations must not retain b. Ownership of b must be retained by the caller,
-	// which must guarantee that it remains valid until the handler is called.
-	// AsyncWrite must not modify b, even temporarily.
+	// Ownership of the byte slice must be retained by callers, which must guarantee that it remains valid until the
+	// callback is invoked. This function does not modify the given byte slice, even temporarily.
 	AsyncWrite(b []byte, cb AsyncCallback)
 
-	// AsyncWriteAll writes len(b) bytes into the underlying data stream asynchronously.
+	// AsyncWriteAll writes exactly `len(b)` bytes into the underlying data stream asynchronously.
 	AsyncWriteAll(b []byte, cb AsyncCallback)
 }
 
@@ -95,9 +82,8 @@ type AsyncCanceller interface {
 	Cancel()
 }
 
-// Stream represents a full-duplex connection between two processes,
-// where data represented as bytes may be received reliably in the same order
-// they were written.
+// Stream represents a full-duplex connection between two processes, where data represented as bytes may be received
+// reliably in the same order they were written.
 type Stream interface {
 	RawFd() int
 
@@ -179,33 +165,4 @@ type Listener interface {
 	Addr() net.Addr
 
 	RawFd() int
-}
-
-// UDPMulticastClient defines a UDP multicast client that can read data from one or multiple multicast groups,
-// optionally filtering packets on the source IP.
-type UDPMulticastClient interface {
-	Join(multicastAddr *net.UDPAddr) error
-	JoinSource(multicastAddr, sourceAddr *net.UDPAddr) error
-
-	Leave(multicastAddr *net.UDPAddr) error
-	LeaveSource(multicastAddr, sourceAddr *net.UDPAddr) error
-
-	BlockSource(multicastAddr, sourceAddr *net.UDPAddr) error
-	UnblockSource(multicastAddr, sourceAddr *net.UDPAddr) error
-
-	// ReadFrom and AsyncReadFrom read a partial or complete datagram into the provided buffer. When the datagram
-	// is smaller than the passed buffer, only that much data is returned; when it is bigger, the packet is truncated
-	// to fit into the buffer. The truncated bytes are lost.
-	//
-	// It is the responsibility of the caller to ensure the passed buffer can hold an entire datagram. A rule of thumb
-	// is to have the buffer size equal to the network interface's MTU.
-	ReadFrom([]byte) (n int, addr net.Addr, err error)
-	AsyncReadFrom([]byte, AsyncReadCallbackPacket)
-
-	RawFd() int
-	Interface() *net.Interface
-	LocalAddr() *net.UDPAddr
-
-	Close() error
-	Closed() bool
 }

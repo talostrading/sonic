@@ -17,11 +17,14 @@ type file struct {
 	slot   internal.Slot
 	closed uint32
 
-	// dispatched tracks how callback are currently on the stack.
-	// If the fd has a lot of data to read/write and the caller nests
-	// read/write calls then we might overflow the stack. In order to not do that
-	// we limit the number of dispatched reads to MaxCallbackDispatch.
-	// If we hit that limit, we schedule an async read/write which results in clearing the stack.
+	// Tracks how many callbacks are on the current stack-frame. This prevents stack-overflows in cases where
+	// asynchronous operations can be completed immediately.
+	//
+	// For example, an asynchronous read might be completed immediately. In that case, the callback is invoked which in
+	// turn might call `AsyncRead` again. That asynchronous read might again be completed immediately and so on. In this
+	// case, all subsequent read callbacks are placed on the same stack-frame. We count these callbacks with
+	// `dispatched`. If we hit `MaxCallbackDispatch`, then the stack-frame is popped - asynchronous reads are scheduled
+	// to be completed on the next poll cycle, even if they can be completed immediately.
 	dispatched int
 }
 
@@ -178,21 +181,15 @@ func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb Async
 	n, err := f.Write(b[writtenBytes:])
 	writtenBytes += n
 
-	// f is a nonblocking fd so if err == ErrWouldBlock
-	// then we need to schedule an async write.
-
 	if err == nil && !(writeAll && writtenBytes != len(b)) {
-		// If writeAll == true then wrote fully without errors.
-		// If writeAll == false then wrote some without errors.
-		// We are done.
+		// If writeAll == true then we wrote fully without errors.
+		// If writeAll == false then we wrote some without errors.
 		cb(nil, writtenBytes)
 		return
 	}
 
-	// handles (writeAll == false) and (writeAll == true && writtenBytes != len(b)).
+	// Handles (writeAll == false) and (writeAll == true && writtenBytes != len(b)).
 	if err == sonicerrors.ErrWouldBlock {
-		// If writeAll == true then wrote some without errors.
-		// We schedule an asynchronous write.
 		f.scheduleWrite(b, writtenBytes, writeAll, cb)
 	} else {
 		cb(err, writtenBytes)

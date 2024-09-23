@@ -23,7 +23,7 @@ func (t *TestCodec) Encode(item TestItem, dst *ByteBuffer) error {
 	n, err := dst.Write(item.V[:])
 	dst.Commit(n)
 	if err != nil {
-		dst.Consume(n) // TODO not really happy about this (same for websocket)
+		dst.Consume(n)
 		return err
 	}
 	return nil
