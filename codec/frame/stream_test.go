@@ -93,7 +93,7 @@ func runClient(port int, t *testing.T) {
 	src := sonic.NewByteBuffer()
 	dst := sonic.NewByteBuffer()
 	codec := NewCodec(src)
-	codecConn, err := sonic.NewNonblockingCodecConn[[]byte, []byte](
+	codecConn, err := sonic.NewCodecConn[[]byte, []byte](
 		conn, codec, src, dst,
 	)
 	if err != nil {
