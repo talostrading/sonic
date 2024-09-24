@@ -78,12 +78,37 @@ func (ioc *IO) Deregister(slot *internal.Slot) {
 	}
 }
 
+// SetRead tells the kernel to notify us when reads can be made on the provided IO slot. If successful, this call must
+// be succeeded by Register(slot).
+//
+// It is safe to call this method multiple times.
 func (ioc *IO) SetRead(slot *internal.Slot) error {
 	return ioc.poller.SetRead(slot)
 }
 
+// UnsetRead tells the kernel to not notify us anymore when reads can be made on the provided IO slot. Since the
+// underlying platform-specific poller already unsets a read before dispatching it, callers must only use this method
+// they want to cancel a currently-scheduled read. For example, when an error occurs outside of an AsyncRead call and
+// the underlying file descriptor must be closed. In that case, this call must be succeeded by Deregister(slot).
+//
+// It is safe to call this method multiple times.
+func (ioc *IO) UnsetRead(slot *internal.Slot) error {
+	return ioc.poller.DelRead(slot)
+}
+
+// Like SetRead but for writes.
 func (ioc *IO) SetWrite(slot *internal.Slot) error {
 	return ioc.poller.SetWrite(slot)
+}
+
+// Like UnsetRead but for writes.
+func (ioc *IO) UnsetWrite(slot *internal.Slot) error {
+	return ioc.poller.DelWrite(slot)
+}
+
+// UnsetRead and UnsetWrite in a single call.
+func (ioc *IO) UnsetReadWrite(slot *internal.Slot) error {
+	return ioc.poller.Del(slot)
 }
 
 // Run runs the event processing loop.
