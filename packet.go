@@ -195,6 +195,8 @@ func (c *packetConn) getWriteHandler(b []byte, to net.Addr, cb AsyncWriteCallbac
 
 func (c *packetConn) Close() error {
 	atomic.StoreUint32(&c.closed, 1)
+	_ = c.ioc.UnsetReadWrite(&c.slot)
+	c.ioc.Deregister(&c.slot)
 	return syscall.Close(c.slot.Fd)
 }
 

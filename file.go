@@ -232,10 +232,10 @@ func (f *file) Close() error {
 		return io.EOF
 	}
 
-	err := f.ioc.poller.Del(&f.slot)
-	if err != nil {
+	if err := f.ioc.UnsetReadWrite(&f.slot); err != nil {
 		return err
 	}
+	f.ioc.Deregister(&f.slot)
 
 	return syscall.Close(f.slot.Fd)
 }

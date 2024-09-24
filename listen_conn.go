@@ -113,7 +113,8 @@ func (l *listener) accept() (Conn, error) {
 }
 
 func (l *listener) Close() error {
-	_ = l.ioc.poller.Del(&l.slot)
+	_ = l.ioc.UnsetReadWrite(&l.slot)
+	l.ioc.Deregister(&l.slot)
 	return syscall.Close(l.slot.Fd)
 }
 
