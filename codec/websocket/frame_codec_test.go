@@ -44,7 +44,7 @@ func TestDecodeExactlyOneFrame(t *testing.T) {
 		t.Fatal("should have gotten a frame")
 	}
 
-	if !(f.IsFin() && f.IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
+	if !(f.IsFIN() && f.Opcode().IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
 		t.Fatal("corrupt frame")
 	}
 
@@ -72,7 +72,7 @@ func TestDecodeOneAndShortFrame(t *testing.T) {
 		t.Fatal("should have gotten a frame")
 	}
 
-	if !(f.IsFin() && f.IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
+	if !(f.IsFIN() && f.Opcode().IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
 		t.Fatal("corrupt frame")
 	}
 
@@ -106,7 +106,7 @@ func TestDecodeTwoFrames(t *testing.T) {
 	if f == nil {
 		t.Fatal("should have gotten a frame")
 	}
-	if !(f.IsFin() && f.IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
+	if !(f.IsFIN() && f.Opcode().IsText() && bytes.Equal(f.Payload(), []byte{0xFF})) {
 		t.Fatal("corrupt frame")
 	}
 	if !codec.decodeReset {
@@ -127,8 +127,8 @@ func TestDecodeTwoFrames(t *testing.T) {
 	if f == nil {
 		t.Fatal("should have gotten a frame")
 	}
-	if !(f.IsFin() &&
-		f.IsText() &&
+	if !(f.IsFIN() &&
+		f.Opcode().IsText() &&
 		bytes.Equal(f.Payload(), []byte{0x01, 0x02, 0x03, 0x04, 0x05})) {
 		t.Fatal("corrupt frame")
 	}

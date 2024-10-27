@@ -551,7 +551,7 @@ func TestClientReadPingFrame(t *testing.T) {
 		}
 
 		reply := ws.pending[0]
-		if !(reply.IsPong() && reply.IsMasked()) {
+		if !(reply.Opcode().IsPong() && reply.IsMasked()) {
 			t.Fatal("invalid pong reply")
 		}
 
@@ -604,7 +604,7 @@ func TestClientAsyncReadPingFrame(t *testing.T) {
 		}
 
 		reply := ws.pending[0]
-		if !(reply.IsPong() && reply.IsMasked()) {
+		if !(reply.Opcode().IsPong() && reply.IsMasked()) {
 			t.Fatal("invalid pong reply")
 		}
 
@@ -876,7 +876,7 @@ func TestClientWriteFrame(t *testing.T) {
 
 	f := AcquireFrame()
 	defer ReleaseFrame(f)
-	f.SetFin()
+	f.SetFIN()
 	f.SetText()
 	f.SetPayload([]byte{1, 2, 3, 4, 5})
 
@@ -894,7 +894,7 @@ func TestClientWriteFrame(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !(f.IsFin() && f.IsMasked() && f.IsText()) {
+		if !(f.IsFIN() && f.IsMasked() && f.Opcode().IsText()) {
 			t.Fatal("frame is corrupt, something went wrong with the encoder")
 		}
 
@@ -923,7 +923,7 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 
 	f := AcquireFrame()
 	defer ReleaseFrame(f)
-	f.SetFin()
+	f.SetFIN()
 	f.SetText()
 	f.SetPayload([]byte{1, 2, 3, 4, 5})
 
@@ -945,7 +945,7 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !(f.IsFin() && f.IsMasked() && f.IsText()) {
+			if !(f.IsFIN() && f.IsMasked() && f.Opcode().IsText()) {
 				t.Fatal("frame is corrupt, something went wrong with the encoder")
 			}
 
@@ -991,7 +991,7 @@ func TestClientWrite(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !(f.IsFin() && f.IsMasked() && f.IsText()) {
+		if !(f.IsFIN() && f.IsMasked() && f.Opcode().IsText()) {
 			t.Fatal("frame is corrupt, something went wrong with the encoder")
 		}
 
@@ -1032,7 +1032,7 @@ func TestClientAsyncWrite(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !(f.IsFin() && f.IsMasked() && f.IsText()) {
+			if !(f.IsFIN() && f.IsMasked() && f.Opcode().IsText()) {
 				t.Fatal("frame is corrupt, something went wrong with the encoder")
 			}
 
@@ -1074,13 +1074,13 @@ func TestClientClose(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !(f.IsFin() && f.IsMasked() && f.IsClose()) {
+		if !(f.IsFIN() && f.IsMasked() && f.Opcode().IsClose()) {
 			t.Fatal("frame is corrupt, something went wrong with the encoder")
 		}
 
 		f.Unmask()
 
-		if f.PayloadLen() != 5 {
+		if f.PayloadLength() != 5 {
 			t.Fatal("wrong message in close frame")
 		}
 
@@ -1121,13 +1121,13 @@ func TestClientAsyncClose(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !(f.IsFin() && f.IsMasked() && f.IsClose()) {
+			if !(f.IsFIN() && f.IsMasked() && f.Opcode().IsClose()) {
 				t.Fatal("frame is corrupt, something went wrong with the encoder")
 			}
 
 			f.Unmask()
 
-			if f.PayloadLen() != 5 {
+			if f.PayloadLength() != 5 {
 				t.Fatal("wrong message in close frame")
 			}
 
@@ -1167,7 +1167,7 @@ func TestClientCloseHandshakeWeStart(t *testing.T) {
 
 		assertState(t, ws, StateClosedByUs)
 
-		serverReply.SetFin()
+		serverReply.SetFIN()
 		serverReply.SetClose()
 		serverReply.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
 		_, err = serverReply.WriteTo(ws.src)
@@ -1180,7 +1180,7 @@ func TestClientCloseHandshakeWeStart(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !(reply.IsFin() && reply.IsClose()) {
+		if !(reply.IsFIN() && reply.Opcode().IsClose()) {
 			t.Fatal("wrong close reply")
 		}
 
@@ -1218,7 +1218,7 @@ func TestClientAsyncCloseHandshakeWeStart(t *testing.T) {
 			serverReply := AcquireFrame()
 			defer ReleaseFrame(serverReply)
 
-			serverReply.SetFin()
+			serverReply.SetFIN()
 			serverReply.SetClose()
 			serverReply.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
 			_, err = serverReply.WriteTo(ws.src)
@@ -1231,7 +1231,7 @@ func TestClientAsyncCloseHandshakeWeStart(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !(reply.IsFin() && reply.IsClose()) {
+			if !(reply.IsFIN() && reply.Opcode().IsClose()) {
 				t.Fatal("wrong close reply")
 			}
 
@@ -1264,7 +1264,7 @@ func TestClientCloseHandshakePeerStarts(t *testing.T) {
 
 	serverClose := AcquireFrame()
 	defer ReleaseFrame(serverClose)
-	serverClose.SetFin()
+	serverClose.SetFIN()
 	serverClose.SetClose()
 	serverClose.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
 
@@ -1280,7 +1280,7 @@ func TestClientCloseHandshakePeerStarts(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !recv.IsClose() {
+	if !recv.Opcode().IsClose() {
 		t.Fatal("should have received close")
 	}
 
@@ -1311,7 +1311,7 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 
 	serverClose := AcquireFrame()
 	defer ReleaseFrame(serverClose)
-	serverClose.SetFin()
+	serverClose.SetFIN()
 	serverClose.SetClose()
 	serverClose.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
 
@@ -1327,7 +1327,7 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if !recv.IsClose() {
+		if !recv.Opcode().IsClose() {
 			t.Fatal("should have received close")
 		}
 

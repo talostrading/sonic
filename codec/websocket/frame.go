@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"sync"
 
@@ -16,6 +15,11 @@ type Frame struct {
 	mask    []byte
 	payload []byte
 }
+
+var (
+	_ io.ReaderFrom = &Frame{}
+	_ io.WriterTo   = &Frame{}
+)
 
 func NewFrame() *Frame {
 	f := &Frame{
@@ -42,17 +46,7 @@ func (f *Frame) ExtraHeaderLen() (n int) {
 	return
 }
 
-// PayloadLenType returns the payload length as indicated in the fixed
-// size header. It is always less than 127 as per the WebSocket protocol.
-// The actual payload size can be retrieved by calling PayloadLen.
-func (f *Frame) PayloadLenType() int {
-	return int(f.header[1] & 127)
-}
-
-// PayloadLen returns the actual payload length which can either be
-// in the header if the length type is 125 or less, in the next 2 bytes if the
-// length type is 126 or in the next 8 bytes if the length type is 127.
-func (f *Frame) PayloadLen() int {
+func (f *Frame) PayloadLength() int {
 	length := uint64(f.header[1] & 127)
 	switch length {
 	case 126:
@@ -63,7 +57,7 @@ func (f *Frame) PayloadLen() int {
 	return int(length)
 }
 
-func (f *Frame) SetPayloadLen() (bytes int) {
+func (f *Frame) SetPayloadLength() (bytes int) {
 	n := len(f.payload)
 
 	switch {
@@ -83,128 +77,49 @@ func (f *Frame) SetPayloadLen() (bytes int) {
 	return
 }
 
-func (f *Frame) ReadFrom(r io.Reader) (nt int64, err error) {
-	var n int
-	n, err = io.ReadFull(r, f.header[:2])
-	nt += int64(n)
-
-	if err == nil {
-		m := f.ExtraHeaderLen()
-		if m > 0 {
-			n, err = io.ReadFull(r, f.header[2:m+2])
-			nt += int64(n)
-		}
-
-		if err == nil && f.IsMasked() {
-			n, err = io.ReadFull(r, f.mask[:4])
-			nt += int64(n)
-		}
-
-		if err == nil {
-			if pn := f.PayloadLen(); pn > 0 {
-				if pn > MaxMessageSize {
-					err = ErrPayloadTooBig
-				} else {
-					f.payload = util.ExtendSlice(f.payload, pn)
-					n, err = io.ReadFull(r, f.payload[:pn])
-					nt += int64(n)
-				}
-			} else if pn == 0 {
-				f.payload = f.payload[:0]
-			}
-		}
-	}
-
-	return
-}
-
-func (f *Frame) WriteTo(w io.Writer) (n int64, err error) {
-	var nn int
-
-	nn, err = w.Write(f.header[:2+f.SetPayloadLen()])
-	n += int64(nn)
-
-	if err == nil {
-		if f.IsMasked() {
-			nn, err = w.Write(f.mask[:])
-			n += int64(nn)
-		}
-
-		if err == nil && f.PayloadLen() > 0 {
-			nn, err = w.Write(f.payload[:f.PayloadLen()])
-			n += int64(nn)
-		}
-	}
-
-	return
-}
-
-func (f *Frame) IsFin() bool {
-	return f.header[0]&finBit != 0
+// An unfragmented message consists of a single frame with the FIN bit set and an opcode other than 0.
+//
+// A fragmented message consists of a single frame with the FIN bit clear and an opcode other than 0, followed by zero
+// or more frames with the FIN bit clear and the opcode set to 0, and terminated by a single frame with the FIN bit set
+// and an opcode of 0.
+func (f *Frame) IsFIN() bool {
+	return f.header[0]&bitFIN != 0
 }
 
 func (f *Frame) IsRSV1() bool {
-	return f.header[0]&rsv1Bit != 0
+	return f.header[0]&bitRSV1 != 0
 }
 
 func (f *Frame) IsRSV2() bool {
-	return f.header[0]&rsv2Bit != 0
+	return f.header[0]&bitRSV2 != 0
 }
 
 func (f *Frame) IsRSV3() bool {
-	return f.header[0]&rsv3Bit != 0
+	return f.header[0]&bitRSV3 != 0
 }
 
 func (f *Frame) Opcode() Opcode {
 	return Opcode(f.header[0] & 15)
 }
 
-func (f *Frame) IsContinuation() bool {
-	return f.Opcode() == OpcodeContinuation
-}
-
-func (f *Frame) IsText() bool {
-	return f.Opcode() == OpcodeText
-}
-
-func (f *Frame) IsBinary() bool {
-	return f.Opcode() == OpcodeBinary
-}
-
-func (f *Frame) IsClose() bool {
-	return f.Opcode() == OpcodeClose
-}
-
-func (f *Frame) IsPing() bool {
-	return f.Opcode() == OpcodePing
-}
-
-func (f *Frame) IsPong() bool {
-	return f.Opcode() == OpcodePong
-}
-
-func (f *Frame) IsControl() bool {
-	return f.IsClose() || f.IsPing() || f.IsPong()
-}
-
 func (f *Frame) IsMasked() bool {
-	return f.header[1]&maskBit != 0
+	return f.header[1]&bitIsMasked != 0
 }
 
-func (f *Frame) SetFin() {
-	f.header[0] |= finBit
+func (f *Frame) SetFIN() {
+	f.header[0] |= bitFIN
 }
 
 func (f *Frame) SetRSV1() {
-	f.header[0] |= rsv1Bit
+	f.header[0] |= bitRSV1
 }
 
 func (f *Frame) SetRSV2() {
-	f.header[0] |= rsv2Bit
+	f.header[0] |= bitRSV2
 }
 
 func (f *Frame) SetRSV3() {
-	f.header[0] |= rsv3Bit
+	f.header[0] |= bitRSV3
 }
 
 func (f *Frame) SetOpcode(c Opcode) {
@@ -250,7 +165,7 @@ func (f *Frame) Payload() []byte {
 }
 
 func (f *Frame) Mask() {
-	f.header[1] |= maskBit
+	f.header[1] |= bitIsMasked
 	GenMask(f.mask[:])
 	if len(f.payload) > 0 {
 		Mask(f.mask[:], f.payload)
@@ -262,25 +177,63 @@ func (f *Frame) Unmask() {
 		key := f.MaskKey()
 		Mask(key, f.payload)
 	}
-	f.header[1] ^= maskBit
+	f.header[1] ^= bitIsMasked
 }
 
-func (f *Frame) String() string {
-	return fmt.Sprintf(`
-FIN: %v
-RSV1: %v
-RSV2: %v
-RSV3: %v
-OPCODE: %d
-MASK: %v
-LENGTH: %d
-MASK-KEY: %v
-PAYLOAD: %v`,
+func (f *Frame) ReadFrom(r io.Reader) (nt int64, err error) {
+	var n int
+	n, err = io.ReadFull(r, f.header[:2])
+	nt += int64(n)
 
-		f.IsFin(), f.IsRSV1(), f.IsRSV2(), f.IsRSV3(),
-		f.Opcode(), f.IsMasked(), f.PayloadLen(),
-		f.MaskKey(), f.Payload(),
-	)
+	if err == nil {
+		m := f.ExtraHeaderLen()
+		if m > 0 {
+			n, err = io.ReadFull(r, f.header[2:m+2])
+			nt += int64(n)
+		}
+
+		if err == nil && f.IsMasked() {
+			n, err = io.ReadFull(r, f.mask[:4])
+			nt += int64(n)
+		}
+
+		if err == nil {
+			if pn := f.PayloadLength(); pn > 0 {
+				if pn > MaxMessageSize {
+					err = ErrPayloadTooBig
+				} else {
+					f.payload = util.ExtendSlice(f.payload, pn)
+					n, err = io.ReadFull(r, f.payload[:pn])
+					nt += int64(n)
+				}
+			} else if pn == 0 {
+				f.payload = f.payload[:0]
+			}
+		}
+	}
+
+	return
+}
+
+func (f *Frame) WriteTo(w io.Writer) (n int64, err error) {
+	var nn int
+
+	nn, err = w.Write(f.header[:2+f.SetPayloadLength()])
+	n += int64(nn)
+
+	if err == nil {
+		if f.IsMasked() {
+			nn, err = w.Write(f.mask[:])
+			n += int64(nn)
+		}
+
+		if err == nil && f.PayloadLength() > 0 {
+			nn, err = w.Write(f.payload[:f.PayloadLength()])
+			n += int64(nn)
+		}
+	}
+
+	return
 }
 
 var framePool = sync.Pool{
