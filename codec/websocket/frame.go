@@ -3,78 +3,72 @@ package websocket
 import (
 	"encoding/binary"
 	"io"
-	"sync"
 
 	"github.com/talostrading/sonic/util"
 )
 
-var zeroBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+var zeroBytes [MaxFrameHeaderLengthInBytes]byte
 
-type Frame struct {
-	header  []byte
-	mask    []byte
-	payload []byte
+func init() {
+	for i := 0; i < len(zeroBytes); i++ {
+		zeroBytes[i] = 0
+	}
 }
+
+type Frame []byte
 
 var (
 	_ io.ReaderFrom = &Frame{}
 	_ io.WriterTo   = &Frame{}
 )
 
-func NewFrame() *Frame {
-	f := &Frame{
-		header:  make([]byte, 10),
-		mask:    make([]byte, 4),
-		payload: make([]byte, 0, 1024),
+func newFrame() Frame {
+	return make([]byte, MaxFrameHeaderLengthInBytes)
+}
+
+func (f Frame) Reset() {
+	copy(f, zeroBytes[:])
+}
+
+func (f Frame) ExtendedPayloadLengthBytes() int {
+	if v := f[1] & bitmaskPayloadLength; v == 127 {
+		return 8
+	} else if v == 126 {
+		return 2
+	}
+	return 0
+}
+
+func (f Frame) PayloadLength() int {
+	if length := f[1] & bitmaskPayloadLength; length == 127 {
+		return int(binary.BigEndian.Uint64(f[frameHeaderLength : frameHeaderLength+8]))
+	} else if length == 126 {
+		return int(binary.BigEndian.Uint16(f[frameHeaderLength : frameHeaderLength+2]))
+	} else {
+		return int(length)
+	}
+}
+
+func (f Frame) clearPayloadLength() {
+	f[1] &= (1 << 7)
+}
+
+func (f *Frame) SetPayloadLength(n int) *Frame {
+	f.clearPayloadLength()
+
+	if n > (1<<16 - 1) {
+		// does not fit in 2 bytes, so take 8 as extended payload length
+		(*f)[1] |= 127
+		binary.BigEndian.PutUint64((*f)[2:], uint64(n))
+	} else if n > 125 {
+		// fits in 2 bytes as extended payload length
+		(*f)[1] |= 126
+		binary.BigEndian.PutUint16((*f)[2:], uint16(n))
+	} else {
+		// can be encoded in the 7 bits of the payload length, no extended payload length taken
+		(*f)[1] |= byte(n)
 	}
 	return f
-}
-
-func (f *Frame) Reset() {
-	copy(f.header, zeroBytes)
-	copy(f.mask, zeroBytes)
-	f.payload = f.payload[:0]
-}
-
-func (f *Frame) ExtraHeaderLen() (n int) {
-	switch f.header[1] & 127 {
-	case 127:
-		n = 8
-	case 126:
-		n = 2
-	}
-	return
-}
-
-func (f *Frame) PayloadLength() int {
-	length := uint64(f.header[1] & 127)
-	switch length {
-	case 126:
-		length = uint64(binary.BigEndian.Uint16(f.header[2:]))
-	case 127:
-		length = binary.BigEndian.Uint64(f.header[2:])
-	}
-	return int(length)
-}
-
-func (f *Frame) SetPayloadLength() (bytes int) {
-	n := len(f.payload)
-
-	switch {
-	case n > 65535: // more than two bytes needed for extra length
-		bytes = 8 //nolint:ineffassign
-		f.header[1] |= uint8(127)
-		binary.BigEndian.PutUint64(f.header[2:], uint64(n))
-	case n > 125:
-		bytes = 2 //nolint:ineffassign
-		f.header[1] |= uint8(126)
-		binary.BigEndian.PutUint16(f.header[2:], uint16(n))
-		return 2
-	default:
-		bytes = 0 //nolint:ineffassign
-		f.header[1] |= uint8(n)
-	}
-	return
 }
 
 // An unfragmented message consists of a single frame with the FIN bit set and an opcode other than 0.
@@ -82,171 +76,216 @@ func (f *Frame) SetPayloadLength() (bytes int) {
 // A fragmented message consists of a single frame with the FIN bit clear and an opcode other than 0, followed by zero
 // or more frames with the FIN bit clear and the opcode set to 0, and terminated by a single frame with the FIN bit set
 // and an opcode of 0.
-func (f *Frame) IsFIN() bool {
-	return f.header[0]&bitFIN != 0
+func (f Frame) IsFIN() bool {
+	return f[0]&bitFIN != 0
 }
 
-func (f *Frame) IsRSV1() bool {
-	return f.header[0]&bitRSV1 != 0
+func (f Frame) Opcode() Opcode {
+	return Opcode(f[0] & bitmaskOpcode)
 }
 
-func (f *Frame) IsRSV2() bool {
-	return f.header[0]&bitRSV2 != 0
+func (f Frame) IsMasked() bool {
+	return f[1]&bitIsMasked != 0
 }
 
-func (f *Frame) IsRSV3() bool {
-	return f.header[0]&bitRSV3 != 0
+func (f *Frame) SetIsMasked() *Frame {
+	(*f)[1] |= bitIsMasked
+	return f
 }
 
-func (f *Frame) Opcode() Opcode {
-	return Opcode(f.header[0] & 15)
+func (f *Frame) UnsetIsMasked() *Frame {
+	(*f)[1] ^= bitIsMasked
+	return f
 }
 
-func (f *Frame) IsMasked() bool {
-	return f.header[1]&bitIsMasked != 0
+func (f Frame) MaskBytes() int {
+	if f.IsMasked() {
+		return frameMaskLength
+	}
+	return 0
 }
 
-func (f *Frame) SetFIN() {
-	f.header[0] |= bitFIN
+func (f *Frame) SetFIN() *Frame {
+	(*f)[0] |= bitFIN
+	return f
 }
 
-func (f *Frame) SetRSV1() {
-	f.header[0] |= bitRSV1
+func (f Frame) clearOpcode() {
+	f[0] &= bitmaskOpcode << 4
 }
 
-func (f *Frame) SetRSV2() {
-	f.header[0] |= bitRSV2
+func (f *Frame) SetOpcode(c Opcode) *Frame {
+	c &= Opcode(bitmaskOpcode)
+	f.clearOpcode()
+	(*f)[0] |= byte(c)
+	return f
 }
 
-func (f *Frame) SetRSV3() {
-	f.header[0] |= bitRSV3
-}
-
-func (f *Frame) SetOpcode(c Opcode) {
-	c &= 15
-	f.header[0] &= 15 << 4
-	f.header[0] |= uint8(c)
-}
-
-func (f *Frame) SetContinuation() {
+func (f *Frame) SetContinuation() *Frame {
 	f.SetOpcode(OpcodeContinuation)
+	return f
 }
 
-func (f *Frame) SetText() {
+func (f *Frame) SetText() *Frame {
 	f.SetOpcode(OpcodeText)
+	return f
 }
 
-func (f *Frame) SetBinary() {
+func (f *Frame) SetBinary() *Frame {
 	f.SetOpcode(OpcodeBinary)
+	return f
 }
 
-func (f *Frame) SetClose() {
+func (f *Frame) SetClose() *Frame {
 	f.SetOpcode(OpcodeClose)
+	return f
 }
 
-func (f *Frame) SetPing() {
+func (f *Frame) SetPing() *Frame {
 	f.SetOpcode(OpcodePing)
+	return f
 }
 
-func (f *Frame) SetPong() {
+func (f *Frame) SetPong() *Frame {
 	f.SetOpcode(OpcodePong)
+	return f
 }
 
-func (f *Frame) SetPayload(b []byte) {
-	f.payload = append(f.payload[:0], b...)
+func (f Frame) extendedPayloadLengthStartIndex() int {
+	return frameHeaderLength
 }
 
-func (f *Frame) MaskKey() []byte {
-	return f.mask[:]
+func (f Frame) ExtendedPayloadLength() []byte {
+	if bytes := f.ExtendedPayloadLengthBytes(); bytes > 0 {
+		b := f[frameHeaderLength:]
+		return b[:bytes]
+	}
+	return nil
 }
 
-func (f *Frame) Payload() []byte {
-	return f.payload
+func (f Frame) Header() []byte {
+	return f[:frameHeaderLength]
+}
+
+func (f *Frame) maskStartIndex() int {
+	return frameHeaderLength + f.ExtendedPayloadLengthBytes()
+}
+
+func (f Frame) MaskKey() []byte {
+	if f.IsMasked() {
+		mask := f[f.maskStartIndex():]
+		return mask[:frameMaskLength]
+	}
+	return nil
+}
+
+func (f Frame) payloadStartIndex() int {
+	return frameHeaderLength + f.ExtendedPayloadLengthBytes() + f.MaskBytes()
+}
+
+func (f *Frame) fitPayload() ([]byte, error) {
+	length := f.PayloadLength()
+	if length <= 0 {
+		return nil, nil
+	} else if length > MaxMessageSize {
+		return nil, ErrPayloadTooBig
+	}
+
+	*f = util.ExtendSlice(*f, f.payloadStartIndex()+length)
+	b := (*f)[f.payloadStartIndex():]
+	return b[:length], nil
+}
+
+func (f *Frame) SetPayload(b []byte) *Frame {
+	*f = util.ExtendSlice(*f, f.payloadStartIndex()+len(b))
+	payload := f.Payload()
+	copy(payload, b)
+	f.SetPayloadLength(len(payload))
+	return f
+}
+
+func (f Frame) Payload() []byte {
+	return f[f.payloadStartIndex():]
 }
 
 func (f *Frame) Mask() {
-	f.header[1] |= bitIsMasked
-	GenMask(f.mask[:])
-	if len(f.payload) > 0 {
-		Mask(f.mask[:], f.payload)
+	f.SetIsMasked()
+
+	var (
+		mask    = f.MaskKey()
+		payload = f.Payload()
+	)
+
+	if len(payload) > 0 {
+		GenMask(mask)
+		Mask(mask, payload)
 	}
 }
 
 func (f *Frame) Unmask() {
-	if len(f.payload) > 0 {
-		key := f.MaskKey()
-		Mask(key, f.payload)
+	if f.IsMasked() {
+		var (
+			mask    = f.MaskKey()
+			payload = f.Payload()
+		)
+		Mask(mask, payload)
+		// Does not unset the IsMasked bit in order to not mess up the offset at which the payload is found.
 	}
-	f.header[1] ^= bitIsMasked
 }
 
-func (f *Frame) ReadFrom(r io.Reader) (nt int64, err error) {
-	var n int
-	n, err = io.ReadFull(r, f.header[:2])
-	nt += int64(n)
-
-	if err == nil {
-		m := f.ExtraHeaderLen()
-		if m > 0 {
-			n, err = io.ReadFull(r, f.header[2:m+2])
-			nt += int64(n)
-		}
-
-		if err == nil && f.IsMasked() {
-			n, err = io.ReadFull(r, f.mask[:4])
-			nt += int64(n)
-		}
-
-		if err == nil {
-			if pn := f.PayloadLength(); pn > 0 {
-				if pn > MaxMessageSize {
-					err = ErrPayloadTooBig
-				} else {
-					f.payload = util.ExtendSlice(f.payload, pn)
-					n, err = io.ReadFull(r, f.payload[:pn])
-					nt += int64(n)
-				}
-			} else if pn == 0 {
-				f.payload = f.payload[:0]
-			}
-		}
-	}
-
-	return
-}
-
-func (f *Frame) WriteTo(w io.Writer) (n int64, err error) {
+func (f *Frame) ReadFrom(r io.Reader) (n int64, err error) {
 	var nn int
 
-	nn, err = w.Write(f.header[:2+f.SetPayloadLength()])
+	// read the header
+	nn, err = io.ReadFull(r, f.Header())
 	n += int64(nn)
+	if err != nil {
+		return
+	}
 
-	if err == nil {
-		if f.IsMasked() {
-			nn, err = w.Write(f.mask[:])
-			n += int64(nn)
+	// read the extended payload length, if any
+	if b := f.ExtendedPayloadLength(); b != nil {
+		nn, err = io.ReadFull(r, b)
+		n += int64(nn)
+		if err != nil {
+			return
 		}
+	}
 
-		if err == nil && f.PayloadLength() > 0 {
-			nn, err = w.Write(f.payload[:f.PayloadLength()])
-			n += int64(nn)
+	// read the mask, if any
+	if f.IsMasked() {
+		nn, err = io.ReadFull(r, f.MaskKey())
+		n += int64(nn)
+		if err != nil {
+			return
 		}
+	}
+
+	// read the payload, if any
+	b, err := f.fitPayload()
+	if err != nil {
+		return
+	}
+	nn, err = io.ReadFull(r, b)
+	n += int64(nn)
+	if err != nil {
+		return
 	}
 
 	return
 }
 
-var framePool = sync.Pool{
-	New: func() interface{} {
-		return NewFrame()
-	},
-}
+func (f Frame) WriteTo(w io.Writer) (int64, error) {
+	f.SetPayloadLength(len(f.Payload()))
 
-func AcquireFrame() *Frame {
-	return framePool.Get().(*Frame)
-}
+	written := 0
+	for written < len(f) {
+		n, err := w.Write(f[written:])
+		written += n
+		if err != nil {
+			return int64(n), err
+		}
+	}
 
-func ReleaseFrame(f *Frame) {
-	f.Reset()
-	framePool.Put(f)
+	return int64(written), nil
 }

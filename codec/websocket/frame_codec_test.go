@@ -25,7 +25,7 @@ func TestDecodeShortFrame(t *testing.T) {
 	if codec.decodeReset {
 		t.Fatal("should not reset decoder state")
 	}
-	if codec.decodeBytes != 0 {
+	if len(codec.decodeFrame) != 0 {
 		t.Fatal("should have not decoded any bytes")
 	}
 }
@@ -51,7 +51,7 @@ func TestDecodeExactlyOneFrame(t *testing.T) {
 	if !codec.decodeReset {
 		t.Fatal("should reset decoder state")
 	}
-	if codec.decodeBytes != 3 {
+	if len(codec.decodeFrame) != 3 {
 		t.Fatal("should have decoded 3 bytes")
 	}
 }
@@ -80,7 +80,7 @@ func TestDecodeOneAndShortFrame(t *testing.T) {
 		t.Fatal("should reset decoder state")
 	}
 
-	if codec.decodeBytes != 3 {
+	if len(codec.decodeFrame) != 3 {
 		t.Fatal("should have decoded 3 bytes")
 	}
 }
@@ -112,7 +112,7 @@ func TestDecodeTwoFrames(t *testing.T) {
 	if !codec.decodeReset {
 		t.Fatal("should have reset decoder state")
 	}
-	if codec.decodeBytes != 3 {
+	if len(codec.decodeFrame) != 3 {
 		t.Fatal("should have decoded 3 bytes")
 	}
 	if src.ReadLen() != 3 {
@@ -135,7 +135,7 @@ func TestDecodeTwoFrames(t *testing.T) {
 	if !codec.decodeReset {
 		t.Fatal("should have reset decoder state")
 	}
-	if codec.decodeBytes != 7 {
+	if len(codec.decodeFrame) != 7 {
 		t.Fatal("should have decoded 3 bytes")
 	}
 	if src.ReadLen() != 7 {

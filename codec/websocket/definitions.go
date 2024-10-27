@@ -31,7 +31,7 @@ func (r Role) String() string {
 	}
 }
 
-type MessageType uint8
+type MessageType byte
 
 const (
 	TypeText   = MessageType(OpcodeText)
@@ -106,7 +106,7 @@ func (s StreamState) String() string {
 }
 
 type AsyncMessageHandler = func(err error, n int, mt MessageType)
-type AsyncFrameHandler = func(err error, f *Frame)
+type AsyncFrameHandler = func(err error, f Frame)
 type ControlCallback = func(mt MessageType, payload []byte)
 type UpgradeRequestCallback = func(req *http.Request)
 type UpgradeResponseCallback = func(res *http.Response)
@@ -179,7 +179,7 @@ type Stream interface {
 	//  - an error occurs when reading/decoding the message bytes from the
 	//    underlying stream
 	//  - a frame is successfully read from the underlying stream
-	NextFrame() (*Frame, error)
+	NextFrame() (Frame, error)
 
 	// AsyncNextMessage reads the payload of the next message into the supplied
 	// buffer asynchronously. Message fragmentation is automatically handled by

@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sync"
 	"syscall"
 	"time"
 
@@ -53,7 +54,7 @@ type WebsocketStream struct {
 	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
-	cs *sonic.CodecConn[*Frame, *Frame]
+	cs *sonic.CodecConn[Frame, Frame]
 
 	// Websocket role: client or server.
 	role Role
@@ -74,9 +75,8 @@ type WebsocketStream struct {
 	// handshake is over.
 	hb []byte
 
-	// Contains frames waiting to be sent to the peer.
-	// Is emptied by AsyncFlush or Flush.
-	pending []*Frame
+	// Contains frames waiting to be sent to the peer. Is emptied by AsyncFlush or Flush.
+	pendingFrames []*Frame
 
 	// Optional callback invoked when a control frame is received.
 	ccb ControlCallback
@@ -92,6 +92,8 @@ type WebsocketStream struct {
 
 	// The size of the currently read message.
 	messageSize int
+
+	framePool sync.Pool
 }
 
 func NewWebsocketStream(
@@ -112,12 +114,33 @@ func NewWebsocketStream(
 		dialer: &net.Dialer{
 			Timeout: DialTimeout,
 		},
+		framePool: sync.Pool{
+			New: func() interface{} {
+				frame := newFrame()
+				return &frame
+			},
+		},
 	}
 
 	s.src.Reserve(4096)
 	s.dst.Reserve(4096)
 
 	return s, nil
+}
+
+func (s *WebsocketStream) AcquireFrame() *Frame {
+	f := s.framePool.Get().(*Frame)
+	if s.role == RoleClient {
+		// This just reserves the 4 bytes needed for the mask in order to encode the payload correctly, since it follows
+		// the mask in byte order. The actual mask is set after `f.SetPayload` in `prepareWrite`.
+		f.SetIsMasked()
+	}
+	return f
+}
+
+func (s *WebsocketStream) releaseFrame(f *Frame) {
+	f.Reset()
+	s.framePool.Put(f)
 }
 
 // init is run when we transition into StateActive which happens
@@ -129,7 +152,7 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 
 	s.stream = stream
 	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewCodecConn[*Frame, *Frame](stream, codec, s.src, s.dst)
+	s.cs, err = sonic.NewCodecConn[Frame, Frame](stream, codec, s.src, s.dst)
 	return
 }
 
@@ -162,7 +185,7 @@ func (s *WebsocketStream) canRead() bool {
 	return s.state == StateActive || s.state == StateClosedByUs
 }
 
-func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
+func (s *WebsocketStream) NextFrame() (f Frame, err error) {
 	err = s.Flush()
 
 	if errors.Is(err, ErrMessageTooBig) {
@@ -185,7 +208,7 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	return
 }
 
-func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
+func (s *WebsocketStream) nextFrame() (f Frame, err error) {
 	f, err = s.cs.ReadNext()
 	if err == nil {
 		err = s.handleFrame(f)
@@ -215,7 +238,7 @@ func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 }
 
 func (s *WebsocketStream) asyncNextFrame(cb AsyncFrameHandler) {
-	s.cs.AsyncReadNext(func(err error, f *Frame) {
+	s.cs.AsyncReadNext(func(err error, f Frame) {
 		if err == nil {
 			err = s.handleFrame(f)
 		} else if err == io.EOF {
@@ -229,7 +252,7 @@ func (s *WebsocketStream) NextMessage(
 	b []byte,
 ) (mt MessageType, readBytes int, err error) {
 	var (
-		f            *Frame
+		f            Frame
 		continuation = false
 	)
 
@@ -243,7 +266,7 @@ func (s *WebsocketStream) NextMessage(
 
 		if f.Opcode().IsControl() {
 			if s.ccb != nil {
-				s.ccb(MessageType(f.Opcode()), f.payload)
+				s.ccb(MessageType(f.Opcode()), f.Payload())
 			}
 		} else {
 			if mt == TypeNone {
@@ -296,13 +319,13 @@ func (s *WebsocketStream) asyncNextMessage(
 	mt MessageType,
 	cb AsyncMessageHandler,
 ) {
-	s.AsyncNextFrame(func(err error, f *Frame) {
+	s.AsyncNextFrame(func(err error, f Frame) {
 		if err != nil {
 			cb(err, readBytes, mt)
 		} else {
 			if f.Opcode().IsControl() {
 				if s.ccb != nil {
-					s.ccb(MessageType(f.Opcode()), f.payload)
+					s.ccb(MessageType(f.Opcode()), f.Payload())
 				}
 
 				s.asyncNextMessage(b, readBytes, continuation, mt, cb)
@@ -350,7 +373,7 @@ func (s *WebsocketStream) asyncNextMessage(
 	})
 }
 
-func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
+func (s *WebsocketStream) handleFrame(f Frame) (err error) {
 	err = s.verifyFrame(f)
 
 	if err == nil {
@@ -369,11 +392,7 @@ func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 	return err
 }
 
-func (s *WebsocketStream) verifyFrame(f *Frame) error {
-	if f.IsRSV1() || f.IsRSV2() || f.IsRSV3() {
-		return ErrNonZeroReservedBits
-	}
-
+func (s *WebsocketStream) verifyFrame(f Frame) error {
 	if s.role == RoleClient && f.IsMasked() {
 		return ErrMaskedFramesFromServer
 	}
@@ -385,7 +404,7 @@ func (s *WebsocketStream) verifyFrame(f *Frame) error {
 	return nil
 }
 
-func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
+func (s *WebsocketStream) handleControlFrame(f Frame) (err error) {
 	if !f.IsFIN() {
 		return ErrInvalidControlFrame
 	}
@@ -397,14 +416,11 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	switch f.Opcode() {
 	case OpcodePing:
 		if s.state == StateActive {
-			pongFrame := AcquireFrame()
-			pongFrame.SetFIN()
-			pongFrame.SetPong()
-			pongFrame.SetPayload(f.payload)
-			if s.role == RoleClient {
-				pongFrame.Mask()
-			}
-			s.pending = append(s.pending, pongFrame)
+			pongFrame := s.AcquireFrame().
+				SetFIN().
+				SetPong().
+				SetPayload(f.Payload())
+			s.prepareWrite(pongFrame)
 		}
 	case OpcodePong:
 	case OpcodeClose:
@@ -413,7 +429,7 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 			panic("unreachable")
 		case StateActive:
 			s.state = StateClosedByPeer
-			s.prepareClose(f.payload)
+			s.prepareClose(f.Payload())
 		case StateClosedByPeer, StateCloseAcked:
 			// ignore
 		case StateClosedByUs:
@@ -429,7 +445,7 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	return
 }
 
-func (s *WebsocketStream) handleDataFrame(f *Frame) error {
+func (s *WebsocketStream) handleDataFrame(f Frame) error {
 	if f.Opcode().IsReserved() {
 		return ErrReservedOpcode
 	}
@@ -442,11 +458,11 @@ func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
 	}
 
 	if s.state == StateActive {
-		f := AcquireFrame()
-		f.SetFIN()
-		f.SetOpcode(Opcode(mt))
-		f.SetPayload(b)
-
+		// reserve space for mask if client
+		f := s.AcquireFrame().
+			SetFIN().
+			SetOpcode(Opcode(mt)).
+			SetPayload(b)
 		s.prepareWrite(f)
 		return s.Flush()
 	}
@@ -459,7 +475,7 @@ func (s *WebsocketStream) WriteFrame(f *Frame) error {
 		s.prepareWrite(f)
 		return s.Flush()
 	} else {
-		ReleaseFrame(f)
+		s.releaseFrame(f)
 		return sonicerrors.ErrCancelled
 	}
 }
@@ -475,11 +491,10 @@ func (s *WebsocketStream) AsyncWrite(
 	}
 
 	if s.state == StateActive {
-		f := AcquireFrame()
-		f.SetFIN()
-		f.SetOpcode(Opcode(mt))
-		f.SetPayload(b)
-
+		f := s.AcquireFrame().
+			SetFIN().
+			SetOpcode(Opcode(mt)).
+			SetPayload(b)
 		s.prepareWrite(f)
 		s.AsyncFlush(cb)
 	} else {
@@ -492,24 +507,16 @@ func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {
 		s.prepareWrite(f)
 		s.AsyncFlush(cb)
 	} else {
-		ReleaseFrame(f)
+		s.releaseFrame(f)
 		cb(sonicerrors.ErrCancelled)
 	}
 }
 
 func (s *WebsocketStream) prepareWrite(f *Frame) {
-	switch s.role {
-	case RoleClient:
-		if !f.IsMasked() {
-			f.Mask()
-		}
-	case RoleServer:
-		if f.IsMasked() {
-			f.Unmask()
-		}
+	if s.role == RoleClient {
+		f.Mask()
 	}
-
-	s.pending = append(s.pending, f)
+	s.pendingFrames = append(s.pendingFrames, f)
 }
 
 func (s *WebsocketStream) AsyncClose(
@@ -543,41 +550,37 @@ func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 }
 
 func (s *WebsocketStream) prepareClose(payload []byte) {
-	closeFrame := AcquireFrame()
-	closeFrame.SetFIN()
-	closeFrame.SetClose()
-	closeFrame.SetPayload(payload)
-	if s.role == RoleClient {
-		closeFrame.Mask()
-	}
-
-	s.pending = append(s.pending, closeFrame)
+	closeFrame := s.AcquireFrame().
+		SetFIN().
+		SetClose().
+		SetPayload(payload)
+	s.prepareWrite(closeFrame)
 }
 
 func (s *WebsocketStream) Flush() (err error) {
 	flushed := 0
-	for i := 0; i < len(s.pending); i++ {
-		_, err = s.cs.WriteNext(s.pending[i])
+	for i := 0; i < len(s.pendingFrames); i++ {
+		_, err = s.cs.WriteNext(*s.pendingFrames[i])
 		if err != nil {
 			break
 		}
-		ReleaseFrame(s.pending[i])
+		s.releaseFrame(s.pendingFrames[i])
 		flushed++
 	}
-	s.pending = s.pending[flushed:]
+	s.pendingFrames = s.pendingFrames[flushed:]
 
 	return
 }
 
 func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
-	if len(s.pending) == 0 {
+	if len(s.pendingFrames) == 0 {
 		cb(nil)
 	} else {
-		sent := s.pending[0]
-		s.pending = s.pending[1:]
+		sent := s.pendingFrames[0]
+		s.pendingFrames = s.pendingFrames[1:]
 
-		s.cs.AsyncWriteNext(sent, func(err error, _ int) {
-			ReleaseFrame(sent)
+		s.cs.AsyncWriteNext(*sent, func(err error, _ int) {
+			s.releaseFrame(sent)
 
 			if err != nil {
 				cb(err)
@@ -589,7 +592,7 @@ func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
 }
 
 func (s *WebsocketStream) Pending() int {
-	return len(s.pending)
+	return len(s.pendingFrames)
 }
 
 func (s *WebsocketStream) State() StreamState {
