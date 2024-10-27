@@ -1,4 +1,4 @@
-// Based on https://datatracker.ietf.org/doc/html/rfc6455.
+// Based on https://datatracker.ietf.org/doc/html/rfc6455
 package websocket
 
 import (
@@ -10,18 +10,38 @@ import (
 // ---------------------------------------------------
 // Framing -------------------------------------------
 // ---------------------------------------------------
+// Based on https://datatracker.ietf.org/doc/html/rfc6455#section-5.2
 
 const (
-	bitFIN      = byte(1 << 7)
-	bitRSV1     = byte(1 << 6)
-	bitRSV2     = byte(1 << 5)
-	bitRSV3     = byte(1 << 4)
-	bitIsMasked = byte(1 << 7)
+	MaxControlFramePayloadLength = 125
+	MaxFrameHeaderLengthInBytes  = 14 // 14 bytes max for the header of a frame i.e. everything without the payload
 )
 
-const MaxControlFramePayloadLength = 125
+const (
+	// Mandatory, 2 bytes:
+	// byte 1: |fin(1)|rsv1(1)|rsv2(1)|rsv3(1)|opcode(4)|
+	// byte 2: |is masked(1)|payload length(7)|
+	frameHeaderLength = 2
 
-type Opcode uint8
+	bitFIN        = byte(1 << 7)
+	bitmaskOpcode = byte(1<<4 - 1)
+
+	bitIsMasked          = byte(1 << 7)
+	bitmaskPayloadLength = byte(1<<7 - 1)
+
+	// Optional, max 8 bytes. If |payload length(7)| above is <= 125, then 0: the payload length is in
+	// |payload length(7)|. If 126, then the payload length is in the following 2 bytes. If 127, in the following 8
+	// bytes.
+
+	// Optional, max 4 bytes. If |is masked(1)| above is set, then the following 4 bytes are the mask. Otherwise, the
+	// frame is not masked and the mask is not included.
+	//
+	// All frames sent from the client to the server are masked by a 32-bit value. Frames sent from the server to the
+	// client are unmasked.
+	frameMaskLength = 4
+)
+
+type Opcode byte
 
 const (
 	OpcodeContinuation Opcode = 0

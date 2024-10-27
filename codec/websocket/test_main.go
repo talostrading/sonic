@@ -73,30 +73,26 @@ func (s *MockServer) Accept(addr string) (err error) {
 }
 
 func (s *MockServer) Write(b []byte) error {
-	fr := AcquireFrame()
-	defer ReleaseFrame(fr)
-
-	fr.SetText()
-	fr.SetPayload(b)
-	fr.SetFIN()
-
-	_, err := fr.WriteTo(s.conn)
+	f := newFrame()
+	f.SetText()
+	f.SetPayload(b)
+	f.SetFIN()
+	_, err := f.WriteTo(s.conn)
 	return err
 }
 
 func (s *MockServer) Read(b []byte) (n int, err error) {
-	fr := AcquireFrame()
-	defer ReleaseFrame(fr)
+	f := newFrame()
 
-	_, err = fr.ReadFrom(s.conn)
+	_, err = f.ReadFrom(s.conn)
 	if err == nil {
-		if !fr.IsMasked() {
+		if !f.IsMasked() {
 			return 0, fmt.Errorf("client frames should be masked")
 		}
 
-		fr.Unmask()
-		copy(b, fr.Payload())
-		n = fr.PayloadLength()
+		f.Unmask()
+		copy(b, f.Payload())
+		n = f.PayloadLength()
 	}
 	return n, err
 }

@@ -463,10 +463,10 @@ func TestClientReadCorruptControlFrame(t *testing.T) {
 
 	assertState(t, ws, StateClosedByUs)
 
-	closeFrame := ws.pending[0]
+	closeFrame := ws.pendingFrames[0]
 	closeFrame.Unmask()
 
-	cc, _ := DecodeCloseFramePayload(ws.pending[0].payload)
+	cc, _ := DecodeCloseFramePayload(ws.pendingFrames[0].Payload())
 	if cc != CloseProtocolError {
 		t.Fatal("should have closed with protocol error")
 	}
@@ -507,10 +507,10 @@ func TestClientAsyncReadCorruptControlFrame(t *testing.T) {
 
 		assertState(t, ws, StateClosedByUs)
 
-		closeFrame := ws.pending[0]
+		closeFrame := ws.pendingFrames[0]
 		closeFrame.Unmask()
 
-		cc, _ := DecodeCloseFramePayload(ws.pending[0].payload)
+		cc, _ := DecodeCloseFramePayload(ws.pendingFrames[0].Payload())
 		if cc != CloseProtocolError {
 			t.Fatal("should have closed with protocol error")
 		}
@@ -550,7 +550,7 @@ func TestClientReadPingFrame(t *testing.T) {
 			t.Fatal("should have a pending pong")
 		}
 
-		reply := ws.pending[0]
+		reply := ws.pendingFrames[0]
 		if !(reply.Opcode().IsPong() && reply.IsMasked()) {
 			t.Fatal("invalid pong reply")
 		}
@@ -603,7 +603,7 @@ func TestClientAsyncReadPingFrame(t *testing.T) {
 			t.Fatal("should have a pending pong")
 		}
 
-		reply := ws.pending[0]
+		reply := ws.pendingFrames[0]
 		if !(reply.Opcode().IsPong() && reply.IsMasked()) {
 			t.Fatal("invalid pong reply")
 		}
@@ -764,13 +764,13 @@ func TestClientReadCloseFrame(t *testing.T) {
 			t.Fatal("should have one pending operation")
 		}
 
-		reply := ws.pending[0]
+		reply := ws.pendingFrames[0]
 		if !reply.IsMasked() {
 			t.Fatal("reply should be masked")
 		}
 		reply.Unmask()
 
-		cc, reason := DecodeCloseFramePayload(reply.payload)
+		cc, reason := DecodeCloseFramePayload(reply.Payload())
 		if !(cc == CloseNormal && reason == "bye") {
 			t.Fatal("invalid close frame reply")
 		}
@@ -781,7 +781,7 @@ func TestClientReadCloseFrame(t *testing.T) {
 	b := make([]byte, 128)
 	_, _, err = ws.NextMessage(b)
 
-	if len(ws.pending) > 0 {
+	if len(ws.pendingFrames) > 0 {
 		t.Fatal("should have flushed")
 	}
 
@@ -827,13 +827,13 @@ func TestClientAsyncReadCloseFrame(t *testing.T) {
 			t.Fatal("should have one pending operation")
 		}
 
-		reply := ws.pending[0]
+		reply := ws.pendingFrames[0]
 		if !reply.IsMasked() {
 			t.Fatal("reply should be masked")
 		}
 		reply.Unmask()
 
-		cc, reason := DecodeCloseFramePayload(reply.payload)
+		cc, reason := DecodeCloseFramePayload(reply.Payload())
 		if !(cc == CloseNormal && reason == "bye") {
 			t.Fatal("invalid close frame reply")
 		}
@@ -874,11 +874,14 @@ func TestClientWriteFrame(t *testing.T) {
 	ws.state = StateActive
 	ws.init(mock)
 
-	f := AcquireFrame()
-	defer ReleaseFrame(f)
+	f := ws.AcquireFrame()
 	f.SetFIN()
 	f.SetText()
 	f.SetPayload([]byte{1, 2, 3, 4, 5})
+
+	if len(*f) != 2 /*mandatory header*/ +4 /*mask since it's written by a client*/ +5 /*payload length*/ {
+		t.Fatal("invalid frame length")
+	}
 
 	err = ws.WriteFrame(f)
 	if err != nil {
@@ -886,8 +889,7 @@ func TestClientWriteFrame(t *testing.T) {
 	} else {
 		mock.b.Commit(mock.b.WriteLen())
 
-		f := AcquireFrame()
-		defer ReleaseFrame(f)
+		f := Frame(make([]byte, 2+4+5))
 
 		_, err = f.ReadFrom(mock.b)
 		if err != nil {
@@ -921,8 +923,7 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 	ws.state = StateActive
 	ws.init(mock)
 
-	f := AcquireFrame()
-	defer ReleaseFrame(f)
+	f := ws.AcquireFrame()
 	f.SetFIN()
 	f.SetText()
 	f.SetPayload([]byte{1, 2, 3, 4, 5})
@@ -937,8 +938,7 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			f := AcquireFrame()
-			defer ReleaseFrame(f)
+			f := newFrame()
 
 			_, err = f.ReadFrom(mock.b)
 			if err != nil {
@@ -983,8 +983,7 @@ func TestClientWrite(t *testing.T) {
 	} else {
 		mock.b.Commit(mock.b.WriteLen())
 
-		f := AcquireFrame()
-		defer ReleaseFrame(f)
+		f := newFrame()
 
 		_, err = f.ReadFrom(mock.b)
 		if err != nil {
@@ -1024,9 +1023,7 @@ func TestClientAsyncWrite(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			f := AcquireFrame()
-			defer ReleaseFrame(f)
-
+			f := newFrame()
 			_, err = f.ReadFrom(mock.b)
 			if err != nil {
 				t.Fatal(err)
@@ -1066,9 +1063,7 @@ func TestClientClose(t *testing.T) {
 	} else {
 		mock.b.Commit(mock.b.WriteLen())
 
-		f := AcquireFrame()
-		defer ReleaseFrame(f)
-
+		f := newFrame()
 		_, err = f.ReadFrom(mock.b)
 		if err != nil {
 			t.Fatal(err)
@@ -1084,7 +1079,7 @@ func TestClientClose(t *testing.T) {
 			t.Fatal("wrong message in close frame")
 		}
 
-		cc, reason := DecodeCloseFramePayload(f.payload)
+		cc, reason := DecodeCloseFramePayload(f.Payload())
 		if !(cc == CloseNormal && reason == "bye") {
 			t.Fatal("wrong close frame payload")
 		}
@@ -1113,9 +1108,7 @@ func TestClientAsyncClose(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			f := AcquireFrame()
-			defer ReleaseFrame(f)
-
+			f := newFrame()
 			_, err = f.ReadFrom(mock.b)
 			if err != nil {
 				t.Fatal(err)
@@ -1131,7 +1124,7 @@ func TestClientAsyncClose(t *testing.T) {
 				t.Fatal("wrong message in close frame")
 			}
 
-			cc, reason := DecodeCloseFramePayload(f.payload)
+			cc, reason := DecodeCloseFramePayload(f.Payload())
 			if !(cc == CloseNormal && reason == "bye") {
 				t.Fatal("wrong close frame payload")
 			}
@@ -1160,13 +1153,11 @@ func TestClientCloseHandshakeWeStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	} else {
-		mock.b.Commit(mock.b.WriteLen())
-
-		serverReply := AcquireFrame()
-		defer ReleaseFrame(serverReply)
-
 		assertState(t, ws, StateClosedByUs)
 
+		mock.b.Commit(mock.b.WriteLen())
+
+		serverReply := newFrame()
 		serverReply.SetFIN()
 		serverReply.SetClose()
 		serverReply.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
@@ -1184,7 +1175,7 @@ func TestClientCloseHandshakeWeStart(t *testing.T) {
 			t.Fatal("wrong close reply")
 		}
 
-		cc, reason := DecodeCloseFramePayload(reply.payload)
+		cc, reason := DecodeCloseFramePayload(reply.Payload())
 		if !(cc == CloseNormal && reason == "bye") {
 			t.Fatal("wrong close frame payload reply")
 		}
@@ -1215,9 +1206,7 @@ func TestClientAsyncCloseHandshakeWeStart(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			serverReply := AcquireFrame()
-			defer ReleaseFrame(serverReply)
-
+			serverReply := newFrame()
 			serverReply.SetFIN()
 			serverReply.SetClose()
 			serverReply.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
@@ -1235,7 +1224,7 @@ func TestClientAsyncCloseHandshakeWeStart(t *testing.T) {
 				t.Fatal("wrong close reply")
 			}
 
-			cc, reason := DecodeCloseFramePayload(reply.payload)
+			cc, reason := DecodeCloseFramePayload(reply.Payload())
 			if !(cc == CloseNormal && reason == "bye") {
 				t.Fatal("wrong close frame payload reply")
 			}
@@ -1262,8 +1251,7 @@ func TestClientCloseHandshakePeerStarts(t *testing.T) {
 	ws.state = StateActive
 	ws.init(mock)
 
-	serverClose := AcquireFrame()
-	defer ReleaseFrame(serverClose)
+	serverClose := newFrame()
 	serverClose.SetFIN()
 	serverClose.SetClose()
 	serverClose.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
@@ -1286,7 +1274,7 @@ func TestClientCloseHandshakePeerStarts(t *testing.T) {
 
 	assertState(t, ws, StateClosedByPeer)
 
-	cc, reason := DecodeCloseFramePayload(recv.payload)
+	cc, reason := DecodeCloseFramePayload(recv.Payload())
 	if !(cc == CloseNormal && reason == "bye") {
 		t.Fatal("peer close frame payload is corrupt")
 	}
@@ -1309,8 +1297,7 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 	ws.state = StateActive
 	ws.init(mock)
 
-	serverClose := AcquireFrame()
-	defer ReleaseFrame(serverClose)
+	serverClose := newFrame()
 	serverClose.SetFIN()
 	serverClose.SetClose()
 	serverClose.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
@@ -1322,7 +1309,7 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 
 	ws.src.Commit(int(nn))
 
-	ws.AsyncNextFrame(func(err error, recv *Frame) {
+	ws.AsyncNextFrame(func(err error, recv Frame) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1333,7 +1320,7 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 
 		assertState(t, ws, StateClosedByPeer)
 
-		cc, reason := DecodeCloseFramePayload(recv.payload)
+		cc, reason := DecodeCloseFramePayload(recv.Payload())
 		if !(cc == CloseNormal && reason == "bye") {
 			t.Fatal("peer close frame payload is corrupt")
 		}

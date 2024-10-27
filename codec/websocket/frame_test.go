@@ -9,12 +9,12 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-func TestUnder125Frame(t *testing.T) {
-	raw := []byte{0x81, 5} // fin=1 opcode=1 (text) payload_len=5
+func TestUnder126Frame(t *testing.T) {
+	var (
+		f   = newFrame()
+		raw = []byte{0x81, 5} // fin=1 opcode=1 (text) payload_len=5
+	)
 	raw = append(raw, genRandBytes(5)...)
-
-	f := AcquireFrame()
-	defer ReleaseFrame(f)
 
 	buf := bufio.NewReader(bytes.NewBuffer(raw))
 
@@ -27,11 +27,11 @@ func TestUnder125Frame(t *testing.T) {
 }
 
 func Test126Frame(t *testing.T) {
-	raw := []byte{0x81, 126, 0, 200}
+	var (
+		f   = newFrame()
+		raw = []byte{0x81, 126, 0, 200}
+	)
 	raw = append(raw, genRandBytes(200)...)
-
-	f := AcquireFrame()
-	defer ReleaseFrame(f)
 
 	buf := bufio.NewReader(bytes.NewBuffer(raw))
 
@@ -44,11 +44,11 @@ func Test126Frame(t *testing.T) {
 }
 
 func Test127Frame(t *testing.T) {
-	raw := []byte{0x81, 127, 0, 0, 0, 0, 0, 0x01, 0xFF, 0xFF}
+	var (
+		f   = newFrame()
+		raw = []byte{0x81, 127, 0, 0, 0, 0, 0, 0x01, 0xFF, 0xFF}
+	)
 	raw = append(raw, genRandBytes(131071)...)
-
-	f := AcquireFrame()
-	defer ReleaseFrame(f)
 
 	buf := bufio.NewReader(bytes.NewBuffer(raw))
 
@@ -61,10 +61,10 @@ func Test127Frame(t *testing.T) {
 }
 
 func TestWriteFrame(t *testing.T) {
-	payload := []byte("heloo")
-
-	f := AcquireFrame()
-	defer ReleaseFrame(f)
+	var (
+		f       = newFrame()
+		payload = []byte("heloo")
+	)
 
 	f.SetFIN()
 	f.SetPayload(payload)
@@ -92,14 +92,13 @@ func TestWriteFrame(t *testing.T) {
 }
 
 func TestSameFrameWriteRead(t *testing.T) {
-	// deserialize
-	f := AcquireFrame()
-	defer ReleaseFrame(f)
+	var (
+		header  = []byte{0x81, 5}
+		payload = genRandBytes(5)
+		buf     = sonic.NewByteBuffer()
+		f       = newFrame()
+	)
 
-	header := []byte{0x81, 5}
-	payload := genRandBytes(5)
-
-	buf := sonic.NewByteBuffer()
 	buf.Write(header)
 	buf.Write(payload)
 	buf.Commit(7)
@@ -137,7 +136,7 @@ func TestSameFrameWriteRead(t *testing.T) {
 	}
 }
 
-func checkFrame(t *testing.T, f *Frame, c, fin bool, payload []byte) {
+func checkFrame(t *testing.T, f Frame, c, fin bool, payload []byte) {
 	if c && !f.Opcode().IsContinuation() {
 		t.Fatal("expected continuation")
 	}
