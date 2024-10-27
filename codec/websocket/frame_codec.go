@@ -83,7 +83,7 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 	}
 
 	// check payload length
-	npayload := c.decodeFrame.PayloadLen()
+	npayload := c.decodeFrame.PayloadLength()
 	if npayload > MaxMessageSize {
 		return nil, ErrPayloadOverMaxSize
 	}
@@ -109,7 +109,7 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
 func (c *FrameCodec) Encode(fr *Frame, dst *sonic.ByteBuffer) error {
 	// Make sure there is enough space in the buffer to hold the serialized
 	// frame.
-	dst.Reserve(fr.PayloadLen())
+	dst.Reserve(fr.PayloadLength())
 
 	n, err := fr.WriteTo(dst)
 	dst.Commit(int(n))

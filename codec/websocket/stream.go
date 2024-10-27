@@ -241,7 +241,7 @@ func (s *WebsocketStream) NextMessage(
 			return mt, readBytes, err
 		}
 
-		if f.IsControl() {
+		if f.Opcode().IsControl() {
 			if s.ccb != nil {
 				s.ccb(MessageType(f.Opcode()), f.payload)
 			}
@@ -253,7 +253,7 @@ func (s *WebsocketStream) NextMessage(
 			n := copy(b[readBytes:], f.Payload())
 			readBytes += n
 
-			if readBytes > MaxMessageSize || n != f.PayloadLen() {
+			if readBytes > MaxMessageSize || n != f.PayloadLength() {
 				err = ErrMessageTooBig
 				_ = s.Close(CloseGoingAway, "payload too big")
 				break
@@ -262,19 +262,19 @@ func (s *WebsocketStream) NextMessage(
 			// verify continuation
 			if !continuation {
 				// this is the first frame of the series
-				continuation = !f.IsFin() //nolint:ineffassign
-				if f.IsContinuation() {
+				continuation = !f.IsFIN() //nolint:ineffassign
+				if f.Opcode().IsContinuation() {
 					err = ErrUnexpectedContinuation
 				}
 			} else {
 				// we are past the first frame of the series
-				continuation = !f.IsFin() //nolint:ineffassign
-				if !f.IsContinuation() {
+				continuation = !f.IsFIN() //nolint:ineffassign
+				if !f.Opcode().IsContinuation() {
 					err = ErrExpectedContinuation
 				}
 			}
 
-			continuation = !f.IsFin()
+			continuation = !f.IsFIN()
 
 			if err != nil || !continuation {
 				break
@@ -300,7 +300,7 @@ func (s *WebsocketStream) asyncNextMessage(
 		if err != nil {
 			cb(err, readBytes, mt)
 		} else {
-			if f.IsControl() {
+			if f.Opcode().IsControl() {
 				if s.ccb != nil {
 					s.ccb(MessageType(f.Opcode()), f.payload)
 				}
@@ -314,7 +314,7 @@ func (s *WebsocketStream) asyncNextMessage(
 				n := copy(b[readBytes:], f.Payload())
 				readBytes += n
 
-				if readBytes > MaxMessageSize || n != f.PayloadLen() {
+				if readBytes > MaxMessageSize || n != f.PayloadLength() {
 					err = ErrMessageTooBig
 					s.AsyncClose(
 						CloseGoingAway,
@@ -328,14 +328,14 @@ func (s *WebsocketStream) asyncNextMessage(
 				// verify continuation
 				if !continuation {
 					// this is the first frame of the series
-					continuation = !f.IsFin()
-					if f.IsContinuation() {
+					continuation = !f.IsFIN()
+					if f.Opcode().IsContinuation() {
 						err = ErrUnexpectedContinuation
 					}
 				} else {
 					// we are past the first frame of the series
-					continuation = !f.IsFin()
-					if !f.IsContinuation() {
+					continuation = !f.IsFIN()
+					if !f.Opcode().IsContinuation() {
 						err = ErrExpectedContinuation
 					}
 				}
@@ -354,7 +354,7 @@ func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 	err = s.verifyFrame(f)
 
 	if err == nil {
-		if f.IsControl() {
+		if f.Opcode().IsControl() {
 			err = s.handleControlFrame(f)
 		} else {
 			err = s.handleDataFrame(f)
@@ -386,11 +386,11 @@ func (s *WebsocketStream) verifyFrame(f *Frame) error {
 }
 
 func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
-	if !f.IsFin() {
+	if !f.IsFIN() {
 		return ErrInvalidControlFrame
 	}
 
-	if f.PayloadLenType() > MaxControlFramePayloadSize {
+	if f.PayloadLength() > MaxControlFramePayloadLength {
 		return ErrControlFrameTooBig
 	}
 
@@ -398,7 +398,7 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	case OpcodePing:
 		if s.state == StateActive {
 			pongFrame := AcquireFrame()
-			pongFrame.SetFin()
+			pongFrame.SetFIN()
 			pongFrame.SetPong()
 			pongFrame.SetPayload(f.payload)
 			if s.role == RoleClient {
@@ -430,7 +430,7 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 }
 
 func (s *WebsocketStream) handleDataFrame(f *Frame) error {
-	if IsReserved(f.Opcode()) {
+	if f.Opcode().IsReserved() {
 		return ErrReservedOpcode
 	}
 	return nil
@@ -443,7 +443,7 @@ func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
 
 	if s.state == StateActive {
 		f := AcquireFrame()
-		f.SetFin()
+		f.SetFIN()
 		f.SetOpcode(Opcode(mt))
 		f.SetPayload(b)
 
@@ -476,7 +476,7 @@ func (s *WebsocketStream) AsyncWrite(
 
 	if s.state == StateActive {
 		f := AcquireFrame()
-		f.SetFin()
+		f.SetFIN()
 		f.SetOpcode(Opcode(mt))
 		f.SetPayload(b)
 
@@ -544,7 +544,7 @@ func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 
 func (s *WebsocketStream) prepareClose(payload []byte) {
 	closeFrame := AcquireFrame()
-	closeFrame.SetFin()
+	closeFrame.SetFIN()
 	closeFrame.SetClose()
 	closeFrame.SetPayload(payload)
 	if s.role == RoleClient {

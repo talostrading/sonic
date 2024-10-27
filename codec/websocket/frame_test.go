@@ -66,7 +66,7 @@ func TestWriteFrame(t *testing.T) {
 	f := AcquireFrame()
 	defer ReleaseFrame(f)
 
-	f.SetFin()
+	f.SetFIN()
 	f.SetPayload(payload)
 	f.SetText()
 
@@ -111,7 +111,7 @@ func TestSameFrameWriteRead(t *testing.T) {
 	if n != 7 {
 		t.Fatalf("frame is corrupt")
 	}
-	if !(f.IsFin() && f.IsText() && f.PayloadLen() == 5 && bytes.Equal(f.Payload(), payload)) {
+	if !(f.IsFIN() && f.Opcode().IsText() && f.PayloadLength() == 5 && bytes.Equal(f.Payload(), payload)) {
 		t.Fatalf("invalid frame")
 	}
 
@@ -138,15 +138,15 @@ func TestSameFrameWriteRead(t *testing.T) {
 }
 
 func checkFrame(t *testing.T, f *Frame, c, fin bool, payload []byte) {
-	if c && !f.IsContinuation() {
+	if c && !f.Opcode().IsContinuation() {
 		t.Fatal("expected continuation")
 	}
 
-	if fin && !f.IsFin() {
+	if fin && !f.IsFIN() {
 		t.Fatal("expected FIN")
 	}
 
-	if given, expected := len(payload), f.PayloadLen(); given != expected {
+	if given, expected := len(payload), f.PayloadLength(); given != expected {
 		t.Fatalf("invalid payload length; given=%d expected=%d", given, expected)
 	}
 

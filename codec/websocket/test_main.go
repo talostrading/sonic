@@ -78,7 +78,7 @@ func (s *MockServer) Write(b []byte) error {
 
 	fr.SetText()
 	fr.SetPayload(b)
-	fr.SetFin()
+	fr.SetFIN()
 
 	_, err := fr.WriteTo(s.conn)
 	return err
@@ -96,7 +96,7 @@ func (s *MockServer) Read(b []byte) (n int, err error) {
 
 		fr.Unmask()
 		copy(b, fr.Payload())
-		n = fr.PayloadLen()
+		n = fr.PayloadLength()
 	}
 	return n, err
 }
