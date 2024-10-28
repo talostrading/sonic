@@ -30,6 +30,7 @@ import (
 	"net/url"
 	"sync"
 	"syscall"
+	"unicode/utf8"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
@@ -465,12 +466,17 @@ func (s *Stream) handleControlFrame(f Frame) (err error) {
 			s.state = StateClosedByPeer
 
 			payload := f.Payload()
+			// The first 2 bytes are the close code. The rest, if any, is the reason - this must be UTF-8.
 			if len(payload) >= 2 {
-				closeCode := DecodeCloseCode(payload)
-				if !ValidCloseCode(closeCode) {
+				if !utf8.Valid(payload[2:]) {
 					s.prepareClose(EncodeCloseCode(CloseProtocolError))
 				} else {
-					s.prepareClose(f.Payload())
+					closeCode := DecodeCloseCode(payload)
+					if !ValidCloseCode(closeCode) {
+						s.prepareClose(EncodeCloseCode(CloseProtocolError))
+					} else {
+						s.prepareClose(f.Payload())
+					}
 				}
 			} else if len(payload) > 0 {
 				s.prepareClose(EncodeCloseCode(CloseProtocolError))
