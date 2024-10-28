@@ -9,12 +9,121 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/talostrading/sonic"
 )
 
 func assertState(t *testing.T, ws *Stream, expected StreamState) {
 	if ws.State() != expected {
 		t.Fatalf("wrong state: given=%s expected=%s ", ws.State(), expected)
+	}
+}
+
+func TestClientSendMessageWithPayload126(t *testing.T) {
+	assert := assert.New(t)
+
+	go func() {
+		srv := &MockServer{}
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		frame := NewFrame()
+		frame.
+			SetFIN().
+			SetText().
+			SetPayload(make([]byte, 126))
+		assert.Equal(126, frame.PayloadLength())
+		assert.Equal(2, frame.ExtendedPayloadLengthBytes())
+
+		frame.WriteTo(srv.conn)
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			assert.True(f.IsFIN())
+			assert.True(f.Opcode().IsText())
+			assert.Equal(126, f.PayloadLength())
+			assert.Equal(2, f.ExtendedPayloadLengthBytes())
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
+func TestClientSendMessageWithPayload127(t *testing.T) {
+	assert := assert.New(t)
+
+	go func() {
+		srv := &MockServer{}
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		frame := NewFrame()
+		frame.
+			SetFIN().
+			SetText().
+			SetPayload(make([]byte, 1<<16+10 /* it won't fit in 2 bytes */))
+		assert.Equal(1<<16+10, frame.PayloadLength())
+		assert.Equal(8, frame.ExtendedPayloadLengthBytes())
+
+		frame.WriteTo(srv.conn)
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			assert.True(f.IsFIN())
+			assert.True(f.Opcode().IsText())
+			assert.Equal(1<<16+10, f.PayloadLength())
+			assert.Equal(8, f.ExtendedPayloadLengthBytes())
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
 	}
 }
 
