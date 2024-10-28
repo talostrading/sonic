@@ -423,6 +423,10 @@ func (s *Stream) handleFrame(f Frame) (err error) {
 }
 
 func (s *Stream) verifyFrame(f Frame) error {
+	if f.IsRSV1() || f.IsRSV2() || f.IsRSV3() {
+		return ErrNonZeroReservedBits
+	}
+
 	if s.role == RoleClient && f.IsMasked() {
 		return ErrMaskedFramesFromServer
 	}
