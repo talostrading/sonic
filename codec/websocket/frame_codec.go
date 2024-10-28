@@ -97,7 +97,9 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (Frame, error) {
 
 // Encode encodes the `Frame` into `dst`.
 func (c *FrameCodec) Encode(frame Frame, dst *sonic.ByteBuffer) error {
-	// ensure the destination buffer can hold the serialized frame // TODO this can be improved
+	// TODO this can be improved: we can serialize directly in the buffer with zero-copy semantics
+
+	// ensure the destination buffer can hold the serialized frame
 	dst.Reserve(frame.PayloadLength() + MaxFrameHeaderLengthInBytes)
 
 	n, err := frame.WriteTo(dst)
