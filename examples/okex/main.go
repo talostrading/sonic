@@ -48,7 +48,7 @@ func onWrite(err error, stream websocket.Stream) {
 }
 
 func readLoop(stream websocket.Stream) {
-	var onRead websocket.AsyncMessageHandler
+	var onRead websocket.AsyncMessageCallback
 	onRead = func(err error, n int, _ websocket.MessageType) {
 		if err != nil {
 			panic(err)
