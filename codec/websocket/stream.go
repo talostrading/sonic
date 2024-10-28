@@ -87,6 +87,8 @@ type Stream struct {
 	framePool sync.Pool
 
 	maxMessageSize int
+
+	validateUTF8 bool
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *Stream, err error) {
@@ -110,6 +112,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *Stream, e
 			},
 		},
 		maxMessageSize: DefaultMaxMessageSize,
+		validateUTF8:   false,
 	}
 
 	s.src.Reserve(4096)
@@ -171,8 +174,22 @@ func (s *Stream) NextLayer() sonic.Stream {
 	return nil
 }
 
+// SupportsUTF8 indicates that the stream can optionally perform UTF-8 validation on the payloads of Text frames.
+// Validation is disabled by default and can be toggled with `ValidateUTF8(bool)`.
 func (s *Stream) SupportsUTF8() bool {
-	return false
+	return true
+}
+
+// ValidatesUTF8 indicates if UTF-8 validation is performed on the payloads of Text frames. Validation is disabled by
+// default and can be toggled with `ValidateUTF8(bool)`.
+func (s *Stream) ValidatesUTF8() bool {
+	return s.validateUTF8
+}
+
+// ValidateUTF8 toggles UTF8 validation done on the payloads of Text frames.
+func (s *Stream) ValidateUTF8(v bool) *Stream {
+	s.validateUTF8 = v
+	return s
 }
 
 func (s *Stream) SupportsDeflate() bool {
@@ -502,6 +519,13 @@ func (s *Stream) handleDataFrame(f Frame) error {
 	if f.Opcode().IsReserved() {
 		return ErrReservedOpcode
 	}
+
+	if f.Opcode().IsText() && s.validateUTF8 {
+		if !utf8.Valid(f.Payload()) {
+			return ErrInvalidUTF8
+		}
+	}
+
 	return nil
 }
 

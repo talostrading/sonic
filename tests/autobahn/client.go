@@ -12,6 +12,7 @@ import (
 var (
 	addr     = flag.String("addr", "ws://localhost:9001", "server address")
 	testCase = flag.Int("case", -1, "autobahn test case to run")
+	utf8     = flag.Bool("utf8", false, "if true, payloads of text frames are utf8 validated")
 )
 
 func main() {
@@ -82,6 +83,16 @@ func runTest(i int) {
 	s, err := websocket.NewWebsocketStream(ioc, nil, websocket.RoleClient)
 	if err != nil {
 		panic(err)
+	}
+	if *utf8 {
+		s.ValidateUTF8(true)
+		if !s.ValidatesUTF8() {
+			panic("UTF8 should be validated")
+		}
+	} else {
+		if s.ValidatesUTF8() {
+			panic("UTF8 should NOT be validated")
+		}
 	}
 
 	done := false
