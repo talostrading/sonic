@@ -22,7 +22,8 @@ var (
 	_ io.WriterTo   = &Frame{}
 )
 
-func newFrame() Frame {
+// NOTE use stream.AcquireFrame() instead of NewFrame if you intend to write this frame onto a WebSocket stream.
+func NewFrame() Frame {
 	return make([]byte, MaxFrameHeaderLengthInBytes)
 }
 

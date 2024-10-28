@@ -73,7 +73,7 @@ func (s *MockServer) Accept(addr string) (err error) {
 }
 
 func (s *MockServer) Write(b []byte) error {
-	f := newFrame()
+	f := NewFrame()
 	f.SetText()
 	f.SetPayload(b)
 	f.SetFIN()
@@ -82,7 +82,7 @@ func (s *MockServer) Write(b []byte) error {
 }
 
 func (s *MockServer) Read(b []byte) (n int, err error) {
-	f := newFrame()
+	f := NewFrame()
 
 	_, err = f.ReadFrom(s.conn)
 	if err == nil {
