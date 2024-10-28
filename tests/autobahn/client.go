@@ -92,7 +92,7 @@ func runTest(i int) {
 
 		b := make([]byte, 1024*1024)
 
-		var onAsyncRead websocket.AsyncMessageHandler
+		var onAsyncRead websocket.AsyncMessageCallback
 
 		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
 			if err != nil {
