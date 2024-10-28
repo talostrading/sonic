@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-var (
-	MaxMessageSize = 1024 * 512 // the maximum size of a message
-	CloseTimeout   = 5 * time.Second
-	DialTimeout    = 5 * time.Second
+const (
+	DefaultMaxMessageSize = 1024 * 512
+	CloseTimeout          = 5 * time.Second
+	DialTimeout           = 5 * time.Second
 )
 
 type Role uint8

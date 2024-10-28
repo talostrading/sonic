@@ -188,8 +188,6 @@ func (f *Frame) fitPayload() ([]byte, error) {
 	length := f.PayloadLength()
 	if length <= 0 {
 		return nil, nil
-	} else if length > MaxMessageSize {
-		return nil, ErrPayloadTooBig
 	}
 
 	*f = util.ExtendSlice(*f, f.payloadStartIndex()+length)

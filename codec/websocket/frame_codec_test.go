@@ -13,7 +13,7 @@ func TestDecodeShortFrame(t *testing.T) {
 	src := sonic.NewByteBuffer()
 	src.Write([]byte{0x81, 1}) // fin=1 opcode=1 (text) payload_len=1
 
-	codec := NewFrameCodec(src, nil)
+	codec := NewFrameCodec(src, nil, DefaultMaxMessageSize)
 
 	f, err := codec.Decode(src)
 	if !errors.Is(err, sonicerrors.ErrNeedMore) {
@@ -34,7 +34,7 @@ func TestDecodeExactlyOneFrame(t *testing.T) {
 	src := sonic.NewByteBuffer()
 	src.Write([]byte{0x81, 1, 0xFF}) // fin=1 opcode=1 (text) payload_len=1
 
-	codec := NewFrameCodec(src, nil)
+	codec := NewFrameCodec(src, nil, DefaultMaxMessageSize)
 
 	f, err := codec.Decode(src)
 	if err != nil {
@@ -62,7 +62,7 @@ func TestDecodeOneAndShortFrame(t *testing.T) {
 	// fin=1 opcode=1 (text) payload_len=1
 	src.Write([]byte{0x81, 1, 0xFF, 0xFF, 0xFF, 0xFF})
 
-	codec := NewFrameCodec(src, nil)
+	codec := NewFrameCodec(src, nil, DefaultMaxMessageSize)
 
 	f, err := codec.Decode(src)
 	if err != nil {
@@ -92,7 +92,7 @@ func TestDecodeTwoFrames(t *testing.T) {
 		0x81, 5, 0x01, 0x02, 0x03, 0x04, 0x05, // second complete frame
 		0x81, 10}) // third short frame
 
-	codec := NewFrameCodec(src, nil)
+	codec := NewFrameCodec(src, nil, DefaultMaxMessageSize)
 
 	if src.WriteLen() != 12 {
 		t.Fatal("should have 12 bytes in the write area")

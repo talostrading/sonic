@@ -47,6 +47,7 @@ type WebsocketStream struct {
 	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
+	codec     *FrameCodec
 	codecConn *sonic.CodecConn[Frame, Frame]
 
 	// Websocket role: client or server.
@@ -84,6 +85,8 @@ type WebsocketStream struct {
 	dialer *net.Dialer
 
 	framePool sync.Pool
+
+	maxMessageSize int
 }
 
 func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *WebsocketStream, err error) {
@@ -106,6 +109,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *Websocket
 				return &frame
 			},
 		},
+		maxMessageSize: DefaultMaxMessageSize,
 	}
 
 	s.src.Reserve(4096)
@@ -145,8 +149,8 @@ func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
 	}
 
 	s.stream = stream
-	codec := NewFrameCodec(s.src, s.dst)
-	s.codecConn, err = sonic.NewCodecConn[Frame, Frame](stream, codec, s.src, s.dst)
+	s.codec = NewFrameCodec(s.src, s.dst, s.maxMessageSize)
+	s.codecConn, err = sonic.NewCodecConn[Frame, Frame](stream, s.codec, s.src, s.dst)
 	return
 }
 
@@ -294,7 +298,7 @@ func (s *WebsocketStream) NextMessage(b []byte) (mt MessageType, readBytes int, 
 			n := copy(b[readBytes:], f.Payload())
 			readBytes += n
 
-			if readBytes > MaxMessageSize || n != f.PayloadLength() {
+			if readBytes > s.maxMessageSize || n != f.PayloadLength() {
 				err = ErrMessageTooBig
 				_ = s.Close(CloseGoingAway, "payload too big")
 				break
@@ -364,7 +368,7 @@ func (s *WebsocketStream) asyncNextMessage(
 				n := copy(b[readBytes:], f.Payload())
 				readBytes += n
 
-				if readBytes > MaxMessageSize || n != f.PayloadLength() {
+				if readBytes > s.maxMessageSize || n != f.PayloadLength() {
 					err = ErrMessageTooBig
 					s.AsyncClose(
 						CloseGoingAway,
@@ -488,7 +492,7 @@ func (s *WebsocketStream) handleDataFrame(f Frame) error {
 //   - an error occurs during the write
 //   - the message is successfully written to the underlying stream
 func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
-	if len(b) > MaxMessageSize {
+	if len(b) > s.maxMessageSize {
 		return ErrMessageTooBig
 	}
 
@@ -533,7 +537,7 @@ func (s *WebsocketStream) WriteFrame(f *Frame) error {
 //   - an error occurs during the write
 //   - the message is successfully written to the underlying stream
 func (s *WebsocketStream) AsyncWrite(b []byte, messageType MessageType, callback func(err error)) {
-	if len(b) > MaxMessageSize {
+	if len(b) > s.maxMessageSize {
 		callback(ErrMessageTooBig)
 		return
 	}
@@ -977,7 +981,12 @@ func (s *WebsocketStream) SetMaxMessageSize(bytes int) {
 	// This is just for checking against the length returned in the frame
 	// header. The sizes of the buffers in which we read or write the messages
 	// are dynamically adjusted in frame_codec.
-	MaxMessageSize = bytes
+	s.maxMessageSize = bytes
+	s.codec.maxMessageSize = bytes
+}
+
+func (s *WebsocketStream) MaxMessageSize() int {
+	return s.maxMessageSize
 }
 
 func (s *WebsocketStream) RemoteAddr() net.Addr {

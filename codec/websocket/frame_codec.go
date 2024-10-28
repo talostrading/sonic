@@ -14,18 +14,20 @@ var (
 
 // FrameCodec is a stateful streaming parser handling the encoding and decoding of WebSocket `Frame`s.
 type FrameCodec struct {
-	src *sonic.ByteBuffer // buffer we decode from
-	dst *sonic.ByteBuffer // buffer we encode to
+	src            *sonic.ByteBuffer // buffer we decode from
+	dst            *sonic.ByteBuffer // buffer we encode to
+	maxMessageSize int
 
 	decodeFrame Frame // frame we decode into
 	decodeReset bool  // true if we must reset the state on the next decode
 }
 
-func NewFrameCodec(src, dst *sonic.ByteBuffer) *FrameCodec {
+func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
 	return &FrameCodec{
-		decodeFrame: NewFrame(),
-		src:         src,
-		dst:         dst,
+		decodeFrame:    NewFrame(),
+		src:            src,
+		dst:            dst,
+		maxMessageSize: maxMessageSize,
 	}
 }
 
@@ -66,7 +68,7 @@ func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (Frame, error) {
 	c.decodeFrame = src.Data()[:readSoFar]
 
 	payloadLength := c.decodeFrame.PayloadLength()
-	if payloadLength > MaxMessageSize {
+	if payloadLength > c.maxMessageSize {
 		c.decodeFrame = nil
 		return nil, ErrPayloadOverMaxSize
 	}
