@@ -19,6 +19,76 @@ func assertState(t *testing.T, ws *Stream, expected StreamState) {
 	}
 }
 
+func TestClientSendPingWithInvalidPayload(t *testing.T) {
+	// Per the protocol, pings cannot have payloads larger than 125. We send a ping with 125. The client should close
+	// the connection immediately with 1002/Protocol Error.
+	assert := assert.New(t)
+
+	go func() {
+		srv := &MockServer{}
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		// This ping has an invalid payload size of 126, which should trigger a close with reason 1002.
+		{
+			frame := NewFrame()
+			frame.
+				SetFIN().
+				SetPing().
+				SetPayload(make([]byte, 126))
+			assert.Equal(126, frame.PayloadLength())
+			assert.Equal(2, frame.ExtendedPayloadLengthBytes())
+
+			frame.WriteTo(srv.conn)
+		}
+
+		// Ensure we get the close.
+		{
+			frame := NewFrame()
+			frame.ReadFrom(srv.conn)
+
+			assert.True(frame.Opcode().IsClose())
+			assert.True(frame.IsMasked()) // client to server frames are masked
+			frame.Unmask()
+
+			closeCode, reason := DecodeCloseFramePayload(frame.Payload())
+			assert.Equal(CloseProtocolError, closeCode)
+			assert.Empty(reason)
+		}
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			assert.NotNil(err)
+			assert.Equal(ErrControlFrameTooBig, err)
+			assert.Equal(1, ws.Pending())
+			ws.Flush()
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
 func TestClientSendMessageWithPayload126(t *testing.T) {
 	assert := assert.New(t)
 
