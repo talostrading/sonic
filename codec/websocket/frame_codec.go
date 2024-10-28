@@ -2,7 +2,6 @@ package websocket
 
 import (
 	"errors"
-
 	"github.com/talostrading/sonic"
 )
 

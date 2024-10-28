@@ -54,7 +54,7 @@ func (f Frame) clearPayloadLength() {
 	f[1] &= (1 << 7)
 }
 
-func (f *Frame) SetPayloadLength(n int) *Frame {
+func (f *Frame) setPayloadLength(n int) *Frame {
 	f.clearPayloadLength()
 
 	if n > (1<<16 - 1) {
@@ -196,10 +196,12 @@ func (f *Frame) fitPayload() ([]byte, error) {
 }
 
 func (f *Frame) SetPayload(b []byte) *Frame {
+	f.setPayloadLength(len(b)) // set the length as it's used by `payloadStartIndex`.
+
 	*f = util.ExtendSlice(*f, f.payloadStartIndex()+len(b))
 	payload := f.Payload()
 	copy(payload, b)
-	f.SetPayloadLength(len(payload))
+
 	return f
 }
 
@@ -275,8 +277,6 @@ func (f *Frame) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 func (f Frame) WriteTo(w io.Writer) (int64, error) {
-	f.SetPayloadLength(len(f.Payload()))
-
 	written := 0
 	for written < len(f) {
 		n, err := w.Write(f[written:])
