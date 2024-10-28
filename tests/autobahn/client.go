@@ -96,6 +96,7 @@ func runTest(i int) {
 
 		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
 			if err != nil {
+				s.Flush()
 				done = true
 			} else {
 				b = b[:n]

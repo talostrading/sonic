@@ -415,6 +415,7 @@ func (s *Stream) handleFrame(f Frame) (err error) {
 
 	if err != nil {
 		s.state = StateClosedByUs
+		// TODO consider flushing the close
 		s.prepareClose(EncodeCloseFramePayload(CloseProtocolError, ""))
 	}
 
