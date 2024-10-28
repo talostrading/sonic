@@ -37,7 +37,6 @@ import (
 )
 
 type WebsocketStream struct {
-	// async operations executor.
 	ioc *sonic.IO
 
 	// User provided TLS config; nil if we don't use TLS
@@ -83,9 +82,6 @@ type WebsocketStream struct {
 
 	// Used to establish a TCP connection to the peer with a timeout.
 	dialer *net.Dialer
-
-	// The size of the currently read message.
-	messageSize int
 
 	framePool sync.Pool
 }
