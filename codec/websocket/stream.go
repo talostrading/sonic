@@ -459,7 +459,20 @@ func (s *Stream) handleControlFrame(f Frame) (err error) {
 			panic("unreachable")
 		case StateActive:
 			s.state = StateClosedByPeer
-			s.prepareClose(f.Payload())
+
+			payload := f.Payload()
+			if len(payload) >= 2 {
+				closeCode := DecodeCloseCode(payload)
+				if !ValidCloseCode(closeCode) {
+					s.prepareClose(EncodeCloseCode(CloseProtocolError))
+				} else {
+					s.prepareClose(f.Payload())
+				}
+			} else if len(payload) > 0 {
+				s.prepareClose(EncodeCloseCode(CloseProtocolError))
+			} else {
+				s.prepareClose(EncodeCloseCode(CloseNormal))
+			}
 		case StateClosedByPeer, StateCloseAcked:
 			// ignore
 		case StateClosedByUs:

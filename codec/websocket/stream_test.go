@@ -19,6 +19,73 @@ func assertState(t *testing.T, ws *Stream, expected StreamState) {
 	}
 }
 
+func TestClientServerSendsInvalidCloseCode(t *testing.T) {
+	assert := assert.New(t)
+
+	go func() {
+		srv := &MockServer{}
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		{
+			frame := NewFrame()
+
+			closeCode := CloseReserved1
+			assert.False(ValidCloseCode(closeCode))
+
+			frame.
+				SetFIN().
+				SetClose().
+				SetPayload(EncodeCloseFramePayload(closeCode, "something"))
+
+			frame.WriteTo(srv.conn)
+		}
+
+		{
+			frame := NewFrame()
+			frame.ReadFrom(srv.conn)
+
+			assert.True(frame.Opcode().IsClose())
+			assert.True(frame.IsMasked()) // client to server frames are masked
+			frame.Unmask()
+
+			closeCode, reason := DecodeCloseFramePayload(frame.Payload())
+			assert.Equal(CloseProtocolError, closeCode)
+			assert.Equal(reason, "")
+		}
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			assert.Nil(err)
+			assert.Equal(1, ws.Pending())
+			ws.Flush()
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
 func TestClientEchoCloseCode(t *testing.T) {
 	assert := assert.New(t)
 

@@ -179,7 +179,30 @@ const (
 
 	// CloseReserved3 is reserved for future use by the WebSocket standard. This code is reserved and may not be sent.
 	CloseReserved3 CloseCode = 1015
+
+	// CloseReserved4 is reserved for future use by the WebSocket standard. This code is reserved and may not be sent.
+	CloseReserved4 CloseCode = 1016
+
+	CloseReservedForFuture CloseCode = 1004
 )
+
+func ValidCloseCode(closeCode CloseCode) bool {
+	if closeCode == CloseNormal ||
+		closeCode == CloseGoingAway ||
+		closeCode == CloseProtocolError ||
+		closeCode == CloseUnknownData ||
+		closeCode == CloseBadPayload ||
+		closeCode == ClosePolicyError ||
+		closeCode == CloseTooBig ||
+		closeCode == CloseNeedsExtension ||
+		closeCode == CloseInternalError ||
+		closeCode == CloseServiceRestart ||
+		closeCode == CloseTryAgainLater ||
+		(closeCode >= 3000 && closeCode <= 4999) {
+		return true
+	}
+	return false
+}
 
 func EncodeCloseCode(cc CloseCode) []byte {
 	b := make([]byte, 2)
