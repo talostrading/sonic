@@ -19,6 +19,69 @@ func assertState(t *testing.T, ws *Stream, expected StreamState) {
 	}
 }
 
+func TestClientEchoCloseCode(t *testing.T) {
+	assert := assert.New(t)
+
+	go func() {
+		srv := &MockServer{}
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		{
+			frame := NewFrame()
+			frame.
+				SetFIN().
+				SetClose().
+				SetPayload(EncodeCloseFramePayload(CloseNormal, "something"))
+
+			frame.WriteTo(srv.conn)
+		}
+
+		{
+			frame := NewFrame()
+			frame.ReadFrom(srv.conn)
+
+			assert.True(frame.Opcode().IsClose())
+			assert.True(frame.IsMasked()) // client to server frames are masked
+			frame.Unmask()
+
+			closeCode, reason := DecodeCloseFramePayload(frame.Payload())
+			assert.Equal(CloseNormal, closeCode)
+			assert.Equal(reason, "something")
+		}
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			assert.Nil(err)
+			assert.Equal(1, ws.Pending())
+			ws.Flush()
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
 func TestClientSendPingWithInvalidPayload(t *testing.T) {
 	// Per the protocol, pings cannot have payloads larger than 125. We send a ping with 125. The client should close
 	// the connection immediately with 1002/Protocol Error.
