@@ -19,26 +19,21 @@ func main() {
 	client.AsyncHandshake("ws://localhost:8080", func(err error) {
 		if err != nil {
 			panic(err)
-		} else {
-			client.AsyncWrite([]byte("hello"), websocket.TypeText, func(err error) {
+		}
+		client.AsyncWrite([]byte("hello"), websocket.TypeText, func(err error) {
+			if err != nil {
+				panic(err)
+			}
+
+			var b [128]byte
+			client.AsyncNextMessage(b[:], func(err error, n int, mt websocket.MessageType) {
 				if err != nil {
 					panic(err)
-				} else {
-					b := make([]byte, 128)
-					client.AsyncNextMessage(b, func(err error, n int, mt websocket.MessageType) {
-						if err != nil {
-							panic(err)
-						} else {
-							b = b[:n]
-							fmt.Println("read", n, "bytes", string(b), err)
-						}
-					})
 				}
+				fmt.Println("read", n, "bytes", string(b[:n]), err)
 			})
-		}
+		})
 	})
 
-	for {
-		ioc.RunOneFor(0) // poll
-	}
+	ioc.Run()
 }

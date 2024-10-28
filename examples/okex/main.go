@@ -21,48 +21,6 @@ var subscriptionMessage = []byte(
 }
 		`)
 
-var b = make([]byte, 512*1024) // contains websocket payloads
-
-func run(stream websocket.Stream) {
-	stream.AsyncHandshake("wss://ws.okx.com:8443/ws/v5/public", func(err error) {
-		onHandshake(err, stream)
-	})
-}
-
-func onHandshake(err error, stream websocket.Stream) {
-	if err != nil {
-		panic(err)
-	} else {
-		stream.AsyncWrite(subscriptionMessage, websocket.TypeText, func(err error) {
-			onWrite(err, stream)
-		})
-	}
-}
-
-func onWrite(err error, stream websocket.Stream) {
-	if err != nil {
-		panic(err)
-	} else {
-		readLoop(stream)
-	}
-}
-
-func readLoop(stream websocket.Stream) {
-	var onRead websocket.AsyncMessageCallback
-	onRead = func(err error, n int, _ websocket.MessageType) {
-		if err != nil {
-			panic(err)
-		} else {
-			b = b[:n]
-			fmt.Println(string(b))
-			b = b[:cap(b)]
-
-			stream.AsyncNextMessage(b, onRead)
-		}
-	}
-	stream.AsyncNextMessage(b, onRead)
-}
-
 func main() {
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -72,7 +30,31 @@ func main() {
 		panic(err)
 	}
 
-	run(stream)
+	stream.AsyncHandshake("wss://ws.okx.com:8443/ws/v5/public", func(err error) {
+		if err != nil {
+			panic(err)
+		}
+
+		stream.AsyncWrite(subscriptionMessage, websocket.TypeText, func(err error) {
+			if err != nil {
+				panic(err)
+			}
+
+			var (
+				b      [1024 * 512]byte
+				onRead websocket.AsyncMessageCallback
+			)
+			onRead = func(err error, n int, _ websocket.MessageType) {
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Println(string(b[:n]))
+				stream.AsyncNextMessage(b[:], onRead)
+			}
+			stream.AsyncNextMessage(b[:], onRead)
+		})
+	})
 
 	ioc.Run()
 }
