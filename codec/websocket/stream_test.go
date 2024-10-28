@@ -12,7 +12,7 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-func assertState(t *testing.T, ws *WebsocketStream, expected StreamState) {
+func assertState(t *testing.T, ws *Stream, expected StreamState) {
 	if ws.State() != expected {
 		t.Fatalf("wrong state: given=%s expected=%s ", ws.State(), expected)
 	}
