@@ -23,7 +23,7 @@ type FrameCodec struct {
 
 func NewFrameCodec(src, dst *sonic.ByteBuffer) *FrameCodec {
 	return &FrameCodec{
-		decodeFrame: newFrame(),
+		decodeFrame: NewFrame(),
 		src:         src,
 		dst:         dst,
 	}

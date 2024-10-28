@@ -12,7 +12,7 @@ import (
 	"github.com/talostrading/sonic"
 )
 
-func assertState(t *testing.T, ws Stream, expected StreamState) {
+func assertState(t *testing.T, ws *WebsocketStream, expected StreamState) {
 	if ws.State() != expected {
 		t.Fatalf("wrong state: given=%s expected=%s ", ws.State(), expected)
 	}
@@ -938,7 +938,7 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			f := newFrame()
+			f := NewFrame()
 
 			_, err = f.ReadFrom(mock.b)
 			if err != nil {
@@ -983,7 +983,7 @@ func TestClientWrite(t *testing.T) {
 	} else {
 		mock.b.Commit(mock.b.WriteLen())
 
-		f := newFrame()
+		f := NewFrame()
 
 		_, err = f.ReadFrom(mock.b)
 		if err != nil {
@@ -1023,7 +1023,7 @@ func TestClientAsyncWrite(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			f := newFrame()
+			f := NewFrame()
 			_, err = f.ReadFrom(mock.b)
 			if err != nil {
 				t.Fatal(err)
@@ -1063,7 +1063,7 @@ func TestClientClose(t *testing.T) {
 	} else {
 		mock.b.Commit(mock.b.WriteLen())
 
-		f := newFrame()
+		f := NewFrame()
 		_, err = f.ReadFrom(mock.b)
 		if err != nil {
 			t.Fatal(err)
@@ -1108,7 +1108,7 @@ func TestClientAsyncClose(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			f := newFrame()
+			f := NewFrame()
 			_, err = f.ReadFrom(mock.b)
 			if err != nil {
 				t.Fatal(err)
@@ -1157,7 +1157,7 @@ func TestClientCloseHandshakeWeStart(t *testing.T) {
 
 		mock.b.Commit(mock.b.WriteLen())
 
-		serverReply := newFrame()
+		serverReply := NewFrame()
 		serverReply.SetFIN()
 		serverReply.SetClose()
 		serverReply.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
@@ -1206,7 +1206,7 @@ func TestClientAsyncCloseHandshakeWeStart(t *testing.T) {
 		} else {
 			mock.b.Commit(mock.b.WriteLen())
 
-			serverReply := newFrame()
+			serverReply := NewFrame()
 			serverReply.SetFIN()
 			serverReply.SetClose()
 			serverReply.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
@@ -1251,7 +1251,7 @@ func TestClientCloseHandshakePeerStarts(t *testing.T) {
 	ws.state = StateActive
 	ws.init(mock)
 
-	serverClose := newFrame()
+	serverClose := NewFrame()
 	serverClose.SetFIN()
 	serverClose.SetClose()
 	serverClose.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))
@@ -1297,7 +1297,7 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 	ws.state = StateActive
 	ws.init(mock)
 
-	serverClose := newFrame()
+	serverClose := NewFrame()
 	serverClose.SetFIN()
 	serverClose.SetClose()
 	serverClose.SetPayload(EncodeCloseFramePayload(CloseNormal, "bye"))

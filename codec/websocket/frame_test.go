@@ -11,7 +11,7 @@ import (
 
 func TestUnder126Frame(t *testing.T) {
 	var (
-		f   = newFrame()
+		f   = NewFrame()
 		raw = []byte{0x81, 5} // fin=1 opcode=1 (text) payload_len=5
 	)
 	raw = append(raw, genRandBytes(5)...)
@@ -28,7 +28,7 @@ func TestUnder126Frame(t *testing.T) {
 
 func Test126Frame(t *testing.T) {
 	var (
-		f   = newFrame()
+		f   = NewFrame()
 		raw = []byte{0x81, 126, 0, 200}
 	)
 	raw = append(raw, genRandBytes(200)...)
@@ -45,7 +45,7 @@ func Test126Frame(t *testing.T) {
 
 func Test127Frame(t *testing.T) {
 	var (
-		f   = newFrame()
+		f   = NewFrame()
 		raw = []byte{0x81, 127, 0, 0, 0, 0, 0, 0x01, 0xFF, 0xFF}
 	)
 	raw = append(raw, genRandBytes(131071)...)
@@ -62,7 +62,7 @@ func Test127Frame(t *testing.T) {
 
 func TestWriteFrame(t *testing.T) {
 	var (
-		f       = newFrame()
+		f       = NewFrame()
 		payload = []byte("heloo")
 	)
 
@@ -96,7 +96,7 @@ func TestSameFrameWriteRead(t *testing.T) {
 		header  = []byte{0x81, 5}
 		payload = genRandBytes(5)
 		buf     = sonic.NewByteBuffer()
-		f       = newFrame()
+		f       = NewFrame()
 	)
 
 	buf.Write(header)
