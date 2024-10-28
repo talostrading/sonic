@@ -81,6 +81,18 @@ func (f Frame) IsFIN() bool {
 	return f[0]&bitFIN != 0
 }
 
+func (f Frame) IsRSV1() bool {
+	return f[0]&bitRSV1 != 0
+}
+
+func (f Frame) IsRSV2() bool {
+	return f[0]&bitRSV2 != 0
+}
+
+func (f Frame) IsRSV3() bool {
+	return f[0]&bitRSV3 != 0
+}
+
 func (f Frame) Opcode() Opcode {
 	return Opcode(f[0] & bitmaskOpcode)
 }
@@ -108,6 +120,21 @@ func (f Frame) MaskBytes() int {
 
 func (f *Frame) SetFIN() *Frame {
 	(*f)[0] |= bitFIN
+	return f
+}
+
+func (f *Frame) SetRSV1() *Frame {
+	(*f)[0] |= bitRSV1
+	return f
+}
+
+func (f *Frame) SetRSV2() *Frame {
+	(*f)[0] |= bitRSV2
+	return f
+}
+
+func (f *Frame) SetRSV3() *Frame {
+	(*f)[0] |= bitRSV3
 	return f
 }
 

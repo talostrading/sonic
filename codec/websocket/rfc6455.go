@@ -24,6 +24,9 @@ const (
 	frameHeaderLength = 2
 
 	bitFIN        = byte(1 << 7)
+	bitRSV1       = byte(1 << 6)
+	bitRSV2       = byte(1 << 5)
+	bitRSV3       = byte(1 << 4)
 	bitmaskOpcode = byte(1<<4 - 1)
 
 	bitIsMasked          = byte(1 << 7)
