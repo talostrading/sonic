@@ -6,8 +6,57 @@ import (
 	"crypto/rand"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/talostrading/sonic"
 )
+
+type partialFrameWriter struct {
+	b       [1024]byte
+	invoked int
+}
+
+func (w *partialFrameWriter) Write(b []byte) (n int, err error) {
+	copy(w.b[w.invoked:w.invoked+1], b)
+	w.invoked++
+	return 1, nil
+}
+
+func (w *partialFrameWriter) Bytes() []byte {
+	return w.b[:w.invoked]
+}
+
+func TestFramePartialWrites(t *testing.T) {
+	assert := assert.New(t)
+
+	payload := make([]byte, 126)
+	for i := 0; i < len(payload); i++ {
+		payload[i] = 0
+	}
+	copy(payload, []byte("something"))
+
+	f := NewFrame()
+	f.SetFIN().SetText().SetPayload(payload)
+	assert.Equal(2, f.ExtendedPayloadLengthBytes())
+	assert.Equal(126, f.PayloadLength())
+
+	w := &partialFrameWriter{}
+	f.WriteTo(w)
+	assert.Equal(2 /* mandatory flags */ +2 /* 2 bytes for the extended payload length */ +126 /* payload */, w.invoked)
+	assert.Equal(130, len(w.Bytes()))
+
+	// deserialize to make sure the frames are identical
+	{
+		f := Frame(w.Bytes())
+		assert.True(f.IsFIN())
+		assert.True(f.Opcode().IsText())
+		assert.Equal(126, f.PayloadLength())
+		assert.Equal(2, f.ExtendedPayloadLengthBytes())
+		assert.Equal("something", string(f.Payload()[:len("something")]))
+		for i := len("something"); i < len(f.Payload()); i++ {
+			assert.Equal(0, int(f.Payload()[i]))
+		}
+	}
+}
 
 func TestUnder126Frame(t *testing.T) {
 	var (
