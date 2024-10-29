@@ -14,7 +14,7 @@ import (
 
 const (
 	MaxControlFramePayloadLength = 125
-	MaxFrameHeaderLengthInBytes  = 14 // 14 bytes max for the header of a frame i.e. everything without the payload
+	frameMaxHeaderLength         = 14 // 14 bytes max for the header of a frame i.e. everything without the payload
 )
 
 const (

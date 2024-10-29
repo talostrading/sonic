@@ -620,7 +620,7 @@ func (s *Stream) AsyncWriteFrame(f *Frame, callback func(err error)) {
 
 func (s *Stream) prepareWrite(f *Frame) {
 	if s.role == RoleClient {
-		f.Mask()
+		f.MaskPayload()
 	}
 	s.pendingFrames = append(s.pendingFrames, f)
 }
