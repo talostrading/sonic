@@ -304,8 +304,6 @@ func (f *Frame) ReadFrom(r io.Reader) (n int64, err error) {
 }
 
 func (f Frame) WriteTo(w io.Writer) (int64, error) {
-	// TODO test partial write
-
 	written := 0
 	for written < len(f) {
 		n, err := w.Write(f[written:])
