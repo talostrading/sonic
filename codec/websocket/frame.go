@@ -163,7 +163,7 @@ func (f Frame) extendedPayloadLengthOffset() int {
 	return frameHeaderLength
 }
 
-func (f Frame) ExtendedPayloadLength() []byte {
+func (f Frame) extendedPayloadLength() []byte {
 	if bytes := f.ExtendedPayloadLengthBytes(); bytes > 0 {
 		b := f[frameHeaderLength:]
 		return b[:bytes]
@@ -270,7 +270,7 @@ func (f *Frame) ReadFrom(r io.Reader) (n int64, err error) {
 	}
 
 	// read the extended payload length, if any
-	if b := f.ExtendedPayloadLength(); b != nil {
+	if b := f.extendedPayloadLength(); b != nil {
 		nn, err = io.ReadFull(r, b)
 		n += int64(nn)
 		if err != nil {
