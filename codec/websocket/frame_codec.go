@@ -101,7 +101,7 @@ func (c *FrameCodec) Encode(frame Frame, dst *sonic.ByteBuffer) error {
 	// TODO this can be improved: we can serialize directly in the buffer with zero-copy semantics
 
 	// ensure the destination buffer can hold the serialized frame
-	dst.Reserve(frame.PayloadLength() + MaxFrameHeaderLengthInBytes)
+	dst.Reserve(frame.PayloadLength() + frameMaxHeaderLength)
 
 	n, err := frame.WriteTo(dst)
 	dst.Commit(int(n))

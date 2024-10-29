@@ -90,7 +90,7 @@ func (s *MockServer) Read(b []byte) (n int, err error) {
 			return 0, fmt.Errorf("client frames should be masked")
 		}
 
-		f.Unmask()
+		f.UnmaskPayload()
 		copy(b, f.Payload())
 		n = f.PayloadLength()
 	}

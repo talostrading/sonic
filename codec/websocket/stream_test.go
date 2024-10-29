@@ -51,7 +51,7 @@ func TestClientServerSendsInvalidCloseCode(t *testing.T) {
 
 			assert.True(frame.Opcode().IsClose())
 			assert.True(frame.IsMasked()) // client to server frames are masked
-			frame.Unmask()
+			frame.UnmaskPayload()
 
 			closeCode, reason := DecodeCloseFramePayload(frame.Payload())
 			assert.Equal(CloseProtocolError, closeCode)
@@ -114,7 +114,7 @@ func TestClientEchoCloseCode(t *testing.T) {
 
 			assert.True(frame.Opcode().IsClose())
 			assert.True(frame.IsMasked()) // client to server frames are masked
-			frame.Unmask()
+			frame.UnmaskPayload()
 
 			closeCode, reason := DecodeCloseFramePayload(frame.Payload())
 			assert.Equal(CloseNormal, closeCode)
@@ -183,7 +183,7 @@ func TestClientSendPingWithInvalidPayload(t *testing.T) {
 
 			assert.True(frame.Opcode().IsClose())
 			assert.True(frame.IsMasked()) // client to server frames are masked
-			frame.Unmask()
+			frame.UnmaskPayload()
 
 			closeCode, reason := DecodeCloseFramePayload(frame.Payload())
 			assert.Equal(CloseProtocolError, closeCode)
@@ -773,7 +773,7 @@ func TestClientReadCorruptControlFrame(t *testing.T) {
 	assertState(t, ws, StateClosedByUs)
 
 	closeFrame := ws.pendingFrames[0]
-	closeFrame.Unmask()
+	closeFrame.UnmaskPayload()
 
 	cc, _ := DecodeCloseFramePayload(ws.pendingFrames[0].Payload())
 	if cc != CloseProtocolError {
@@ -817,7 +817,7 @@ func TestClientAsyncReadCorruptControlFrame(t *testing.T) {
 		assertState(t, ws, StateClosedByUs)
 
 		closeFrame := ws.pendingFrames[0]
-		closeFrame.Unmask()
+		closeFrame.UnmaskPayload()
 
 		cc, _ := DecodeCloseFramePayload(ws.pendingFrames[0].Payload())
 		if cc != CloseProtocolError {
@@ -864,7 +864,7 @@ func TestClientReadPingFrame(t *testing.T) {
 			t.Fatal("invalid pong reply")
 		}
 
-		reply.Unmask()
+		reply.UnmaskPayload()
 		if !bytes.Equal(reply.Payload(), []byte{0x01, 0x02}) {
 			t.Fatal("invalid pong reply")
 		}
@@ -917,7 +917,7 @@ func TestClientAsyncReadPingFrame(t *testing.T) {
 			t.Fatal("invalid pong reply")
 		}
 
-		reply.Unmask()
+		reply.UnmaskPayload()
 		if !bytes.Equal(reply.Payload(), []byte{0x01, 0x02}) {
 			t.Fatal("invalid pong reply")
 		}
@@ -1077,7 +1077,7 @@ func TestClientReadCloseFrame(t *testing.T) {
 		if !reply.IsMasked() {
 			t.Fatal("reply should be masked")
 		}
-		reply.Unmask()
+		reply.UnmaskPayload()
 
 		cc, reason := DecodeCloseFramePayload(reply.Payload())
 		if !(cc == CloseNormal && reason == "bye") {
@@ -1140,7 +1140,7 @@ func TestClientAsyncReadCloseFrame(t *testing.T) {
 		if !reply.IsMasked() {
 			t.Fatal("reply should be masked")
 		}
-		reply.Unmask()
+		reply.UnmaskPayload()
 
 		cc, reason := DecodeCloseFramePayload(reply.Payload())
 		if !(cc == CloseNormal && reason == "bye") {
@@ -1209,7 +1209,7 @@ func TestClientWriteFrame(t *testing.T) {
 			t.Fatal("frame is corrupt, something went wrong with the encoder")
 		}
 
-		f.Unmask()
+		f.UnmaskPayload()
 
 		if !bytes.Equal(f.Payload(), []byte{1, 2, 3, 4, 5}) {
 			t.Fatal("frame payload is corrupt, something went wrong with the encoder")
@@ -1258,7 +1258,7 @@ func TestClientAsyncWriteFrame(t *testing.T) {
 				t.Fatal("frame is corrupt, something went wrong with the encoder")
 			}
 
-			f.Unmask()
+			f.UnmaskPayload()
 
 			if !bytes.Equal(f.Payload(), []byte{1, 2, 3, 4, 5}) {
 				t.Fatal("frame payload is corrupt, something went wrong with the encoder")
@@ -1303,7 +1303,7 @@ func TestClientWrite(t *testing.T) {
 			t.Fatal("frame is corrupt, something went wrong with the encoder")
 		}
 
-		f.Unmask()
+		f.UnmaskPayload()
 
 		if !bytes.Equal(f.Payload(), []byte{1, 2, 3, 4, 5}) {
 			t.Fatal("frame payload is corrupt, something went wrong with the encoder")
@@ -1342,7 +1342,7 @@ func TestClientAsyncWrite(t *testing.T) {
 				t.Fatal("frame is corrupt, something went wrong with the encoder")
 			}
 
-			f.Unmask()
+			f.UnmaskPayload()
 
 			if !bytes.Equal(f.Payload(), []byte{1, 2, 3, 4, 5}) {
 				t.Fatal("frame payload is corrupt, something went wrong with the encoder")
@@ -1382,7 +1382,7 @@ func TestClientClose(t *testing.T) {
 			t.Fatal("frame is corrupt, something went wrong with the encoder")
 		}
 
-		f.Unmask()
+		f.UnmaskPayload()
 
 		if f.PayloadLength() != 5 {
 			t.Fatal("wrong message in close frame")
@@ -1427,7 +1427,7 @@ func TestClientAsyncClose(t *testing.T) {
 				t.Fatal("frame is corrupt, something went wrong with the encoder")
 			}
 
-			f.Unmask()
+			f.UnmaskPayload()
 
 			if f.PayloadLength() != 5 {
 				t.Fatal("wrong message in close frame")

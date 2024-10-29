@@ -7,7 +7,7 @@ import (
 	"github.com/talostrading/sonic/util"
 )
 
-var zeroBytes [MaxFrameHeaderLengthInBytes]byte
+var zeroBytes [frameMaxHeaderLength]byte
 
 func init() {
 	for i := 0; i < len(zeroBytes); i++ {
@@ -24,7 +24,9 @@ var (
 
 // NOTE use stream.AcquireFrame() instead of NewFrame if you intend to write this frame onto a WebSocket stream.
 func NewFrame() Frame {
-	return make([]byte, MaxFrameHeaderLengthInBytes)
+	b := make([]byte, frameMaxHeaderLength)
+	copy(b, zeroBytes[:])
+	return b
 }
 
 func (f Frame) Reset() {
@@ -48,28 +50,6 @@ func (f Frame) PayloadLength() int {
 	} else {
 		return int(length)
 	}
-}
-
-func (f Frame) clearPayloadLength() {
-	f[1] &= (1 << 7)
-}
-
-func (f *Frame) setPayloadLength(n int) *Frame {
-	f.clearPayloadLength()
-
-	if n > (1<<16 - 1) {
-		// does not fit in 2 bytes, so take 8 as extended payload length
-		(*f)[1] |= 127
-		binary.BigEndian.PutUint64((*f)[2:], uint64(n))
-	} else if n > 125 {
-		// fits in 2 bytes as extended payload length
-		(*f)[1] |= 126
-		binary.BigEndian.PutUint16((*f)[2:], uint16(n))
-	} else {
-		// can be encoded in the 7 bits of the payload length, no extended payload length taken
-		(*f)[1] |= byte(n)
-	}
-	return f
 }
 
 // An unfragmented message consists of a single frame with the FIN bit set and an opcode other than 0.
@@ -179,7 +159,7 @@ func (f *Frame) SetPong() *Frame {
 	return f
 }
 
-func (f Frame) extendedPayloadLengthStartIndex() int {
+func (f Frame) extendedPayloadLengthOffset() int {
 	return frameHeaderLength
 }
 
@@ -195,37 +175,44 @@ func (f Frame) Header() []byte {
 	return f[:frameHeaderLength]
 }
 
-func (f *Frame) maskStartIndex() int {
+func (f *Frame) maskOffset() int {
 	return frameHeaderLength + f.ExtendedPayloadLengthBytes()
 }
 
-func (f Frame) MaskKey() []byte {
+func (f Frame) Mask() []byte {
 	if f.IsMasked() {
-		mask := f[f.maskStartIndex():]
+		mask := f[f.maskOffset():]
 		return mask[:frameMaskLength]
 	}
 	return nil
 }
 
-func (f Frame) payloadStartIndex() int {
+func (f Frame) payloadOffset() int {
 	return frameHeaderLength + f.ExtendedPayloadLengthBytes() + f.MaskBytes()
 }
 
-func (f *Frame) fitPayload() ([]byte, error) {
-	length := f.PayloadLength()
-	if length <= 0 {
-		return nil, nil
-	}
+func (f *Frame) setPayloadLength(n int) *Frame {
+	(*f)[1] &= (1 << 7)
 
-	*f = util.ExtendSlice(*f, f.payloadStartIndex()+length)
-	b := (*f)[f.payloadStartIndex():]
-	return b[:length], nil
+	if n > (1<<16 - 1) {
+		// does not fit in 2 bytes, so take 8 as extended payload length
+		(*f)[1] |= 127
+		binary.BigEndian.PutUint64((*f)[2:], uint64(n))
+	} else if n > 125 {
+		// fits in 2 bytes as extended payload length
+		(*f)[1] |= 126
+		binary.BigEndian.PutUint16((*f)[2:], uint16(n))
+	} else {
+		// can be encoded in the 7 bits of the payload length, no extended payload length taken
+		(*f)[1] |= byte(n)
+	}
+	return f
 }
 
 func (f *Frame) SetPayload(b []byte) *Frame {
-	f.setPayloadLength(len(b)) // set the length as it's used by `payloadStartIndex`.
+	f.setPayloadLength(len(b)) // set the length as it's used by `payloadOffset`.
 
-	*f = util.ExtendSlice(*f, f.payloadStartIndex()+len(b))
+	*f = util.ExtendSlice(*f, f.payloadOffset()+len(b))
 	payload := f.Payload()
 	copy(payload, b)
 
@@ -233,14 +220,14 @@ func (f *Frame) SetPayload(b []byte) *Frame {
 }
 
 func (f Frame) Payload() []byte {
-	return f[f.payloadStartIndex():]
+	return f[f.payloadOffset():]
 }
 
-func (f *Frame) Mask() {
+func (f *Frame) MaskPayload() {
 	f.SetIsMasked()
 
 	var (
-		mask    = f.MaskKey()
+		mask    = f.Mask()
 		payload = f.Payload()
 	)
 
@@ -250,15 +237,26 @@ func (f *Frame) Mask() {
 	}
 }
 
-func (f *Frame) Unmask() {
+func (f *Frame) UnmaskPayload() {
 	if f.IsMasked() {
 		var (
-			mask    = f.MaskKey()
+			mask    = f.Mask()
 			payload = f.Payload()
 		)
 		Mask(mask, payload)
 		// Does not unset the IsMasked bit in order to not mess up the offset at which the payload is found.
 	}
+}
+
+func (f *Frame) fitPayload() ([]byte, error) {
+	length := f.PayloadLength()
+	if length <= 0 {
+		return nil, nil
+	}
+
+	*f = util.ExtendSlice(*f, f.payloadOffset()+length)
+	b := (*f)[f.payloadOffset():]
+	return b[:length], nil
 }
 
 func (f *Frame) ReadFrom(r io.Reader) (n int64, err error) {
@@ -282,7 +280,7 @@ func (f *Frame) ReadFrom(r io.Reader) (n int64, err error) {
 
 	// read the mask, if any
 	if f.IsMasked() {
-		nn, err = io.ReadFull(r, f.MaskKey())
+		nn, err = io.ReadFull(r, f.Mask())
 		n += int64(nn)
 		if err != nil {
 			return
@@ -294,16 +292,20 @@ func (f *Frame) ReadFrom(r io.Reader) (n int64, err error) {
 	if err != nil {
 		return
 	}
-	nn, err = io.ReadFull(r, b)
-	n += int64(nn)
-	if err != nil {
-		return
+	if b != nil {
+		nn, err = io.ReadFull(r, b)
+		n += int64(nn)
+		if err != nil {
+			return
+		}
 	}
 
 	return
 }
 
 func (f Frame) WriteTo(w io.Writer) (int64, error) {
+	// TODO test partial write
+
 	written := 0
 	for written < len(f) {
 		n, err := w.Write(f[written:])
