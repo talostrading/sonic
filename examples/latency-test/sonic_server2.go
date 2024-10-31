@@ -4,8 +4,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/sonicopts"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/sonicopts"
 )
 
 var (

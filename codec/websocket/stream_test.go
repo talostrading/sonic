@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 func assertState(t *testing.T, ws Stream, expected StreamState) {

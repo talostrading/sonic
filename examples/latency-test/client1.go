@@ -3,7 +3,7 @@ package main
 import (
 	"flag"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 var addr = flag.String("addr", "localhost:8080", "address to connect to")

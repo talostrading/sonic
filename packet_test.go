@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/internal"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 func sendTo(b []byte, addr string) error {

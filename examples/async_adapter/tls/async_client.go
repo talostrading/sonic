@@ -7,7 +7,7 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 var (

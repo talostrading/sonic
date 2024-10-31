@@ -9,7 +9,7 @@ import (
 	"net/http/httputil"
 	"sync/atomic"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 // MockServer is a server which can be used to test the WebSocket client.

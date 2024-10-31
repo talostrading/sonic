@@ -4,7 +4,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/talostrading/sonic/internal"
+	"github.com/csdenboer/sonic/internal"
 )
 
 func TestTCPConnListenerDefaultOpts(t *testing.T) {

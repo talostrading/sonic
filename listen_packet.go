@@ -1,6 +1,6 @@
 package sonic
 
-import "github.com/talostrading/sonic/sonicopts"
+import "github.com/csdenboer/sonic/sonicopts"
 
 func ListenPacket(
 	ioc *IO,

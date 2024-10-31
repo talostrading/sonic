@@ -7,9 +7,9 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/multicast"
-	"github.com/talostrading/sonic/util"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/multicast"
+	"github.com/csdenboer/sonic/util"
 )
 
 var (

@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/net/ipv4"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/net/ipv4"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 // TODO: really don't know how to make this run on my mac

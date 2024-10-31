@@ -5,7 +5,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 func TestUDPPeerIPv6_Addresses(t *testing.T) {

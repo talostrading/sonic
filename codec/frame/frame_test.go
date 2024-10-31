@@ -5,9 +5,9 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicerrors"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 func TestFrameEncode(t *testing.T) {

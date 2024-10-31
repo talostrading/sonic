@@ -1,6 +1,6 @@
 package sonic
 
-import "github.com/talostrading/sonic/util"
+import "github.com/csdenboer/sonic/util"
 
 // SlotOffsetter helps with offsetting a Slot's Index such that the bytes
 // referred by the slot can be safely removed from a ByteBuffer's saved area.

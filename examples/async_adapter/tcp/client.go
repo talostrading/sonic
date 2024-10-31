@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/util"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/util"
 )
 
 var n = flag.Int("n", 10, "number of connections")

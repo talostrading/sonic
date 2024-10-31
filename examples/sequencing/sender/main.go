@@ -10,9 +10,9 @@ import (
 	dbg "runtime/debug"
 	"time"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/multicast"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/multicast"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 var (

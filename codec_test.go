@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 var _ Codec[TestItem, TestItem] = &TestCodec{}

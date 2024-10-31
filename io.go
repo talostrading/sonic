@@ -7,8 +7,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/internal"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 // IO is the executor of all asynchronous operations and the way any object can schedule them. It runs fully in the

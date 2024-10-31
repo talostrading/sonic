@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/codec/frame"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/codec/frame"
 )
 
 var (

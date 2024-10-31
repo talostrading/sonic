@@ -4,7 +4,7 @@ import (
 	"log"
 	"sort"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 var _ ByteBufferProcessor = &SimpleProcessor{}

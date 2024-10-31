@@ -3,7 +3,7 @@ package ipv4
 import (
 	"syscall"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 const IP_MULTICAST_ALL = 49 /* grepped torvalds/linux */

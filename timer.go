@@ -3,8 +3,8 @@ package sonic
 import (
 	"time"
 
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/internal"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 type timerState uint8

@@ -4,8 +4,8 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/codec/websocket"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/codec/websocket"
 )
 
 var subscriptionMessage = []byte(

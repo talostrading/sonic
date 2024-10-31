@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 func TestDecodeShortFrame(t *testing.T) {

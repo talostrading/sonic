@@ -5,8 +5,8 @@ import (
 	"log"
 	"net/netip"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/multicast"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/multicast"
 )
 
 var (

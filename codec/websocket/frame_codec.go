@@ -3,7 +3,7 @@ package websocket
 import (
 	"errors"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 var _ sonic.Codec[*Frame, *Frame] = &FrameCodec{}

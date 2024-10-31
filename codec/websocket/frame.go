@@ -6,7 +6,7 @@ import (
 	"io"
 	"sync"
 
-	"github.com/talostrading/sonic/util"
+	"github.com/csdenboer/sonic/util"
 )
 
 var zeroBytes = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}

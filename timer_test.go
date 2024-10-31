@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 const TimerTestDuration = time.Millisecond

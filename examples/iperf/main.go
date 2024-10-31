@@ -16,8 +16,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/internal"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/internal"
 )
 
 var (
