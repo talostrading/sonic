@@ -147,7 +147,7 @@ func (p *poller) Posted() int {
 
 func (p *poller) Poll(timeoutMs int) (n int, err error) {
 	/* #nosec G103 -- the use of unsafe has been audited */
-	nn, _, errno := syscall.Syscall6(
+	nn, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_WAIT,
 		uintptr(p.fd),
 		uintptr(unsafe.Pointer(&p.events[0])),
@@ -245,7 +245,7 @@ func (p *poller) setRW(fd int, slot *Slot, flag PollerEvent) error {
 
 func (p *poller) add(fd int, event Event) error {
 	/* #nosec G103 -- the use of unsafe has been audited */
-	_, _, errno := syscall.Syscall6(
+	_, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
 		uintptr(syscall.EPOLL_CTL_ADD),
@@ -261,7 +261,7 @@ func (p *poller) add(fd int, event Event) error {
 
 func (p *poller) modify(fd int, event Event) error {
 	/* #nosec G103 -- the use of unsafe has been audited */
-	_, _, errno := syscall.Syscall6(
+	_, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
 		uintptr(syscall.EPOLL_CTL_MOD),
@@ -311,7 +311,7 @@ func (p *poller) DelWrite(slot *Slot) error {
 }
 
 func (p *poller) del(fd int) error {
-	_, _, errno := syscall.Syscall6(
+	_, _, errno := syscall.RawSyscall6(
 		syscall.SYS_EPOLL_CTL,
 		uintptr(p.fd),
 		uintptr(syscall.EPOLL_CTL_DEL),
