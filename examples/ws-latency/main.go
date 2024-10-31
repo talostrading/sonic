@@ -9,9 +9,9 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/codec/websocket"
-	"github.com/talostrading/sonic/util"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/codec/websocket"
+	"github.com/csdenboer/sonic/util"
 )
 
 // Sends a websocket ping with time t1 in the payload. Per the WebSocket protocol, the peer must reply with a pong

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 const testDur = "WEBSOCKET_INTEGRATION_TEST_DUR"

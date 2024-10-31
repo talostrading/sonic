@@ -12,7 +12,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 type PollerEvent uint32

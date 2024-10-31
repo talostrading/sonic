@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic/sonicopts"
+	"github.com/csdenboer/sonic/sonicopts"
 )
 
 func TestConnUDPAsyncWrite(t *testing.T) {

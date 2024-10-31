@@ -4,7 +4,7 @@ import (
 	"log"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 type Reader interface {

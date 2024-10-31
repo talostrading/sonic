@@ -12,7 +12,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 var oneByte = [1]byte{0}

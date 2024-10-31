@@ -3,7 +3,7 @@
 package ipv4
 
 import (
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 func SetMulticastAll(socket *sonic.Socket, all bool) error {

@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 // SizeofIPMreqSource I would love to do unsafe.SizeOf  but for a struct with

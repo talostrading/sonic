@@ -7,10 +7,10 @@ import (
 	"net/netip"
 	"syscall"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/net/ipv4"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/internal"
+	"github.com/csdenboer/sonic/net/ipv4"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 var emptyIPv4Addr = [4]byte{0x0, 0x0, 0x0, 0x0}

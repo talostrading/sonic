@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/sonicopts"
+	"github.com/csdenboer/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicopts"
 	"golang.org/x/sys/unix"
 )
 

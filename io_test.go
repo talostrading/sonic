@@ -2,13 +2,13 @@ package sonic
 
 import (
 	"errors"
-	"github.com/talostrading/sonic/internal"
+	"github.com/csdenboer/sonic/internal"
 	"log"
 	"runtime"
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 func TestPost(t *testing.T) {

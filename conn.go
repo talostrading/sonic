@@ -5,9 +5,9 @@ import (
 	"net"
 	"time"
 
-	"github.com/talostrading/sonic/sonicopts"
+	"github.com/csdenboer/sonic/sonicopts"
 
-	"github.com/talostrading/sonic/internal"
+	"github.com/csdenboer/sonic/internal"
 )
 
 var _ Conn = &conn{}

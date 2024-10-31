@@ -1,4 +1,4 @@
-module github.com/talostrading/sonic
+module github.com/csdenboer/sonic
 
 go 1.20
 

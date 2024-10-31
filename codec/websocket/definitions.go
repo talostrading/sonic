@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 var (

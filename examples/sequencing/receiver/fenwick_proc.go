@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 var _ ByteBufferProcessor = &FenwickProcessor{}

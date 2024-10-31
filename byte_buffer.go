@@ -3,7 +3,7 @@ package sonic
 import (
 	"io"
 
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 // ByteBuffer provides operations that make it easier to handle byte slices in

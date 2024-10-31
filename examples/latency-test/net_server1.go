@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/HdrHistogram/hdrhistogram-go"
-	"github.com/talostrading/sonic/util"
+	"github.com/csdenboer/sonic/util"
 )
 
 var (

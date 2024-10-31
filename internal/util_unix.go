@@ -8,7 +8,7 @@ import (
 	"reflect"
 	"syscall"
 
-	"github.com/talostrading/sonic/util"
+	"github.com/csdenboer/sonic/util"
 	"golang.org/x/sys/unix"
 )
 

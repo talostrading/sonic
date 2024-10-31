@@ -5,9 +5,9 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
-	"github.com/talostrading/sonic/sonicopts"
+	"github.com/csdenboer/sonic/internal"
+	"github.com/csdenboer/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/sonicopts"
 )
 
 var (

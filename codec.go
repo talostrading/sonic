@@ -4,8 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/talostrading/sonic/internal"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic/internal"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 type Encoder[Item any] interface {

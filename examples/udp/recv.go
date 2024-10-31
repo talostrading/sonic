@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 func main() {

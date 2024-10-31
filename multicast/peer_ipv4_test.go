@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/talostrading/sonic"
-	"github.com/talostrading/sonic/net/ipv4"
-	"github.com/talostrading/sonic/sonicerrors"
+	"github.com/csdenboer/sonic"
+	"github.com/csdenboer/sonic/net/ipv4"
+	"github.com/csdenboer/sonic/sonicerrors"
 )
 
 // Listing multicast group memberships: netstat -gsv

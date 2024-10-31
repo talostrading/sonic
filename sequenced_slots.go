@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/talostrading/sonic/util"
+	"github.com/csdenboer/sonic/util"
 )
 
 type sequencedSlot struct {

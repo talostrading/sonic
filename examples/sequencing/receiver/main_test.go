@@ -3,7 +3,7 @@ package main
 import (
 	"testing"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 func TestAllocProcessor(t *testing.T) {

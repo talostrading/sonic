@@ -5,7 +5,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/talostrading/sonic"
+	"github.com/csdenboer/sonic"
 )
 
 func main() {
