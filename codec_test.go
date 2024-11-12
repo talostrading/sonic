@@ -23,7 +23,7 @@ func (t *TestCodec) Encode(item TestItem, dst *ByteBuffer) error {
 	n, err := dst.Write(item.V[:])
 	dst.Commit(n)
 	if err != nil {
-		dst.Consume(n) // TODO not really happy about this (same for websocket)
+		dst.Consume(n)
 		return err
 	}
 	return nil
@@ -113,7 +113,7 @@ func setupCodecTestWriter() chan struct{} {
 	return mark
 }
 
-func TestNonblockingCodecConnAsyncReadNext(t *testing.T) {
+func TestCodecConnAsyncReadNext(t *testing.T) {
 	mark := setupCodecTestWriter()
 	defer func() { <-mark /* wait for the listener to close*/ }()
 	<-mark // wait for the listener to open
@@ -129,7 +129,7 @@ func TestNonblockingCodecConnAsyncReadNext(t *testing.T) {
 
 	src := NewByteBuffer()
 	dst := NewByteBuffer()
-	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
+	codecConn, err := NewCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
 	if err != nil {
 		t.Fatal(err)
@@ -164,7 +164,7 @@ func TestNonblockingCodecConnAsyncReadNext(t *testing.T) {
 	}
 }
 
-func TestNonblockingCodecConnReadNext(t *testing.T) {
+func TestCodecConnReadNext(t *testing.T) {
 	mark := setupCodecTestWriter()
 	defer func() { <-mark /* wait for the listener to close*/ }()
 	<-mark // wait for the listener to open
@@ -180,7 +180,7 @@ func TestNonblockingCodecConnReadNext(t *testing.T) {
 
 	src := NewByteBuffer()
 	dst := NewByteBuffer()
-	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
+	codecConn, err := NewCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
 	if err != nil {
 		t.Fatal(err)
@@ -283,7 +283,7 @@ func setupCodecTestReader() chan struct{} {
 	return mark
 }
 
-func TestNonblockingCodecConnAsyncWriteNext(t *testing.T) {
+func TestCodecConnAsyncWriteNext(t *testing.T) {
 	mark := setupCodecTestReader()
 	defer func() { <-mark /* wait for the listener to close*/ }()
 	<-mark // wait for the listener to open
@@ -298,7 +298,7 @@ func TestNonblockingCodecConnAsyncWriteNext(t *testing.T) {
 
 	src := NewByteBuffer()
 	dst := NewByteBuffer()
-	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
+	codecConn, err := NewCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
 	if err != nil {
 		t.Fatal(err)
@@ -334,7 +334,7 @@ func TestNonblockingCodecConnAsyncWriteNext(t *testing.T) {
 	}
 }
 
-func TestNonblockingCodecConnWriteNext(t *testing.T) {
+func TestCodecConnWriteNext(t *testing.T) {
 	mark := setupCodecTestReader()
 	defer func() { <-mark /* wait for the listener to close*/ }()
 	<-mark // wait for the listener to open
@@ -350,7 +350,7 @@ func TestNonblockingCodecConnWriteNext(t *testing.T) {
 
 	src := NewByteBuffer()
 	dst := NewByteBuffer()
-	codecConn, err := NewNonblockingCodecConn[TestItem, TestItem](
+	codecConn, err := NewCodecConn[TestItem, TestItem](
 		conn, &TestCodec{}, src, dst)
 	if err != nil {
 		t.Fatal(err)

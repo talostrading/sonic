@@ -2,116 +2,108 @@ package websocket
 
 import (
 	"errors"
-
 	"github.com/talostrading/sonic"
 )
 
-var _ sonic.Codec[*Frame, *Frame] = &FrameCodec{}
+var _ sonic.Codec[Frame, Frame] = &FrameCodec{}
 
 var (
 	ErrPartialPayload = errors.New("partial payload")
 )
 
-// FrameCodec is a stateful streaming parser handling the encoding
-// and decoding of WebSocket frames.
+// FrameCodec is a stateful streaming parser handling the encoding and decoding of WebSocket `Frame`s.
 type FrameCodec struct {
-	src *sonic.ByteBuffer // buffer we decode from
-	dst *sonic.ByteBuffer // buffer we encode to
+	src            *sonic.ByteBuffer // buffer we decode from
+	dst            *sonic.ByteBuffer // buffer we encode to
+	maxMessageSize int
 
-	decodeFrame *Frame // frame we decode into
-	decodeBytes int    // number of bytes of the last successfully decoded frame
-	decodeReset bool   // true if we must reset the state on the next decode
+	decodeFrame Frame // frame we decode into
+	decodeReset bool  // true if we must reset the state on the next decode
 }
 
-func NewFrameCodec(src, dst *sonic.ByteBuffer) *FrameCodec {
+func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
 	return &FrameCodec{
-		decodeFrame: NewFrame(),
-		src:         src,
-		dst:         dst,
+		decodeFrame:    NewFrame(),
+		src:            src,
+		dst:            dst,
+		maxMessageSize: maxMessageSize,
 	}
 }
 
 func (c *FrameCodec) resetDecode() {
 	if c.decodeReset {
 		c.decodeReset = false
-		c.src.Consume(c.decodeBytes)
-		c.decodeBytes = 0
+		c.src.Consume(len(c.decodeFrame))
+		c.decodeFrame = nil
 	}
 }
 
-// Decode decodes the raw bytes from `src` into a frame.
+// Decode decodes the raw bytes from `src` into a `Frame`.
 //
-// Three things can happen while decoding a raw stream of bytes into a frame:
-// 1. There are not enough bytes to construct a frame with.
+// Two things can happen while decoding a raw stream of bytes into a frame:
 //
-//	In this case, a nil frame and ErrNeedMore are returned. The caller
-//	should perform another read into `src` later.
+// 1. There are not enough bytes to construct a frame with: in this case, a `nil` `Frame` and `ErrNeedMore` are
+// returned. The caller should perform another read into `src` later.
 //
-// 2. `src` contains the bytes of one frame.
-//
-//	In this case we try to decode the frame. An appropriate error is returned
-//	if the frame is corrupt.
-//
-// 3. `src` contains the bytes of more than one frame.
-//
-//	In this case we try to decode the first frame. The rest of the bytes stay
-//	in `src`. An appropriate error is returned if the frame is corrupt.
-func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (*Frame, error) {
+// 2. `src` contains at least the bytes of one `Frame`: we decode the next `Frame` and leave the remainder bytes
+// composing a partial `Frame` or a set of `Frame`s in the `src` buffer.
+func (c *FrameCodec) Decode(src *sonic.ByteBuffer) (Frame, error) {
 	c.resetDecode()
 
-	n := 2
-	err := src.PrepareRead(n)
-	if err != nil {
+	// read the mandatory header
+	readSoFar := frameHeaderLength
+	if err := src.PrepareRead(readSoFar); err != nil {
+		c.decodeFrame = nil
 		return nil, err
 	}
-	c.decodeFrame.header = src.Data()[:n]
+	c.decodeFrame = src.Data()[:readSoFar]
 
-	// read extra header length
-	n += c.decodeFrame.ExtraHeaderLen()
-	if err := src.PrepareRead(n); err != nil {
+	// read the extended payload length (0, 2 or 8 bytes) and check if within bounds
+	readSoFar += c.decodeFrame.ExtendedPayloadLengthBytes()
+	if err := src.PrepareRead(readSoFar); err != nil {
+		c.decodeFrame = nil
 		return nil, err
 	}
-	c.decodeFrame.header = src.Data()[:n]
+	c.decodeFrame = src.Data()[:readSoFar]
 
-	// read mask if any
-	if c.decodeFrame.IsMasked() {
-		n += 4
-		if err := src.PrepareRead(n); err != nil {
-			return nil, err
-		}
-		c.decodeFrame.mask = src.Data()[n-4 : n]
-	}
-
-	// check payload length
-	npayload := c.decodeFrame.PayloadLen()
-	if npayload > MaxMessageSize {
+	payloadLength := c.decodeFrame.PayloadLength()
+	if payloadLength > c.maxMessageSize {
+		c.decodeFrame = nil
 		return nil, ErrPayloadOverMaxSize
 	}
 
-	// prepare to read the payload
-	n += npayload
-	if err := src.PrepareRead(n); err != nil {
-		// the payload might be too big for our buffer so we must allocate
-		// enough for the next Decode call to succeed
-		src.Reserve(npayload)
-		return nil, err
+	// read mask if any
+	if c.decodeFrame.IsMasked() {
+		readSoFar += frameMaskLength
+		if err := src.PrepareRead(readSoFar); err != nil {
+			c.decodeFrame = nil
+			return nil, err
+		}
+		c.decodeFrame = src.Data()[:readSoFar]
 	}
 
-	// at this point, we have a full frame in src
-	c.decodeFrame.payload = src.Data()[n-npayload : n]
-	c.decodeBytes = n
+	// read the payload; if that succeeds, we have a full frame in `src` - the decoding was successful and we can return
+	// the frame
+	readSoFar += payloadLength
+	if err := src.PrepareRead(readSoFar); err != nil {
+		src.Reserve(payloadLength) // payload is incomplete; reserve enough space for the remainder to fit in the buffer
+		c.decodeFrame = nil
+		return nil, err
+	}
+	c.decodeFrame = src.Data()[:readSoFar]
 	c.decodeReset = true
 
 	return c.decodeFrame, nil
 }
 
-// Encode encodes the frame and place the raw bytes into `dst`.
-func (c *FrameCodec) Encode(fr *Frame, dst *sonic.ByteBuffer) error {
-	// Make sure there is enough space in the buffer to hold the serialized
-	// frame.
-	dst.Reserve(fr.PayloadLen())
+// Encode encodes the `Frame` into `dst`.
+func (c *FrameCodec) Encode(frame Frame, dst *sonic.ByteBuffer) error {
+	// TODO this can be improved: we can serialize directly in the buffer with zero-copy semantics
 
-	n, err := fr.WriteTo(dst)
+	// ensure the destination buffer can hold the serialized frame
+	dst.Reserve(frame.PayloadLength() + frameMaxHeaderLength)
+
+	n, err := frame.WriteTo(dst)
 	dst.Commit(int(n))
 	if err != nil {
 		dst.Consume(int(n))

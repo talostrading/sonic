@@ -202,7 +202,8 @@ func (a *AsyncAdapter) Close() error {
 		return io.EOF
 	}
 
-	_ = a.ioc.poller.Del(&a.slot)
+	_ = a.ioc.UnsetReadWrite(&a.slot)
+	a.ioc.Deregister(&a.slot)
 
 	return syscall.Close(a.slot.Fd)
 }
@@ -244,4 +245,8 @@ func (a *AsyncAdapter) cancelWrites() {
 
 func (a *AsyncAdapter) RawFd() int {
 	return a.slot.Fd
+}
+
+func (a *AsyncAdapter) Slot() *internal.Slot {
+	return &a.slot
 }

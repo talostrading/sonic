@@ -31,7 +31,7 @@ func main() {
 	}
 	defer conn.Close()
 	log.Print("client connected, starting to read")
-	cc, err := sonic.NewNonblockingCodecConn[[]byte, []byte](conn, codec, src,
+	cc, err := sonic.NewCodecConn[[]byte, []byte](conn, codec, src,
 		dst)
 	if err != nil {
 		panic(err)

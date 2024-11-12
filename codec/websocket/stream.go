@@ -28,21 +28,16 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"sync"
 	"syscall"
-	"time"
+	"unicode/utf8"
 
 	"github.com/talostrading/sonic"
 	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/sonicopts"
 )
 
-var (
-	_           Stream = &WebsocketStream{}
-	DialTimeout        = 5 * time.Second
-)
-
-type WebsocketStream struct {
-	// async operations executor.
+type Stream struct {
 	ioc *sonic.IO
 
 	// User provided TLS config; nil if we don't use TLS
@@ -53,7 +48,8 @@ type WebsocketStream struct {
 	conn   net.Conn
 
 	// Codec stream wrapping the underlying transport stream.
-	cs *sonic.BlockingCodecConn[*Frame, *Frame]
+	codec     *FrameCodec
+	codecConn *sonic.CodecConn[Frame, Frame]
 
 	// Websocket role: client or server.
 	role Role
@@ -70,16 +66,20 @@ type WebsocketStream struct {
 	// Buffer for stream writes.
 	dst *sonic.ByteBuffer
 
-	// Contains the handshake response. Is emptied after the
-	// handshake is over.
-	hb []byte
+	// Contains the handshake response. Is emptied after the handshake is over.
+	handshakeBuffer []byte
 
-	// Contains frames waiting to be sent to the peer.
-	// Is emptied by AsyncFlush or Flush.
-	pending []*Frame
+	// Contains frames waiting to be sent to the peer. Is emptied by AsyncFlush or Flush.
+	pendingFrames []*Frame
 
 	// Optional callback invoked when a control frame is received.
-	ccb ControlCallback
+	controlCallback ControlCallback
+
+	// Optional callback invoked when an upgrade request is sent.
+	upgradeRequestCallback UpgradeRequestCallback
+
+	// Optional callback invoked when an upgrade response is received.
+	upgradeResponseCallback UpgradeResponseCallback
 
 	// Optional callback invoked when an upgrade request is sent.
 	upReqCb UpgradeRequestCallback
@@ -90,16 +90,15 @@ type WebsocketStream struct {
 	// Used to establish a TCP connection to the peer with a timeout.
 	dialer *net.Dialer
 
-	// The size of the currently read message.
-	messageSize int
+	framePool sync.Pool
+
+	maxMessageSize int
+
+	validateUTF8 bool
 }
 
-func NewWebsocketStream(
-	ioc *sonic.IO,
-	tls *tls.Config,
-	role Role,
-) (s *WebsocketStream, err error) {
-	s = &WebsocketStream{
+func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *Stream, err error) {
+	s = &Stream{
 		ioc:   ioc,
 		tls:   tls,
 		role:  role,
@@ -107,11 +106,19 @@ func NewWebsocketStream(
 		dst:   sonic.NewByteBuffer(),
 		state: StateHandshake,
 		/* #nosec G401 */
-		hasher: sha1.New(),
-		hb:     make([]byte, 1024),
+		hasher:          sha1.New(),
+		handshakeBuffer: make([]byte, 1024),
 		dialer: &net.Dialer{
 			Timeout: DialTimeout,
 		},
+		framePool: sync.Pool{
+			New: func() interface{} {
+				frame := NewFrame()
+				return &frame
+			},
+		},
+		maxMessageSize: DefaultMaxMessageSize,
+		validateUTF8:   false,
 	}
 
 	s.src.Reserve(4096)
@@ -120,22 +127,44 @@ func NewWebsocketStream(
 	return s, nil
 }
 
+// The recommended way to create a `Frame`. This function takes care to allocate enough bytes to encode the WebSocket
+// header and apply client side masking if the `Stream`'s role is `RoleClient`.
+func (s *Stream) AcquireFrame() *Frame {
+	f := s.framePool.Get().(*Frame)
+	if s.role == RoleClient {
+		// This just reserves the 4 bytes needed for the mask in order to encode the payload correctly, since it follows
+		// the mask in byte order. The actual mask is set after `f.SetPayload` in `prepareWrite`.
+		f.SetIsMasked()
+	}
+	return f
+}
+
+func (s *Stream) releaseFrame(f *Frame) {
+	f.Reset()
+	s.framePool.Put(f)
+}
+
+// This stream is either a client or a server. The main differences are in how the opening/closing handshake is done and
+// in the fact that payloads sent by the client to the server are masked.
+func (s *Stream) Role() Role {
+	return s.role
+}
+
 // init is run when we transition into StateActive which happens
 // after a successful handshake.
-func (s *WebsocketStream) init(stream sonic.Stream) (err error) {
+func (s *Stream) init(stream sonic.Stream) (err error) {
 	if s.state != StateActive {
 		return fmt.Errorf("stream must be in StateActive")
 	}
 
 	s.stream = stream
-	codec := NewFrameCodec(s.src, s.dst)
-	s.cs, err = sonic.NewBlockingCodecConn[*Frame, *Frame](
-		stream, codec, s.src, s.dst)
+	s.codec = NewFrameCodec(s.src, s.dst, s.maxMessageSize)
+	s.codecConn, err = sonic.NewCodecConn[Frame, Frame](stream, s.codec, s.src, s.dst)
 	return
 }
 
-func (s *WebsocketStream) reset() {
-	s.hb = s.hb[:cap(s.hb)]
+func (s *Stream) reset() {
+	s.handshakeBuffer = s.handshakeBuffer[:cap(s.handshakeBuffer)]
 	s.state = StateHandshake
 	s.stream = nil
 	s.conn = nil
@@ -143,27 +172,50 @@ func (s *WebsocketStream) reset() {
 	s.dst.Reset()
 }
 
-func (s *WebsocketStream) NextLayer() sonic.Stream {
-	if s.cs != nil {
-		return s.cs.NextLayer()
+// Returns the stream through which IO is done.
+func (s *Stream) NextLayer() sonic.Stream {
+	if s.codecConn != nil {
+		return s.codecConn.NextLayer()
 	}
 	return nil
 }
 
-func (s *WebsocketStream) SupportsUTF8() bool {
+// SupportsUTF8 indicates that the stream can optionally perform UTF-8 validation on the payloads of Text frames.
+// Validation is disabled by default and can be toggled with `ValidateUTF8(bool)`.
+func (s *Stream) SupportsUTF8() bool {
+	return true
+}
+
+// ValidatesUTF8 indicates if UTF-8 validation is performed on the payloads of Text frames. Validation is disabled by
+// default and can be toggled with `ValidateUTF8(bool)`.
+func (s *Stream) ValidatesUTF8() bool {
+	return s.validateUTF8
+}
+
+// ValidateUTF8 toggles UTF8 validation done on the payloads of Text frames.
+func (s *Stream) ValidateUTF8(v bool) *Stream {
+	s.validateUTF8 = v
+	return s
+}
+
+func (s *Stream) SupportsDeflate() bool {
 	return false
 }
 
-func (s *WebsocketStream) SupportsDeflate() bool {
-	return false
-}
-
-func (s *WebsocketStream) canRead() bool {
+func (s *Stream) canRead() bool {
 	// we can only read from non-terminal states after a successful handshake
 	return s.state == StateActive || s.state == StateClosedByUs
 }
 
-func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
+// NextFrame reads and returns the next frame.
+//
+// This call first flushes any pending control frames to the underlying stream.
+//
+// This call blocks until one of the following conditions is true:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs when reading/decoding the message bytes from the underlying stream
+//   - a frame is successfully read from the underlying stream
+func (s *Stream) NextFrame() (f Frame, err error) {
 	err = s.Flush()
 
 	if errors.Is(err, ErrMessageTooBig) {
@@ -186,27 +238,27 @@ func (s *WebsocketStream) NextFrame() (f *Frame, err error) {
 	return
 }
 
-func (s *WebsocketStream) nextFrame() (f *Frame, err error) {
-	f, err = s.cs.ReadNext()
+func (s *Stream) nextFrame() (f Frame, err error) {
+	f, err = s.codecConn.ReadNext()
 	if err == nil {
 		err = s.handleFrame(f)
 	}
 	return
 }
 
-func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
-	// TODO for later: here we flush first since we might need to reply
-	// to ping/pong/close immediately, and only after that we try to
-	// async read.
-	//
-	// I think we can just flush asynchronously while reading asynchronously at
-	// the same time. I'm pretty sure this will work with a BlockingCodecConn.
-	//
-	// Not entirely sure about a NonblockingCodecStream.
+// AsyncNextFrame reads and returns the next frame asynchronously.
+//
+// This call first flushes any pending control frames to the underlying stream asynchronously.
+//
+// This call does not block. The provided callback is invoked when one of the following happens:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs when reading/decoding the message bytes from the underlying stream
+//   - a frame is successfully read from the underlying stream
+func (s *Stream) AsyncNextFrame(callback AsyncFrameCallback) {
 	s.AsyncFlush(func(err error) {
 		if errors.Is(err, ErrMessageTooBig) {
 			s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
-			cb(ErrMessageTooBig, nil)
+			callback(ErrMessageTooBig, nil)
 			return
 		}
 
@@ -215,54 +267,60 @@ func (s *WebsocketStream) AsyncNextFrame(cb AsyncFrameHandler) {
 		}
 
 		if err == nil {
-			s.asyncNextFrame(cb)
+			s.asyncNextFrame(callback)
 		} else {
 			s.state = StateTerminated
-			cb(err, nil)
+			callback(err, nil)
 		}
 	})
 }
 
-func (s *WebsocketStream) asyncNextFrame(cb AsyncFrameHandler) {
-	s.cs.AsyncReadNext(func(err error, f *Frame) {
+func (s *Stream) asyncNextFrame(callback AsyncFrameCallback) {
+	s.codecConn.AsyncReadNext(func(err error, f Frame) {
 		if err == nil {
 			err = s.handleFrame(f)
 		} else if err == io.EOF {
 			s.state = StateTerminated
 		}
-		cb(err, f)
+		callback(err, f)
 	})
 }
 
-func (s *WebsocketStream) NextMessage(
-	b []byte,
-) (mt MessageType, readBytes int, err error) {
+// NextMessage reads the payload of the next message into the supplied buffer. Message fragmentation is automatically
+// handled by the implementation.
+//
+// This call first flushes any pending control frames to the underlying stream.
+//
+// This call blocks until one of the following conditions is true:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs when reading/decoding the message from the underlying stream
+//   - the payload of the message is successfully read into the supplied buffer, after all message fragments are read
+func (s *Stream) NextMessage(b []byte) (messageType MessageType, readBytes int, err error) {
 	var (
-		f            *Frame
+		f            Frame
 		continuation = false
 	)
-
-	mt = TypeNone
+	messageType = TypeNone
 
 	for {
 		f, err = s.NextFrame()
 		if err != nil {
-			return mt, readBytes, err
+			return messageType, readBytes, err
 		}
 
-		if f.IsControl() {
-			if s.ccb != nil {
-				s.ccb(MessageType(f.Opcode()), f.payload)
+		if f.Opcode().IsControl() {
+			if s.controlCallback != nil {
+				s.controlCallback(MessageType(f.Opcode()), f.Payload())
 			}
 		} else {
-			if mt == TypeNone {
-				mt = MessageType(f.Opcode())
+			if messageType == TypeNone {
+				messageType = MessageType(f.Opcode())
 			}
 
 			n := copy(b[readBytes:], f.Payload())
 			readBytes += n
 
-			if readBytes > MaxMessageSize || n != f.PayloadLen() {
+			if readBytes > s.maxMessageSize || n != f.PayloadLength() {
 				err = ErrMessageTooBig
 				_ = s.Close(CloseGoingAway, "payload too big")
 				break
@@ -271,19 +329,19 @@ func (s *WebsocketStream) NextMessage(
 			// verify continuation
 			if !continuation {
 				// this is the first frame of the series
-				continuation = !f.IsFin() //nolint:ineffassign
-				if f.IsContinuation() {
+				continuation = !f.IsFIN() //nolint:ineffassign
+				if f.Opcode().IsContinuation() {
 					err = ErrUnexpectedContinuation
 				}
 			} else {
 				// we are past the first frame of the series
-				continuation = !f.IsFin() //nolint:ineffassign
-				if !f.IsContinuation() {
+				continuation = !f.IsFIN() //nolint:ineffassign
+				if !f.Opcode().IsContinuation() {
 					err = ErrExpectedContinuation
 				}
 			}
 
-			continuation = !f.IsFin()
+			continuation = !f.IsFIN()
 
 			if err != nil || !continuation {
 				break
@@ -294,76 +352,85 @@ func (s *WebsocketStream) NextMessage(
 	return
 }
 
-func (s *WebsocketStream) AsyncNextMessage(b []byte, cb AsyncMessageHandler) {
-	s.asyncNextMessage(b, 0, false, TypeNone, cb)
+// AsyncNextMessage reads the payload of the next message into the supplied buffer asynchronously. Message fragmentation
+// is automatically handled by the implementation.
+//
+// This call first flushes any pending control frames to the underlying stream asynchronously.
+//
+// This call does not block. The provided callback is invoked when one of the following happens:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs when reading/decoding the message bytes from the underlying stream
+//   - the payload of the message is successfully read into the supplied buffer, after all message fragments are read
+func (s *Stream) AsyncNextMessage(b []byte, callback AsyncMessageCallback) {
+	s.asyncNextMessage(b, 0, false, TypeNone, callback)
 }
 
-func (s *WebsocketStream) asyncNextMessage(
+func (s *Stream) asyncNextMessage(
 	b []byte,
 	readBytes int,
 	continuation bool,
-	mt MessageType,
-	cb AsyncMessageHandler,
+	messageType MessageType,
+	callback AsyncMessageCallback,
 ) {
-	s.AsyncNextFrame(func(err error, f *Frame) {
+	s.AsyncNextFrame(func(err error, f Frame) {
 		if err != nil {
-			cb(err, readBytes, mt)
+			callback(err, readBytes, messageType)
 		} else {
-			if f.IsControl() {
-				if s.ccb != nil {
-					s.ccb(MessageType(f.Opcode()), f.payload)
+			if f.Opcode().IsControl() {
+				if s.controlCallback != nil {
+					s.controlCallback(MessageType(f.Opcode()), f.Payload())
 				}
 
-				s.asyncNextMessage(b, readBytes, continuation, mt, cb)
+				s.asyncNextMessage(b, readBytes, continuation, messageType, callback)
 			} else {
-				if mt == TypeNone {
-					mt = MessageType(f.Opcode())
+				if messageType == TypeNone {
+					messageType = MessageType(f.Opcode())
 				}
 
 				n := copy(b[readBytes:], f.Payload())
 				readBytes += n
 
-				if readBytes > MaxMessageSize || n != f.PayloadLen() {
+				if readBytes > s.maxMessageSize || n != f.PayloadLength() {
 					err = ErrMessageTooBig
 					s.AsyncClose(
 						CloseGoingAway,
 						"payload too big",
 						func(err error) {},
 					)
-					cb(err, readBytes, mt)
+					callback(err, readBytes, messageType)
 					return
 				}
 
 				// verify continuation
 				if !continuation {
 					// this is the first frame of the series
-					continuation = !f.IsFin()
-					if f.IsContinuation() {
+					continuation = !f.IsFIN()
+					if f.Opcode().IsContinuation() {
 						err = ErrUnexpectedContinuation
 					}
 				} else {
 					// we are past the first frame of the series
-					continuation = !f.IsFin()
-					if !f.IsContinuation() {
+					continuation = !f.IsFIN()
+					if !f.Opcode().IsContinuation() {
 						err = ErrExpectedContinuation
 					}
 				}
 
 				if err != nil || !continuation {
-					cb(err, readBytes, mt)
+					callback(err, readBytes, messageType)
 				} else {
-					s.asyncNextMessage(b, readBytes, continuation, mt, cb)
+					s.asyncNextMessage(b, readBytes, continuation, messageType, callback)
 				}
 			}
 		}
 	})
 }
 
-func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
+func (s *Stream) handleFrame(f Frame) (err error) {
 	err = s.verifyFrame(f)
 
 	if err == nil {
-		if f.IsControl() {
+		if f.Opcode().IsControl() {
 			err = s.handleControlFrame(f)
 		} else {
 			err = s.handleDataFrame(f)
@@ -372,13 +439,14 @@ func (s *WebsocketStream) handleFrame(f *Frame) (err error) {
 
 	if err != nil {
 		s.state = StateClosedByUs
+		// TODO consider flushing the close
 		s.prepareClose(EncodeCloseFramePayload(CloseProtocolError, ""))
 	}
 
 	return err
 }
 
-func (s *WebsocketStream) verifyFrame(f *Frame) error {
+func (s *Stream) verifyFrame(f Frame) error {
 	if f.IsRSV1() || f.IsRSV2() || f.IsRSV3() {
 		return ErrNonZeroReservedBits
 	}
@@ -394,26 +462,23 @@ func (s *WebsocketStream) verifyFrame(f *Frame) error {
 	return nil
 }
 
-func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
-	if !f.IsFin() {
+func (s *Stream) handleControlFrame(f Frame) (err error) {
+	if !f.IsFIN() {
 		return ErrInvalidControlFrame
 	}
 
-	if f.PayloadLenType() > MaxControlFramePayloadSize {
+	if f.PayloadLength() > MaxControlFramePayloadLength {
 		return ErrControlFrameTooBig
 	}
 
 	switch f.Opcode() {
 	case OpcodePing:
 		if s.state == StateActive {
-			pongFrame := AcquireFrame()
-			pongFrame.SetFin()
-			pongFrame.SetPong()
-			pongFrame.SetPayload(f.payload)
-			if s.role == RoleClient {
-				pongFrame.Mask()
-			}
-			s.pending = append(s.pending, pongFrame)
+			pongFrame := s.AcquireFrame().
+				SetFIN().
+				SetPong().
+				SetPayload(f.Payload())
+			s.prepareWrite(pongFrame)
 		}
 	case OpcodePong:
 	case OpcodeClose:
@@ -422,7 +487,25 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 			panic("unreachable")
 		case StateActive:
 			s.state = StateClosedByPeer
-			s.prepareClose(f.payload)
+
+			payload := f.Payload()
+			// The first 2 bytes are the close code. The rest, if any, is the reason - this must be UTF-8.
+			if len(payload) >= 2 {
+				if !utf8.Valid(payload[2:]) {
+					s.prepareClose(EncodeCloseCode(CloseProtocolError))
+				} else {
+					closeCode := DecodeCloseCode(payload)
+					if !ValidCloseCode(closeCode) {
+						s.prepareClose(EncodeCloseCode(CloseProtocolError))
+					} else {
+						s.prepareClose(f.Payload())
+					}
+				}
+			} else if len(payload) > 0 {
+				s.prepareClose(EncodeCloseCode(CloseProtocolError))
+			} else {
+				s.prepareClose(EncodeCloseCode(CloseNormal))
+			}
 		case StateClosedByPeer, StateCloseAcked:
 			// ignore
 		case StateClosedByUs:
@@ -438,24 +521,39 @@ func (s *WebsocketStream) handleControlFrame(f *Frame) (err error) {
 	return
 }
 
-func (s *WebsocketStream) handleDataFrame(f *Frame) error {
-	if IsReserved(f.Opcode()) {
+func (s *Stream) handleDataFrame(f Frame) error {
+	if f.Opcode().IsReserved() {
 		return ErrReservedOpcode
 	}
+
+	if f.Opcode().IsText() && s.validateUTF8 {
+		if !utf8.Valid(f.Payload()) {
+			return ErrInvalidUTF8
+		}
+	}
+
 	return nil
 }
 
-func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
-	if len(b) > MaxMessageSize {
+// Write writes the supplied buffer as a single message with the given type to the underlying stream.
+//
+// This call first flushes any pending control frames to the underlying stream.
+//
+// This call blocks until one of the following conditions is true:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs during the write
+//   - the message is successfully written to the underlying stream
+func (s *Stream) Write(b []byte, messageType MessageType) error {
+	if len(b) > s.maxMessageSize {
 		return ErrMessageTooBig
 	}
 
 	if s.state == StateActive {
-		f := AcquireFrame()
-		f.SetFin()
-		f.SetOpcode(Opcode(mt))
-		f.SetPayload(b)
-
+		// reserve space for mask if client
+		f := s.AcquireFrame().
+			SetFIN().
+			SetOpcode(Opcode(messageType)).
+			SetPayload(b)
 		s.prepareWrite(f)
 		return s.Flush()
 	}
@@ -463,82 +561,114 @@ func (s *WebsocketStream) Write(b []byte, mt MessageType) error {
 	return sonicerrors.ErrCancelled
 }
 
-func (s *WebsocketStream) WriteFrame(f *Frame) error {
+// WriteFrame writes the supplied frame to the underlying stream.
+//
+// This call first flushes any pending control frames to the underlying stream.
+//
+// This call blocks until one of the following conditions is true:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs during the write
+//   - the frame is successfully written to the underlying stream
+func (s *Stream) WriteFrame(f *Frame) error {
 	if s.state == StateActive {
 		s.prepareWrite(f)
 		return s.Flush()
 	} else {
-		ReleaseFrame(f)
+		s.releaseFrame(f)
 		return sonicerrors.ErrCancelled
 	}
 }
 
-func (s *WebsocketStream) AsyncWrite(
-	b []byte,
-	mt MessageType,
-	cb func(err error),
-) {
-	if len(b) > MaxMessageSize {
-		cb(ErrMessageTooBig)
+// AsyncWrite writes the supplied buffer as a single message with the given type to the underlying stream
+// asynchronously.
+//
+// This call first flushes any pending control frames to the underlying stream asynchronously.
+//
+// This call does not block. The provided callback is invoked when one of the following happens:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs during the write
+//   - the message is successfully written to the underlying stream
+func (s *Stream) AsyncWrite(b []byte, messageType MessageType, callback func(err error)) {
+	if len(b) > s.maxMessageSize {
+		callback(ErrMessageTooBig)
 		return
 	}
 
 	if s.state == StateActive {
-		f := AcquireFrame()
-		f.SetFin()
-		f.SetOpcode(Opcode(mt))
-		f.SetPayload(b)
-
+		f := s.AcquireFrame().
+			SetFIN().
+			SetOpcode(Opcode(messageType)).
+			SetPayload(b)
 		s.prepareWrite(f)
-		s.AsyncFlush(cb)
+		s.AsyncFlush(callback)
 	} else {
-		cb(sonicerrors.ErrCancelled)
+		callback(sonicerrors.ErrCancelled)
 	}
 }
 
-func (s *WebsocketStream) AsyncWriteFrame(f *Frame, cb func(err error)) {
+// AsyncWriteFrame writes the supplied frame to the underlying stream asynchronously.
+//
+// This call first flushes any pending control frames to the underlying stream asynchronously.
+//
+// This call does not block. The provided callback is invoked when one of the following happens:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs during the write
+//   - the frame is successfully written to the underlying stream
+func (s *Stream) AsyncWriteFrame(f *Frame, callback func(err error)) {
 	if s.state == StateActive {
 		s.prepareWrite(f)
-		s.AsyncFlush(cb)
+		s.AsyncFlush(callback)
 	} else {
-		ReleaseFrame(f)
-		cb(sonicerrors.ErrCancelled)
+		s.releaseFrame(f)
+		callback(sonicerrors.ErrCancelled)
 	}
 }
 
-func (s *WebsocketStream) prepareWrite(f *Frame) {
-	switch s.role {
-	case RoleClient:
-		if !f.IsMasked() {
-			f.Mask()
-		}
-	case RoleServer:
-		if f.IsMasked() {
-			f.Unmask()
-		}
+func (s *Stream) prepareWrite(f *Frame) {
+	if s.role == RoleClient {
+		f.MaskPayload()
 	}
-
-	s.pending = append(s.pending, f)
+	s.pendingFrames = append(s.pendingFrames, f)
 }
 
-func (s *WebsocketStream) AsyncClose(
-	cc CloseCode,
-	reason string,
-	cb func(err error),
-) {
+// AsyncClose sends a websocket close control frame asynchronously.
+//
+// This function is used to send a close frame which begins the WebSocket closing handshake. The session ends when both
+// ends of the connection have sent and received a close frame.
+//
+// The callback is called if one of the following conditions is true:
+//   - the close frame is written
+//   - an error occurs
+//
+// After beginning the closing handshake, the program should not write further messages, pings, pongs or close
+// frames. Instead, the program should continue reading messages until the closing handshake is complete or an error
+// occurs.
+func (s *Stream) AsyncClose(closeCode CloseCode, reason string, callback func(err error)) {
 	switch s.state {
 	case StateActive:
 		s.state = StateClosedByUs
-		s.prepareClose(EncodeCloseFramePayload(cc, reason))
-		s.AsyncFlush(cb)
+		s.prepareClose(EncodeCloseFramePayload(closeCode, reason))
+		s.AsyncFlush(callback)
 	case StateClosedByUs, StateHandshake:
-		cb(sonicerrors.ErrCancelled)
+		callback(sonicerrors.ErrCancelled)
 	default:
-		cb(io.EOF)
+		callback(io.EOF)
 	}
 }
 
-func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
+// Close sends a websocket close control frame asynchronously.
+//
+// This function is used to send a close frame which begins the WebSocket closing handshake. The session ends when both
+// ends of the connection have sent and received a close frame.
+//
+// The call blocks until one of the following conditions is true:
+//   - the close frame is written
+//   - an error occurs
+//
+// After beginning the closing handshake, the program should not write further messages, pings, pongs or close
+// frames. Instead, the program should continue reading messages until the closing handshake is complete or an error
+// occurs.
+func (s *Stream) Close(cc CloseCode, reason string) error {
 	switch s.state {
 	case StateActive:
 		s.state = StateClosedByUs
@@ -551,64 +681,71 @@ func (s *WebsocketStream) Close(cc CloseCode, reason string) error {
 	}
 }
 
-func (s *WebsocketStream) prepareClose(payload []byte) {
-	closeFrame := AcquireFrame()
-	closeFrame.SetFin()
-	closeFrame.SetClose()
-	closeFrame.SetPayload(payload)
-	if s.role == RoleClient {
-		closeFrame.Mask()
-	}
-
-	s.pending = append(s.pending, closeFrame)
+func (s *Stream) prepareClose(payload []byte) {
+	closeFrame := s.AcquireFrame().
+		SetFIN().
+		SetClose().
+		SetPayload(payload)
+	s.prepareWrite(closeFrame)
 }
 
-func (s *WebsocketStream) Flush() (err error) {
+// Flush writes any pending control frames to the underlying stream.
+//
+// This call blocks.
+func (s *Stream) Flush() (err error) {
 	flushed := 0
-	for i := 0; i < len(s.pending); i++ {
-		_, err = s.cs.WriteNext(s.pending[i])
+	for i := 0; i < len(s.pendingFrames); i++ {
+		_, err = s.codecConn.WriteNext(*s.pendingFrames[i])
 		if err != nil {
 			break
 		}
-		ReleaseFrame(s.pending[i])
+		s.releaseFrame(s.pendingFrames[i])
 		flushed++
 	}
-	s.pending = s.pending[flushed:]
+	s.pendingFrames = s.pendingFrames[flushed:]
 
 	return
 }
 
-func (s *WebsocketStream) AsyncFlush(cb func(err error)) {
-	if len(s.pending) == 0 {
-		cb(nil)
+// Flush writes any pending control frames to the underlying stream asynchronously.
+//
+// This call does not block.
+func (s *Stream) AsyncFlush(callback func(err error)) {
+	if len(s.pendingFrames) == 0 {
+		callback(nil)
 	} else {
-		sent := s.pending[0]
-		s.pending = s.pending[1:]
+		sent := s.pendingFrames[0]
+		s.pendingFrames = s.pendingFrames[1:]
 
-		s.cs.AsyncWriteNext(sent, func(err error, _ int) {
-			ReleaseFrame(sent)
+		s.codecConn.AsyncWriteNext(*sent, func(err error, _ int) {
+			s.releaseFrame(sent)
 
 			if err != nil {
-				cb(err)
+				callback(err)
 			} else {
-				s.AsyncFlush(cb)
+				s.AsyncFlush(callback)
 			}
 		})
 	}
 }
 
-func (s *WebsocketStream) Pending() int {
-	return len(s.pending)
+// Pending returns the number of currently pending control frames waiting to be flushed.
+func (s *Stream) Pending() int {
+	return len(s.pendingFrames)
 }
 
-func (s *WebsocketStream) State() StreamState {
+func (s *Stream) State() StreamState {
 	return s.state
 }
 
-func (s *WebsocketStream) Handshake(
-	addr string,
-	extraHeaders ...Header,
-) (err error) {
+// Handshake performs the client handshake. This call blocks.
+//
+// The call blocks until one of the following conditions is true:
+//   - the HTTP1.1 request is sent and the response is received
+//   - an error occurs
+//
+// Extra headers should be generated by calling `ExtraHeader(...)`.
+func (s *Stream) Handshake(addr string, extraHeaders ...Header) (err error) {
 	if s.role != RoleClient {
 		return ErrWrongHandshakeRole
 	}
@@ -635,13 +772,15 @@ func (s *WebsocketStream) Handshake(
 	return
 }
 
-func (s *WebsocketStream) AsyncHandshake(
-	addr string,
-	cb func(error),
-	extraHeaders ...Header,
-) {
+// AsyncHandshake performs the WebSocket handshake asynchronously in the client role.
+//
+// This call does not block. The provided callback is called when the request is sent and the response is
+// received or when an error occurs.
+//
+// Extra headers should be generated by calling `ExtraHeader(...)`.
+func (s *Stream) AsyncHandshake(addr string, callback func(error), extraHeaders ...Header) {
 	if s.role != RoleClient {
-		cb(ErrWrongHandshakeRole)
+		callback(ErrWrongHandshakeRole)
 		return
 	}
 
@@ -659,31 +798,27 @@ func (s *WebsocketStream) AsyncHandshake(
 					s.state = StateActive
 					err = s.init(stream)
 				}
-				cb(err)
+				callback(err)
 			})
 		})
 	}()
 }
 
-func (s *WebsocketStream) handshake(
-	addr string,
-	headers []Header,
-	cb func(err error, stream sonic.Stream),
-) {
+func (s *Stream) handshake(addr string, headers []Header, callback func(err error, stream sonic.Stream)) {
 	url, err := s.resolve(addr)
 	if err != nil {
-		cb(err, nil)
+		callback(err, nil)
 	} else {
 		s.dial(url, func(err error, stream sonic.Stream) {
 			if err == nil {
 				err = s.upgrade(url, stream, headers)
 			}
-			cb(err, stream)
+			callback(err, stream)
 		})
 	}
 }
 
-func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
+func (s *Stream) resolve(addr string) (url *url.URL, err error) {
 	url, err = url.Parse(addr)
 	if err == nil {
 		switch url.Scheme {
@@ -699,14 +834,10 @@ func (s *WebsocketStream) resolve(addr string) (url *url.URL, err error) {
 	return
 }
 
-func (s *WebsocketStream) dial(
-	url *url.URL,
-	cb func(err error, stream sonic.Stream),
-) {
+func (s *Stream) dial(url *url.URL, callback func(err error, stream sonic.Stream)) {
 	var (
-		err error
-		sc  syscall.Conn
-
+		err  error
+		sc   syscall.Conn
 		port = url.Port()
 	)
 
@@ -756,18 +887,14 @@ func (s *WebsocketStream) dial(
 		// condition on the io context.
 		sonic.NewAsyncAdapter(
 			s.ioc, sc, s.conn, func(err error, stream *sonic.AsyncAdapter) {
-				cb(err, stream)
+				callback(err, stream)
 			}, sonicopts.NoDelay(true))
 	} else {
-		cb(err, nil)
+		callback(err, nil)
 	}
 }
 
-func (s *WebsocketStream) upgrade(
-	uri *url.URL,
-	stream sonic.Stream,
-	headers []Header,
-) error {
+func (s *Stream) upgrade(uri *url.URL, stream sonic.Stream, headers []Header) error {
 	req, err := http.NewRequest("GET", uri.String(), nil)
 	if err != nil {
 		return err
@@ -794,8 +921,8 @@ func (s *WebsocketStream) upgrade(
 		}
 	}
 
-	if s.upReqCb != nil {
-		s.upReqCb(req)
+	if s.upgradeRequestCallback != nil {
+		s.upgradeRequestCallback(req)
 	}
 
 	err = req.Write(stream)
@@ -803,13 +930,13 @@ func (s *WebsocketStream) upgrade(
 		return err
 	}
 
-	s.hb = s.hb[:cap(s.hb)]
-	n, err := stream.Read(s.hb)
+	s.handshakeBuffer = s.handshakeBuffer[:cap(s.handshakeBuffer)]
+	n, err := stream.Read(s.handshakeBuffer)
 	if err != nil {
 		return err
 	}
-	s.hb = s.hb[:n]
-	rd := bytes.NewReader(s.hb)
+	s.handshakeBuffer = s.handshakeBuffer[:n]
+	rd := bytes.NewReader(s.handshakeBuffer)
 	res, err := http.ReadResponse(bufio.NewReader(rd), req)
 	if err != nil {
 		return err
@@ -821,14 +948,18 @@ func (s *WebsocketStream) upgrade(
 	}
 
 	resLen := len(rawRes)
-	extra := len(s.hb) - resLen
+	extra := len(s.handshakeBuffer) - resLen
 	if extra > 0 {
 		// we got some frames as well with the handshake so we can put
 		// them in src for later decoding before clearing the handshake
 		// buffer
-		_, _ = s.src.Write(s.hb[resLen:])
+		_, _ = s.src.Write(s.handshakeBuffer[resLen:])
 	}
-	s.hb = s.hb[:0]
+	s.handshakeBuffer = s.handshakeBuffer[:0]
+
+	if s.upgradeResponseCallback != nil {
+		s.upgradeResponseCallback(res)
+	}
 
 	if s.upResCb != nil {
 		s.upResCb(res)
@@ -847,7 +978,7 @@ func (s *WebsocketStream) upgrade(
 
 // makeHandshakeKey generates the key of Sec-WebSocket-Key header as well as the
 // expected response present in Sec-WebSocket-Accept header.
-func (s *WebsocketStream) makeHandshakeKey() (req, res string) {
+func (s *Stream) makeHandshakeKey() (req, res string) {
 	// request
 	b := make([]byte, 16)
 	_, _ = rand.Read(b)
@@ -865,61 +996,74 @@ func (s *WebsocketStream) makeHandshakeKey() (req, res string) {
 	return
 }
 
-func (s *WebsocketStream) Accept() error {
-	panic("implement me")
+// SetControlCallback sets a function that will be invoked when a Ping/Pong/Close is received while reading a
+// message. This callback is only invoked when reading complete messages, not frames.
+//
+// The caller must not perform any operations on the stream in the provided callback.
+func (s *Stream) SetControlCallback(controlCallback ControlCallback) {
+	s.controlCallback = controlCallback
 }
 
-func (s *WebsocketStream) AsyncAccept(func(error)) {
-	panic("implement me")
+func (s *Stream) ControlCallback() ControlCallback {
+	return s.controlCallback
 }
 
-func (s *WebsocketStream) SetControlCallback(ccb ControlCallback) {
-	s.ccb = ccb
+// SetUpgradeRequestCallback sets a function that will be invoked during the handshake just before the upgrade request
+// is sent.
+//
+// The caller must not perform any operations on the stream in the provided callback.
+func (s *Stream) SetUpgradeRequestCallback(upgradeRequestCallback UpgradeRequestCallback) {
+	s.upgradeRequestCallback = upgradeRequestCallback
 }
 
-func (s *WebsocketStream) ControlCallback() ControlCallback {
-	return s.ccb
+func (s *Stream) UpgradeRequestCallback() UpgradeRequestCallback {
+	return s.upgradeRequestCallback
 }
 
-func (s *WebsocketStream) SetUpgradeRequestCallback(upReqCb UpgradeRequestCallback) {
-	s.upReqCb = upReqCb
+// SetUpgradeResponseCallback sets a function that will be invoked during the handshake just after the upgrade response
+// is received.
+//
+// The caller must not perform any operations on the stream in the provided callback.
+func (s *Stream) SetUpgradeResponseCallback(upgradeResponseCallback UpgradeResponseCallback) {
+	s.upgradeResponseCallback = upgradeResponseCallback
 }
 
-func (s *WebsocketStream) UpgradeRequestCallback() UpgradeRequestCallback {
-	return s.upReqCb
+func (s *Stream) UpgradeResponseCallback() UpgradeResponseCallback {
+	return s.upgradeResponseCallback
 }
 
-func (s *WebsocketStream) SetUpgradeResponseCallback(upResCb UpgradeResponseCallback) {
-	s.upResCb = upResCb
-}
-
-func (s *WebsocketStream) UpgradeResponseCallback() UpgradeResponseCallback {
-	return s.upResCb
-}
-
-func (s *WebsocketStream) SetMaxMessageSize(bytes int) {
+// SetMaxMessageSize sets the maximum size of a message that can be read from or written to a peer.
+//
+// - If a message exceeds the limit while reading, the connection is closed abnormally.
+// - If a message exceeds the limit while writing, the operation is cancelled.
+func (s *Stream) SetMaxMessageSize(bytes int) {
 	// This is just for checking against the length returned in the frame
 	// header. The sizes of the buffers in which we read or write the messages
 	// are dynamically adjusted in frame_codec.
-	MaxMessageSize = bytes
+	s.maxMessageSize = bytes
+	s.codec.maxMessageSize = bytes
 }
 
-func (s *WebsocketStream) RemoteAddr() net.Addr {
+func (s *Stream) MaxMessageSize() int {
+	return s.maxMessageSize
+}
+
+func (s *Stream) RemoteAddr() net.Addr {
 	return s.conn.RemoteAddr()
 }
 
-func (s *WebsocketStream) LocalAddr() net.Addr {
+func (s *Stream) LocalAddr() net.Addr {
 	return s.conn.LocalAddr()
 }
 
-func (s *WebsocketStream) RawFd() int {
+func (s *Stream) RawFd() int {
 	if s.NextLayer() != nil {
 		return s.NextLayer().(*sonic.AsyncAdapter).RawFd()
 	}
 	return -1
 }
 
-func (s *WebsocketStream) CloseNextLayer() (err error) {
+func (s *Stream) CloseNextLayer() (err error) {
 	if s.conn != nil {
 		err = s.conn.Close()
 		s.conn = nil

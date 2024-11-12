@@ -12,6 +12,7 @@ import (
 var (
 	addr     = flag.String("addr", "ws://localhost:9001", "server address")
 	testCase = flag.Int("case", -1, "autobahn test case to run")
+	utf8     = flag.Bool("utf8", false, "if true, payloads of text frames are utf8 validated")
 )
 
 func main() {
@@ -83,6 +84,16 @@ func runTest(i int) {
 	if err != nil {
 		panic(err)
 	}
+	if *utf8 {
+		s.ValidateUTF8(true)
+		if !s.ValidatesUTF8() {
+			panic("UTF8 should be validated")
+		}
+	} else {
+		if s.ValidatesUTF8() {
+			panic("UTF8 should NOT be validated")
+		}
+	}
 
 	done := false
 	s.AsyncHandshake(fmt.Sprintf("%s/runCase?case=%d&agent=sonic", *addr, i), func(err error) {
@@ -92,10 +103,11 @@ func runTest(i int) {
 
 		b := make([]byte, 1024*1024)
 
-		var onAsyncRead websocket.AsyncMessageHandler
+		var onAsyncRead websocket.AsyncMessageCallback
 
 		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
 			if err != nil {
+				s.Flush()
 				done = true
 			} else {
 				b = b[:n]

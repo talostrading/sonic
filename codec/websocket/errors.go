@@ -38,4 +38,6 @@ var (
 	ErrExpectedContinuation = errors.New("expected continue frame")
 
 	ErrInvalidAddress = errors.New("invalid address")
+
+	ErrInvalidUTF8 = errors.New("Invalid UTF-8 encoding")
 )

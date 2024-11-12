@@ -1,7 +1,6 @@
 package sonic
 
 import (
-	"fmt"
 	"net"
 	"time"
 
@@ -19,7 +18,7 @@ type conn struct {
 	remoteAddr net.Addr
 }
 
-// Dial establishes a stream based connection to the specified address.
+// Dial establishes a stream based connection to the specified address. It is similar to `net.Dial`.
 //
 // Data can be sent or received only from the specified address for all networks: tcp, udp and unix domain sockets.
 func Dial(
@@ -30,6 +29,7 @@ func Dial(
 	return DialTimeout(ioc, network, addr, 10*time.Second, opts...)
 }
 
+// `DialTimeout` is like `Dial` but with a timeout.
 func DialTimeout(
 	ioc *IO, network, addr string,
 	timeout time.Duration,
@@ -64,13 +64,13 @@ func (c *conn) RemoteAddr() net.Addr {
 }
 
 func (c *conn) SetDeadline(t time.Time) error {
-	return fmt.Errorf("not supported")
+	panic("not implemented")
 }
 func (c *conn) SetReadDeadline(t time.Time) error {
-	return fmt.Errorf("not supported")
+	panic("not implemented")
 }
 func (c *conn) SetWriteDeadline(t time.Time) error {
-	return fmt.Errorf("not supported")
+	panic("not implemented")
 }
 
 func (c *conn) RawFd() int {

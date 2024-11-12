@@ -676,6 +676,8 @@ func (p *UDPPeer) LocalAddr() *net.UDPAddr {
 func (p *UDPPeer) Close() error {
 	if !p.closed {
 		p.closed = true
+		_ = p.ioc.UnsetReadWrite(&p.slot)
+		p.ioc.Deregister(&p.slot)
 		return p.socket.Close()
 	}
 	return nil
