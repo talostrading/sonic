@@ -118,4 +118,3 @@ func ExtraHeader(canonicalKey bool, key string, values ...string) Header {
 		CanonicalKey: canonicalKey,
 	}
 }
-

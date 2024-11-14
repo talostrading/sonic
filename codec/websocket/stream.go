@@ -81,12 +81,6 @@ type Stream struct {
 	// Optional callback invoked when an upgrade response is received.
 	upgradeResponseCallback UpgradeResponseCallback
 
-	// Optional callback invoked when an upgrade request is sent.
-	upReqCb UpgradeRequestCallback
-
-	// Optional callback invoked when an upgrade response is received.
-	upResCb UpgradeResponseCallback
-
 	// Used to establish a TCP connection to the peer with a timeout.
 	dialer *net.Dialer
 
@@ -959,10 +953,6 @@ func (s *Stream) upgrade(uri *url.URL, stream sonic.Stream, headers []Header) er
 
 	if s.upgradeResponseCallback != nil {
 		s.upgradeResponseCallback(res)
-	}
-
-	if s.upResCb != nil {
-		s.upResCb(res)
 	}
 
 	if !IsUpgradeRes(res) {
