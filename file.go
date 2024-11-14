@@ -172,49 +172,49 @@ func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
 	}
 }
 
-func (f *file) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
-	n, err := f.Write(b[writtenBytes:])
-	writtenBytes += n
+func (f *file) asyncWriteNow(b []byte, wroteSoFar int, writeAll bool, cb AsyncCallback) {
+	n, err := f.Write(b[wroteSoFar:])
+	wroteSoFar += n
 
-	if err == nil && !(writeAll && writtenBytes != len(b)) {
+	if err == nil && !(writeAll && wroteSoFar != len(b)) {
 		// If writeAll == true then we wrote fully without errors.
 		// If writeAll == false then we wrote some without errors.
-		cb(nil, writtenBytes)
+		cb(nil, wroteSoFar)
 		return
 	}
 
-	// Handles (writeAll == false) and (writeAll == true && writtenBytes != len(b)).
+	// Handles (writeAll == false) and (writeAll == true && wroteSoFar != len(b)).
 	if err == sonicerrors.ErrWouldBlock {
-		f.scheduleWrite(b, writtenBytes, writeAll, cb)
+		f.scheduleWrite(b, wroteSoFar, writeAll, cb)
 	} else {
-		cb(err, writtenBytes)
+		cb(err, wroteSoFar)
 	}
 }
 
-func (f *file) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (f *file) scheduleWrite(b []byte, wroteSoFar int, writeAll bool, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
-	handler := f.getWriteHandler(b, writtenBytes, writeAll, cb)
+	handler := f.getWriteHandler(b, wroteSoFar, writeAll, cb)
 	f.slot.Set(internal.WriteEvent, handler)
 
 	if err := f.ioc.SetWrite(&f.slot); err != nil {
-		cb(err, writtenBytes)
+		cb(err, wroteSoFar)
 	} else {
 		f.ioc.Register(&f.slot)
 	}
 }
 
-func (f *file) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
+func (f *file) getWriteHandler(b []byte, wroteSoFar int, writeAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		f.ioc.Deregister(&f.slot)
 
 		if err != nil {
-			cb(err, writtenBytes)
+			cb(err, wroteSoFar)
 		} else {
-			f.asyncWriteNow(b, writtenBytes, writeAll, cb)
+			f.asyncWriteNow(b, wroteSoFar, writeAll, cb)
 		}
 	}
 }
