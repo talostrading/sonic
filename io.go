@@ -20,9 +20,9 @@ type IO struct {
 	poller internal.Poller
 
 	// The below structures keep a pointer to a Slot struct usually owned by an object capable of asynchronous
-	// operations (essentially any object taking an IO* on construction). Keeping a Slot pointer keeps the owning
-	// object in the GC's object graph while an asynchronous operation is in progress. This ensures Slot references
-	// valid memory when an asynchronous operation completes and the object is already out of scope.
+	// operations (essentially any object taking an IO* on construction). Keeping a Slot pointer keeps the owning object
+	// in the GC's object graph while an asynchronous operation is in progress. This ensures Slot references valid
+	// memory when an asynchronous operation completes and the object is already out of scope.
 	pending struct {
 		// The kernel allocates a process' descriptors from a fixed range that is [0, 1024) by default. Unprivileged
 		// users can bump this range to [0, 4096). The below array should cover 99% of the cases and makes for cheap
@@ -32,8 +32,8 @@ type IO struct {
 		// file descriptors are bound by a fixed range whose upper limit is controlled through RLIMIT_NOFILE.
 		static [4096]*internal.Slot
 
-		// This map covers the 1%, the degenerate case. Any Slot whose file descriptor is greater than or equal to
-		// 4096 goes here.
+		// This map covers the 1%, the degenerate case. Any Slot whose file descriptor is greater than or equal to 4096
+		// goes here. This is lazily initialized.
 		dynamic map[*internal.Slot]struct{}
 	}
 	pendingTimers map[*Timer]struct{} // XXX: should be embedded into the above pending struct
@@ -170,7 +170,7 @@ const (
 // RunWarm runs the event loop in a combined busy-wait and yielding mode, meaning that if the current cycle does not
 // process anything, the event-loop will busy-wait for at most `busyCycles` which we call the warm-state. After
 // `busyCycles` of not processing anything, the event-loop is out of the warm-state and falls back to yielding with the
-// provided timeout. If at any moment an event occurs and something is processed, the  event-loop transitions to its
+// provided timeout. If at any moment an event occurs and something is processed, the event-loop transitions to its
 // warm-state.
 func (ioc *IO) RunWarm(busyCycles int, timeout time.Duration) (err error) {
 	if busyCycles <= 0 {
@@ -200,9 +200,9 @@ func (ioc *IO) RunWarm(busyCycles int, timeout time.Duration) (err error) {
 			// We processed something in this cycle, be it inside or outside the warm-period. We restart the warm-period
 			i = 0
 		} else {
-			// We did not process anything in this cycle. If we are still in the warm period i.e. `i < busyCycles`,
-			// we are going to poll in the next cycle. If we are outside the warm period i.e. `i >= busyCycles`,
-			// we are going to yield in the next cycle.
+			// We did not process anything in this cycle. If we are still in the warm period i.e. `i < busyCycles`, we
+			// are going to poll in the next cycle. If we are outside the warm period i.e. `i >= busyCycles`, we are
+			// going to yield in the next cycle.
 			i++
 		}
 	}
@@ -231,8 +231,6 @@ func (ioc *IO) poll(timeoutMs int) (int, error) {
 
 	if err != nil {
 		if err == syscall.EINTR {
-			// TODO not sure about this one, and whether returning timeout here is ok.
-			// need to look into syscall.EINTR again
 			if timeoutMs >= 0 {
 				return 0, sonicerrors.ErrTimeout
 			}
@@ -251,8 +249,7 @@ func (ioc *IO) poll(timeoutMs int) (int, error) {
 	return n, nil
 }
 
-// Post schedules the provided handler to be run immediately by the event
-// processing loop in its own thread.
+// Post schedules the provided handler to be run immediately by the event processing loop in its own thread.
 //
 // It is safe to call Post concurrently.
 func (ioc *IO) Post(handler func()) error {
@@ -266,6 +263,7 @@ func (ioc *IO) Posted() int {
 	return ioc.poller.Posted()
 }
 
+// Returns the current number of pending asynchronous operations.
 func (ioc *IO) Pending() int64 {
 	return ioc.poller.Pending()
 }
