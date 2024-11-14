@@ -11,6 +11,12 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
+// MaxCallbackDispatch is the maximum number of callbacks that can exist on a stack-frame when asynchronous operations
+// can be completed immediately.
+//
+// This is the limit to the `IO.dispatched` counter.
+const MaxCallbackDispatch int = 32
+
 // IO is the executor of all asynchronous operations and the way any object can schedule them. It runs fully in the
 // calling goroutine.
 //
@@ -37,6 +43,18 @@ type IO struct {
 		dynamic map[*internal.Slot]struct{}
 	}
 	pendingTimers map[*Timer]struct{} // XXX: should be embedded into the above pending struct
+
+	// Tracks how many callbacks are on the current stack-frame. This prevents stack-overflows in cases where
+	// asynchronous operations can be completed immediately.
+	//
+	// For example, an asynchronous read might be completed immediately. In that case, the callback is invoked which in
+	// turn might call `AsyncRead` again. That asynchronous read might again be completed immediately and so on. In this
+	// case, all subsequent read callbacks are placed on the same stack-frame. We count these callbacks with
+	// `Dispatched`. If we hit `MaxCallbackDispatch`, then the stack-frame is popped - asynchronous reads are scheduled
+	// to be completed on the next poll cycle, even if they can be completed immediately.
+	//
+	// This counter is shared amongst all asynchronous objects - they are responsible for updating it.
+	Dispatched int
 }
 
 func NewIO() (*IO, error) {
@@ -48,6 +66,7 @@ func NewIO() (*IO, error) {
 	return &IO{
 		poller:        poller,
 		pendingTimers: make(map[*Timer]struct{}),
+		Dispatched:    0,
 	}, nil
 }
 

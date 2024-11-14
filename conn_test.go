@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/talostrading/sonic/sonicopts"
 )
 
@@ -348,4 +349,122 @@ func TestConnWriteHandlesError(t *testing.T) {
 	if !done {
 		t.Fatal("test did not run to completion")
 	}
+}
+
+func TestDispatchLimit(t *testing.T) {
+	// Since the `ioc.Dispatched` counter is shared amongst, we test if it updated correctly when two connections build
+	// up each other's stack-frames. As in, when connection 1 has an immediate async read, it invokes connection 2's
+	// async read which is immediate and when done that invokes connection 1's async read which is immediate and so
+	// on. We ensure we reach the `MaxCallbackDispatch` limit with this sequence of reads. We then assert that
+	// `ioc.Dispatched` ends up 0 at the end of all operations.
+
+	var (
+		writtenBytes = MaxCallbackDispatch * 2
+		readBytes    = 0
+	)
+
+	assert := assert.New(t)
+
+	ioc := MustIO()
+	defer ioc.Close()
+
+	assert.Equal(0, ioc.Dispatched)
+
+	// setup up the server which will write to both reading connections
+	ln, err := net.Listen("tcp", "localhost:0")
+	assert.Nil(err)
+	addr := ln.Addr().String()
+
+	marker := make(chan struct{}, 10)
+	go func() {
+		marker <- struct{}{}
+
+		for {
+			conn, err := ln.Accept()
+			assert.Nil(err)
+
+			go func() {
+				// These bytes will get cached by the TCP layer. We thus ensure that each connection has at least one
+				// series of `MaxCallbackDispatch` immediate asynchronous reads.
+				for i := 0; i < writtenBytes; i++ {
+					n, err := conn.Write([]byte("1"))
+					assert.Nil(err)
+					assert.Equal(1, n)
+				}
+
+				<-marker
+				conn.Close()
+			}()
+		}
+	}()
+	<-marker
+
+	limitHit := 0 // counts how many times each connection has hit the `MaxCallbackDispatch` limit
+
+	var b [1]byte // shared between the two reading connections
+
+	rd1, err := Dial(ioc, "tcp", addr)
+	assert.Nil(err)
+	defer rd1.Close()
+
+	rd2, err := Dial(ioc, "tcp", addr)
+	assert.Nil(err)
+	defer rd2.Close()
+
+	var (
+		onRead1, onRead2 AsyncCallback
+	)
+	onRead1 = func(err error, n int) {
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
+		if err == io.EOF {
+			return
+		}
+
+		readBytes += n
+
+		assert.True(ioc.Dispatched <= MaxCallbackDispatch)
+		if ioc.Dispatched == MaxCallbackDispatch {
+			limitHit++
+		}
+
+		// sleeping ensures the writer is faster than the reader so we build up stack frames by having each async read
+		// complete immediately
+		time.Sleep(time.Millisecond)
+
+		// invoke the other reading connection's async read to ensure `ioc.Dispatched` is correctly updated when shared
+		// between asynchronous objects
+		rd2.AsyncRead(b[:], onRead2)
+	}
+
+	onRead2 = func(err error, n int) {
+		if err != nil && err != io.EOF {
+			t.Fatal(err)
+		}
+		if err == io.EOF {
+			return
+		}
+
+		readBytes += n
+
+		assert.True(ioc.Dispatched <= MaxCallbackDispatch)
+		if ioc.Dispatched == MaxCallbackDispatch {
+			limitHit++
+		}
+
+		time.Sleep(time.Millisecond)
+		rd1.AsyncRead(b[:], onRead1) // the other connection
+	}
+
+	rd1.AsyncRead(b[:], onRead1) // starting point
+
+	for readBytes < writtenBytes*2 /* two connections */ {
+		ioc.PollOne()
+	}
+
+	assert.True(limitHit > 0)
+	assert.Equal(0, ioc.Dispatched)
+
+	marker <- struct{}{} // to close the write end
 }

@@ -20,8 +20,6 @@ type packetConn struct {
 	localAddr  net.Addr
 	remoteAddr net.Addr
 	closed     uint32
-
-	dispatched int
 }
 
 // NewPacketConn establishes a packet based stream-less connection which is optionally bound to the specified addr.
@@ -81,11 +79,11 @@ func (c *packetConn) AsyncReadAllFrom(b []byte, cb AsyncReadCallbackPacket) {
 }
 
 func (c *packetConn) asyncReadFrom(b []byte, readAll bool, cb AsyncReadCallbackPacket) {
-	if c.dispatched < MaxCallbackDispatch {
+	if c.ioc.Dispatched < MaxCallbackDispatch {
 		c.asyncReadNow(b, 0, readAll, func(err error, n int, addr net.Addr) {
-			c.dispatched++
+			c.ioc.Dispatched++
 			cb(err, n, addr)
-			c.dispatched--
+			c.ioc.Dispatched--
 		})
 	} else {
 		c.scheduleRead(b, 0, readAll, cb)
@@ -145,11 +143,11 @@ func (c *packetConn) WriteTo(b []byte, to net.Addr) error {
 }
 
 func (c *packetConn) AsyncWriteTo(b []byte, to net.Addr, cb AsyncWriteCallbackPacket) {
-	if c.dispatched < MaxCallbackDispatch {
+	if c.ioc.Dispatched < MaxCallbackDispatch {
 		c.asyncWriteToNow(b, to, func(err error) {
-			c.dispatched++
+			c.ioc.Dispatched++
 			cb(err)
-			c.dispatched--
+			c.ioc.Dispatched--
 		})
 	} else {
 		c.scheduleWrite(b, to, cb)

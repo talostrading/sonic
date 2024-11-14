@@ -32,9 +32,8 @@ type UDPPeer struct {
 
 	slot internal.Slot
 
-	sockAddr   syscall.Sockaddr
-	closed     bool
-	dispatched int
+	sockAddr syscall.Sockaddr
+	closed   bool
 }
 
 // NewUDPPeer creates a new UDPPeer capable of reading/writing multicast packets
@@ -567,11 +566,11 @@ func (p *UDPPeer) AsyncRead(b []byte, fn func(error, int, netip.AddrPort)) {
 	p.read.b = b
 	p.read.fn = fn
 
-	if p.dispatched < sonic.MaxCallbackDispatch {
+	if p.ioc.Dispatched < sonic.MaxCallbackDispatch {
 		p.asyncReadNow(b, func(err error, n int, addr netip.AddrPort) {
-			p.dispatched++
+			p.ioc.Dispatched++
 			fn(err, n, addr)
-			p.dispatched--
+			p.ioc.Dispatched--
 		})
 	} else {
 		p.scheduleRead(fn)
@@ -622,11 +621,11 @@ func (p *UDPPeer) AsyncWrite(
 	p.write.addr = addr
 	p.write.fn = fn
 
-	if p.dispatched < sonic.MaxCallbackDispatch {
+	if p.ioc.Dispatched < sonic.MaxCallbackDispatch {
 		p.asyncWriteNow(b, addr, func(err error, n int) {
-			p.dispatched++
+			p.ioc.Dispatched++
 			fn(err, n)
-			p.dispatched--
+			p.ioc.Dispatched--
 		})
 	} else {
 		p.scheduleWrite(fn)

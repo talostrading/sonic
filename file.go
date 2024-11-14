@@ -16,16 +16,6 @@ type file struct {
 	ioc    *IO
 	slot   internal.Slot
 	closed uint32
-
-	// Tracks how many callbacks are on the current stack-frame. This prevents stack-overflows in cases where
-	// asynchronous operations can be completed immediately.
-	//
-	// For example, an asynchronous read might be completed immediately. In that case, the callback is invoked which in
-	// turn might call `AsyncRead` again. That asynchronous read might again be completed immediately and so on. In this
-	// case, all subsequent read callbacks are placed on the same stack-frame. We count these callbacks with
-	// `dispatched`. If we hit `MaxCallbackDispatch`, then the stack-frame is popped - asynchronous reads are scheduled
-	// to be completed on the next poll cycle, even if they can be completed immediately.
-	dispatched int
 }
 
 func Open(ioc *IO, path string, flags int, mode os.FileMode) (File, error) {
@@ -94,11 +84,11 @@ func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
-	if f.dispatched < MaxCallbackDispatch {
+	if f.ioc.Dispatched < MaxCallbackDispatch {
 		f.asyncReadNow(b, 0, readAll, func(err error, n int) {
-			f.dispatched++
+			f.ioc.Dispatched++
 			cb(err, n)
-			f.dispatched--
+			f.ioc.Dispatched--
 		})
 	} else {
 		f.scheduleRead(b, 0, readAll, cb)
@@ -166,11 +156,11 @@ func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
-	if f.dispatched < MaxCallbackDispatch {
+	if f.ioc.Dispatched < MaxCallbackDispatch {
 		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
-			f.dispatched++
+			f.ioc.Dispatched++
 			cb(err, n)
-			f.dispatched--
+			f.ioc.Dispatched--
 		})
 	} else {
 		f.scheduleWrite(b, 0, writeAll, cb)
