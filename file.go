@@ -18,17 +18,22 @@ type file struct {
 	closed uint32
 }
 
+func newFile(ioc *IO, fd int) *file {
+	f := &file{
+		ioc:  ioc,
+		slot: internal.Slot{Fd: fd},
+	}
+	atomic.StoreUint32(&f.closed, 0)
+	return f
+}
+
 func Open(ioc *IO, path string, flags int, mode os.FileMode) (File, error) {
 	fd, err := syscall.Open(path, flags, uint32(mode))
 	if err != nil {
 		return nil, err
 	}
 
-	f := &file{
-		ioc:  ioc,
-		slot: internal.Slot{Fd: fd},
-	}
-	return f, nil
+	return newFile(ioc, fd), nil
 }
 
 func (f *file) Read(b []byte) (int, error) {
