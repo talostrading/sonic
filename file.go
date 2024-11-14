@@ -13,9 +13,36 @@ import (
 var _ File = &file{}
 
 type file struct {
-	ioc    *IO
-	slot   internal.Slot
-	closed uint32
+	ioc         *IO
+	slot        internal.Slot
+	closed      uint32
+	readReactor fileReadReactor
+}
+
+type fileReadReactor struct {
+	file *file
+
+	b         []byte
+	readAll   bool
+	cb        AsyncCallback
+	readSoFar int
+}
+
+func (r *fileReadReactor) init(b []byte, readAll bool, cb AsyncCallback) {
+	r.b = b
+	r.readAll = readAll
+	r.cb = cb
+
+	r.readSoFar = 0
+}
+
+func (r *fileReadReactor) onRead(err error) {
+	r.file.ioc.Deregister(&r.file.slot)
+	if err != nil {
+		r.cb(err, r.readSoFar)
+	} else {
+		r.file.asyncReadNow(r.b, r.readSoFar, r.readAll, r.cb)
+	}
 }
 
 func newFile(ioc *IO, fd int) *file {
@@ -24,6 +51,10 @@ func newFile(ioc *IO, fd int) *file {
 		slot: internal.Slot{Fd: fd},
 	}
 	atomic.StoreUint32(&f.closed, 0)
+
+	f.readReactor = fileReadReactor{file: f}
+	f.readReactor.init(nil, false, nil)
+
 	return f
 }
 
@@ -89,6 +120,8 @@ func (f *file) AsyncReadAll(b []byte, cb AsyncCallback) {
 }
 
 func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
+	f.readReactor.init(b, readAll, cb)
+
 	if f.ioc.Dispatched < MaxCallbackDispatch {
 		f.asyncReadNow(b, 0, readAll, func(err error, n int) {
 			f.ioc.Dispatched++
@@ -96,7 +129,7 @@ func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
 			f.ioc.Dispatched--
 		})
 	} else {
-		f.scheduleRead(b, 0, readAll, cb)
+		f.scheduleRead(0 /* this is the starting point, we did not read anything yet */, cb)
 	}
 }
 
@@ -119,36 +152,25 @@ func (f *file) asyncReadNow(b []byte, readSoFar int, readAll bool, cb AsyncCallb
 	if err == sonicerrors.ErrWouldBlock {
 		// If readAll == true then read some without errors.
 		// We schedule an asynchronous read.
-		f.scheduleRead(b, readSoFar, readAll, cb)
+		f.scheduleRead(readSoFar, cb)
 	} else {
 		cb(err, readSoFar)
 	}
 }
 
-func (f *file) scheduleRead(b []byte, readSoFar int, readAll bool, cb AsyncCallback) {
+func (f *file) scheduleRead(readSoFar int, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
-	handler := f.getReadHandler(b, readSoFar, readAll, cb)
-	f.slot.Set(internal.ReadEvent, handler)
+	f.readReactor.readSoFar = readSoFar
+	f.slot.Set(internal.ReadEvent, f.readReactor.onRead)
 
 	if err := f.ioc.SetRead(&f.slot); err != nil {
 		cb(err, readSoFar)
 	} else {
 		f.ioc.Register(&f.slot)
-	}
-}
-
-func (f *file) getReadHandler(b []byte, readSoFar int, readAll bool, cb AsyncCallback) internal.Handler {
-	return func(err error) {
-		f.ioc.Deregister(&f.slot)
-		if err != nil {
-			cb(err, readSoFar)
-		} else {
-			f.asyncReadNow(b, readSoFar, readAll, cb)
-		}
 	}
 }
 
