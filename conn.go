@@ -13,7 +13,6 @@ var _ Conn = &conn{}
 
 type conn struct {
 	*file
-	fd         int
 	localAddr  net.Addr
 	remoteAddr net.Addr
 }
@@ -49,8 +48,7 @@ func newConn(
 	localAddr, remoteAddr net.Addr,
 ) *conn {
 	return &conn{
-		file:       &file{ioc: ioc, slot: internal.Slot{Fd: fd}},
-		fd:         fd,
+		file:       newFile(ioc, fd),
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
 	}
@@ -74,5 +72,5 @@ func (c *conn) SetWriteDeadline(t time.Time) error {
 }
 
 func (c *conn) RawFd() int {
-	return c.fd
+	return c.file.slot.Fd
 }

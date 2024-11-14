@@ -11,6 +11,12 @@ import (
 	"github.com/talostrading/sonic/sonicerrors"
 )
 
+// MaxCallbackDispatch is the maximum number of callbacks that can exist on a stack-frame when asynchronous operations
+// can be completed immediately.
+//
+// This is the limit to the `IO.dispatched` counter.
+const MaxCallbackDispatch int = 32
+
 // IO is the executor of all asynchronous operations and the way any object can schedule them. It runs fully in the
 // calling goroutine.
 //
@@ -20,9 +26,9 @@ type IO struct {
 	poller internal.Poller
 
 	// The below structures keep a pointer to a Slot struct usually owned by an object capable of asynchronous
-	// operations (essentially any object taking an IO* on construction). Keeping a Slot pointer keeps the owning
-	// object in the GC's object graph while an asynchronous operation is in progress. This ensures Slot references
-	// valid memory when an asynchronous operation completes and the object is already out of scope.
+	// operations (essentially any object taking an IO* on construction). Keeping a Slot pointer keeps the owning object
+	// in the GC's object graph while an asynchronous operation is in progress. This ensures Slot references valid
+	// memory when an asynchronous operation completes and the object is already out of scope.
 	pending struct {
 		// The kernel allocates a process' descriptors from a fixed range that is [0, 1024) by default. Unprivileged
 		// users can bump this range to [0, 4096). The below array should cover 99% of the cases and makes for cheap
@@ -32,11 +38,23 @@ type IO struct {
 		// file descriptors are bound by a fixed range whose upper limit is controlled through RLIMIT_NOFILE.
 		static [4096]*internal.Slot
 
-		// This map covers the 1%, the degenerate case. Any Slot whose file descriptor is greater than or equal to
-		// 4096 goes here.
+		// This map covers the 1%, the degenerate case. Any Slot whose file descriptor is greater than or equal to 4096
+		// goes here. This is lazily initialized.
 		dynamic map[*internal.Slot]struct{}
 	}
 	pendingTimers map[*Timer]struct{} // XXX: should be embedded into the above pending struct
+
+	// Tracks how many callbacks are on the current stack-frame. This prevents stack-overflows in cases where
+	// asynchronous operations can be completed immediately.
+	//
+	// For example, an asynchronous read might be completed immediately. In that case, the callback is invoked which in
+	// turn might call `AsyncRead` again. That asynchronous read might again be completed immediately and so on. In this
+	// case, all subsequent read callbacks are placed on the same stack-frame. We count these callbacks with
+	// `Dispatched`. If we hit `MaxCallbackDispatch`, then the stack-frame is popped - asynchronous reads are scheduled
+	// to be completed on the next poll cycle, even if they can be completed immediately.
+	//
+	// This counter is shared amongst all asynchronous objects - they are responsible for updating it.
+	Dispatched int
 }
 
 func NewIO() (*IO, error) {
@@ -48,6 +66,7 @@ func NewIO() (*IO, error) {
 	return &IO{
 		poller:        poller,
 		pendingTimers: make(map[*Timer]struct{}),
+		Dispatched:    0,
 	}, nil
 }
 
@@ -170,7 +189,7 @@ const (
 // RunWarm runs the event loop in a combined busy-wait and yielding mode, meaning that if the current cycle does not
 // process anything, the event-loop will busy-wait for at most `busyCycles` which we call the warm-state. After
 // `busyCycles` of not processing anything, the event-loop is out of the warm-state and falls back to yielding with the
-// provided timeout. If at any moment an event occurs and something is processed, the  event-loop transitions to its
+// provided timeout. If at any moment an event occurs and something is processed, the event-loop transitions to its
 // warm-state.
 func (ioc *IO) RunWarm(busyCycles int, timeout time.Duration) (err error) {
 	if busyCycles <= 0 {
@@ -200,9 +219,9 @@ func (ioc *IO) RunWarm(busyCycles int, timeout time.Duration) (err error) {
 			// We processed something in this cycle, be it inside or outside the warm-period. We restart the warm-period
 			i = 0
 		} else {
-			// We did not process anything in this cycle. If we are still in the warm period i.e. `i < busyCycles`,
-			// we are going to poll in the next cycle. If we are outside the warm period i.e. `i >= busyCycles`,
-			// we are going to yield in the next cycle.
+			// We did not process anything in this cycle. If we are still in the warm period i.e. `i < busyCycles`, we
+			// are going to poll in the next cycle. If we are outside the warm period i.e. `i >= busyCycles`, we are
+			// going to yield in the next cycle.
 			i++
 		}
 	}
@@ -231,8 +250,6 @@ func (ioc *IO) poll(timeoutMs int) (int, error) {
 
 	if err != nil {
 		if err == syscall.EINTR {
-			// TODO not sure about this one, and whether returning timeout here is ok.
-			// need to look into syscall.EINTR again
 			if timeoutMs >= 0 {
 				return 0, sonicerrors.ErrTimeout
 			}
@@ -251,8 +268,7 @@ func (ioc *IO) poll(timeoutMs int) (int, error) {
 	return n, nil
 }
 
-// Post schedules the provided handler to be run immediately by the event
-// processing loop in its own thread.
+// Post schedules the provided handler to be run immediately by the event processing loop in its own thread.
 //
 // It is safe to call Post concurrently.
 func (ioc *IO) Post(handler func()) error {
@@ -266,6 +282,7 @@ func (ioc *IO) Posted() int {
 	return ioc.poller.Posted()
 }
 
+// Returns the current number of pending asynchronous operations.
 func (ioc *IO) Pending() int64 {
 	return ioc.poller.Pending()
 }

@@ -16,8 +16,6 @@ type listener struct {
 	ioc  *IO
 	slot internal.Slot
 	addr net.Addr
-
-	dispatched int
 }
 
 // Listen creates a Listener that listens for new connections on the local address.
@@ -53,16 +51,16 @@ func (l *listener) Accept() (Conn, error) {
 }
 
 func (l *listener) AsyncAccept(cb AcceptCallback) {
-	if l.dispatched >= MaxCallbackDispatch {
+	if l.ioc.Dispatched >= MaxCallbackDispatch {
 		l.asyncAccept(cb)
 	} else {
 		conn, err := l.accept()
 		if err != nil && (err == sonicerrors.ErrWouldBlock) {
 			l.asyncAccept(cb)
 		} else {
-			l.dispatched++
+			l.ioc.Dispatched++
 			cb(err, conn)
-			l.dispatched--
+			l.ioc.Dispatched--
 		}
 	}
 }
