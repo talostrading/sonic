@@ -5,12 +5,6 @@ import (
 	"net"
 )
 
-const (
-	// MaxCallbackDispatch is the maximum number of callbacks that can exist on a stack-frame when asynchronous
-	// operations can be completed immediately.
-	MaxCallbackDispatch int = 32
-)
-
 type AsyncCallback func(error, int)
 type AcceptCallback func(error, Conn)
 type AcceptPacketCallback func(error, PacketConn)
