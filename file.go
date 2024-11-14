@@ -100,54 +100,54 @@ func (f *file) asyncRead(b []byte, readAll bool, cb AsyncCallback) {
 	}
 }
 
-func (f *file) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
-	n, err := f.Read(b[readBytes:])
-	readBytes += n
+func (f *file) asyncReadNow(b []byte, readSoFar int, readAll bool, cb AsyncCallback) {
+	n, err := f.Read(b[readSoFar:])
+	readSoFar += n
 
 	// f is a nonblocking fd so if err == ErrWouldBlock
 	// then we need to schedule an async read.
 
-	if err == nil && !(readAll && readBytes != len(b)) {
+	if err == nil && !(readAll && readSoFar != len(b)) {
 		// If readAll == true then read fully without errors.
 		// If readAll == false then read some without errors.
 		// We are done.
-		cb(nil, readBytes)
+		cb(nil, readSoFar)
 		return
 	}
 
-	// handles (readAll == false) and (readAll == true && readBytes != len(b)).
+	// handles (readAll == false) and (readAll == true && readSoFar != len(b)).
 	if err == sonicerrors.ErrWouldBlock {
 		// If readAll == true then read some without errors.
 		// We schedule an asynchronous read.
-		f.scheduleRead(b, readBytes, readAll, cb)
+		f.scheduleRead(b, readSoFar, readAll, cb)
 	} else {
-		cb(err, readBytes)
+		cb(err, readSoFar)
 	}
 }
 
-func (f *file) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (f *file) scheduleRead(b []byte, readSoFar int, readAll bool, cb AsyncCallback) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
-	handler := f.getReadHandler(b, readBytes, readAll, cb)
+	handler := f.getReadHandler(b, readSoFar, readAll, cb)
 	f.slot.Set(internal.ReadEvent, handler)
 
 	if err := f.ioc.SetRead(&f.slot); err != nil {
-		cb(err, readBytes)
+		cb(err, readSoFar)
 	} else {
 		f.ioc.Register(&f.slot)
 	}
 }
 
-func (f *file) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
+func (f *file) getReadHandler(b []byte, readSoFar int, readAll bool, cb AsyncCallback) internal.Handler {
 	return func(err error) {
 		f.ioc.Deregister(&f.slot)
 		if err != nil {
-			cb(err, readBytes)
+			cb(err, readSoFar)
 		} else {
-			f.asyncReadNow(b, readBytes, readAll, cb)
+			f.asyncReadNow(b, readSoFar, readAll, cb)
 		}
 	}
 }
