@@ -1670,21 +1670,17 @@ func TestClientAbnormalClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Attempt to read a frame; this should fail due to the server's abnormal closure
-	_, err = ws.NextFrame()
-	if err == nil {
-		t.Fatal("expected error on abnormal close")
-	}
+	// Attempt to read a frame; this should return the 1006 close frame directly
+	frame, err := ws.NextFrame()
+	assert.Equal(io.EOF, err)              // Verify frame error is EOF
 
-	assert.Equal(1, ws.Pending()) // Ensure the close frame is queued
+	assert.True(frame.Opcode().IsClose())  // Verify we got a close frame
 
-	// Verify the queued close frame
-	closeFrame := ws.pendingFrames[0]
-	closeFrame.UnmaskPayload()
-
-	closeCode, reason := DecodeCloseFramePayload(closeFrame.Payload())
+	closeCode, reason := DecodeCloseFramePayload(frame.Payload())
 	assert.Equal(CloseAbnormal, closeCode) // Verify the close code is 1006
 	assert.Empty(reason)                   // Verify there is no reason payload
+
+	assertState(t, ws, StateTerminated)    // Verify the WebSocket's state
 }
 
 func TestClientAsyncAbnormalClose(t *testing.T) {
@@ -1720,19 +1716,15 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 
 		// Attempt to read a frame; this should fail due to the server's abnormal closure
 		ws.AsyncNextFrame(func(err error, f Frame) {
-			if err == nil {
-				t.Fatal("expected error on abnormal close")
-			}
+			assert.Equal(io.EOF, err)              // Verify frame error is EOF
 
-			assert.Equal(1, ws.Pending()) // Ensure the close frame is queued
+			assert.True(f.Opcode().IsClose())      // Verify we got a close frame
 
-			// Verify the queued close frame
-			closeFrame := ws.pendingFrames[0]
-			closeFrame.UnmaskPayload()
-
-			closeCode, reason := DecodeCloseFramePayload(closeFrame.Payload())
-			assert.Equal(CloseAbnormal, closeCode) // Verify the close code is 1006
+			closeCode, reason := DecodeCloseFramePayload(f.Payload())
+			assert.Equal(CloseAbnormal, closeCode) // Verify close code is 1006
 			assert.Empty(reason)                   // Verify there is no reason payload
+
+			assertState(t, ws, StateTerminated)    // Verify the WebSocket's state
 
 			done = true
 		})
