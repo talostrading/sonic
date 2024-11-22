@@ -247,9 +247,7 @@ func (s *Stream) nextFrame() (f Frame, err error) {
 			SetFIN().
 			SetClose().
 			SetPayload(EncodeCloseFramePayload(CloseAbnormal, ""))
-
-		return
-}
+	}
 
 	if err == nil {
 		err = s.handleFrame(f)
