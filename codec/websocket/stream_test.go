@@ -1639,3 +1639,106 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 		}
 	})
 }
+
+func TestClientAbnormalClose(t *testing.T) {
+	assert := assert.New(t)
+
+	go func() {
+		srv := &MockServer{}
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		// Simulate an abnormal closure (close the TCP connection without sending a WebSocket close frame)
+		srv.Close()
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = ws.Handshake("ws://localhost:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Attempt to read a frame; this should fail due to the server's abnormal closure
+	_, err = ws.NextFrame()
+	if err == nil {
+		t.Fatal("expected error on abnormal close")
+	}
+
+	assert.Equal(1, ws.Pending()) // Ensure the close frame is queued
+
+	// Verify the queued close frame
+	closeFrame := ws.pendingFrames[0]
+	closeFrame.UnmaskPayload()
+
+	closeCode, reason := DecodeCloseFramePayload(closeFrame.Payload())
+	assert.Equal(CloseAbnormal, closeCode) // Verify the close code is 1006
+	assert.Empty(reason)                   // Verify there is no reason payload
+}
+
+func TestClientAsyncAbnormalClose(t *testing.T) {
+	assert := assert.New(t)
+
+	go func() {
+		srv := &MockServer{}
+		defer srv.Close()
+
+		err := srv.Accept("localhost:8080")
+		if err != nil {
+			panic(err)
+		}
+
+		// Simulate an abnormal closure (close the TCP connection without sending a WebSocket close frame)
+		srv.Close()
+	}()
+	time.Sleep(10 * time.Millisecond)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := false
+	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Attempt to read a frame; this should fail due to the server's abnormal closure
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			if err == nil {
+				t.Fatal("expected error on abnormal close")
+			}
+
+			assert.Equal(1, ws.Pending()) // Ensure the close frame is queued
+
+			// Verify the queued close frame
+			closeFrame := ws.pendingFrames[0]
+			closeFrame.UnmaskPayload()
+
+			closeCode, reason := DecodeCloseFramePayload(closeFrame.Payload())
+			assert.Equal(CloseAbnormal, closeCode) // Verify the close code is 1006
+			assert.Empty(reason)                   // Verify there is no reason payload
+
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
