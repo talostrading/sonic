@@ -234,6 +234,9 @@ func (s *Stream) NextFrame() (f Frame, err error) {
 
 func (s *Stream) nextFrame() (f Frame, err error) {
 	f, err = s.codecConn.ReadNext()
+	if err != nil {
+		s.detectAbnormalClosure(err)
+	}
 	if err == nil {
 		err = s.handleFrame(f)
 	}
@@ -273,11 +276,37 @@ func (s *Stream) asyncNextFrame(callback AsyncFrameCallback) {
 	s.codecConn.AsyncReadNext(func(err error, f Frame) {
 		if err == nil {
 			err = s.handleFrame(f)
-		} else if err == io.EOF {
-			s.state = StateTerminated
+		} else {
+			s.detectAbnormalClosure(err)
 		}
 		callback(err, f)
 	})
+}
+
+// isConnectionError returns true if the error indicates a connection-level issue,
+// such as a non-timeout network error, a connection reset (ECONNRESET), or a broken pipe (EPIPE).
+func isConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	netErr, ok := err.(net.Error)
+	return ok && !netErr.Timeout() ||
+		errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE)
+}
+
+// detectAbnormalClosure updates the stream state and queues a close frame if the error
+// indicates an abnormal WebSocket closure (e.g., EOF or connection error).
+func (s *Stream) detectAbnormalClosure(err error) {
+	if s.state == StateTerminated {
+		return
+	}
+
+	if err == io.EOF || isConnectionError(err) {
+		s.state = StateTerminated
+		s.prepareClose(EncodeCloseFramePayload(CloseAbnormal, ""))
+	}
 }
 
 // NextMessage reads the payload of the next message into the supplied buffer. Message fragmentation is automatically
