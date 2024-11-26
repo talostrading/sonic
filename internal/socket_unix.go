@@ -151,9 +151,12 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 			return sonicerrors.ErrTimeout
 		}
 
-		_, err = syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+		socketErr, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
 		if err != nil {
 			return os.NewSyscallError("getsockopt", err)
+		}
+		if socketErr != 0 {
+			return syscall.Errno(socketErr)
 		}
 	}
 
