@@ -22,12 +22,21 @@ type MockServer struct {
 	Upgrade *http.Request
 }
 
-func (s *MockServer) Accept(addr string) (err error) {
+// Accept starts the mock server, listening on the specified address.
+// If a callback is provided, it is invoked with the assigned port.
+func (s *MockServer) Accept(addr string, opts ...func(int)) (err error) {
 	s.ln, err = net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	atomic.StoreInt32(&s.port, int32(s.ln.Addr().(*net.TCPAddr).Port))
+
+	port := int(s.ln.Addr().(*net.TCPAddr).Port)
+	atomic.StoreInt32(&s.port, int32(port))
+
+	// Call port callback if provided
+	if len(opts) > 0 && opts[0] != nil {
+		opts[0](port)
+	}
 
 	conn, err := s.ln.Accept()
 	if err != nil {

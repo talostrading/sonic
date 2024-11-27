@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -1643,11 +1644,18 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 func TestClientAbnormalClose(t *testing.T) {
 	assert := assert.New(t)
 
+	portChan := make(chan int, 1)
+
 	go func() {
 		srv := &MockServer{}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:8080")
+		err := srv.Accept("localhost:0", func(port int) {
+			if port <= 0 {
+				panic(fmt.Sprintf("Got invalid port from MockServer: %d", port))
+			}
+			portChan <- port
+		})
 		if err != nil {
 			panic(err)
 		}
@@ -1657,18 +1665,17 @@ func TestClientAbnormalClose(t *testing.T) {
 	}()
 	time.Sleep(10 * time.Millisecond)
 
+	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
 	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(err)
 
-	err = ws.Handshake("ws://localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
+	err = ws.Handshake(wsURI)
+	assert.Nil(err)
+	assert.Equal(ws.State(), StateActive)  // Verify WebSocket active
 
 	// Attempt to read a frame; this should return the 1006 close frame directly
 	frame, err := ws.NextFrame()
@@ -1680,17 +1687,24 @@ func TestClientAbnormalClose(t *testing.T) {
 	assert.Equal(CloseAbnormal, closeCode) // Verify the close code is 1006
 	assert.Empty(reason)                   // Verify there is no reason payload
 
-	assertState(t, ws, StateTerminated)    // Verify the WebSocket's state
+	assert.Equal(ws.State(), StateTerminated) // Verify the WebSocket's state
 }
 
 func TestClientAsyncAbnormalClose(t *testing.T) {
 	assert := assert.New(t)
 
+	portChan := make(chan int, 1)
+
 	go func() {
 		srv := &MockServer{}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:8080")
+		err := srv.Accept("localhost:0", func(port int) {
+			if port <= 0 {
+				panic(fmt.Sprintf("Got invalid port from MockServer: %d", port))
+			}
+			portChan <- port
+		})
 		if err != nil {
 			panic(err)
 		}
@@ -1700,19 +1714,18 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 	}()
 	time.Sleep(10 * time.Millisecond)
 
+	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
+
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
 	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-	if err != nil {
-		t.Fatal(err)
-	}
+	assert.Nil(err)
 
 	done := false
-	ws.AsyncHandshake("ws://localhost:8080", func(err error) {
-		if err != nil {
-			t.Fatal(err)
-		}
+	ws.AsyncHandshake(wsURI, func(err error) {
+		assert.Nil(err)
+		assert.Equal(ws.State(), StateActive)    // Verify WebSocket active
 
 		// Attempt to read a frame; this should fail due to the server's abnormal closure
 		ws.AsyncNextFrame(func(err error, f Frame) {
@@ -1724,7 +1737,7 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 			assert.Equal(CloseAbnormal, closeCode) // Verify close code is 1006
 			assert.Empty(reason)                   // Verify there is no reason payload
 
-			assertState(t, ws, StateTerminated)    // Verify the WebSocket's state
+			assert.Equal(ws.State(), StateTerminated) // Verify the WebSocket's state
 
 			done = true
 		})

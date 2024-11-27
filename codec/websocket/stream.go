@@ -242,11 +242,7 @@ func (s *Stream) nextFrame() (f Frame, err error) {
 
 		// Prepare and return the 1006 close frame directly to client
 		f = NewFrame()
-		fPtr := &f
-		fPtr.
-			SetFIN().
-			SetClose().
-			SetPayload(EncodeCloseFramePayload(CloseAbnormal, ""))
+		f.SetFIN().SetClose().SetPayload(EncodeCloseFramePayload(CloseAbnormal, ""))
 	}
 
 	if err == nil {
@@ -296,11 +292,7 @@ func (s *Stream) asyncNextFrame(callback AsyncFrameCallback) {
 
 			// Prepare and return the 1006 close frame directly
 			f = NewFrame()
-			fPtr := &f
-			fPtr.
-				SetFIN().
-				SetClose().
-				SetPayload(EncodeCloseFramePayload(CloseAbnormal, ""))
+			f.SetFIN().SetClose().SetPayload(EncodeCloseFramePayload(CloseAbnormal, ""))
 		}
 
 		callback(err, f)
