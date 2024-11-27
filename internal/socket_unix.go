@@ -151,9 +151,18 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 			return sonicerrors.ErrTimeout
 		}
 
-		_, err = syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+		socketErr, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
 		if err != nil {
 			return os.NewSyscallError("getsockopt", err)
+		}
+		if socketErr != 0 {
+			var err error = syscall.Errno(socketErr)
+			if errors.Is(err, syscall.ECONNREFUSED) {
+				// This is the most likely to happen and on which callers will have custom logic. The rest we can just
+				// propagate.
+				return sonicerrors.ErrConnRefused
+			}
+			return err
 		}
 	}
 
