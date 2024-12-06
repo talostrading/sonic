@@ -18,25 +18,33 @@ type MockServer struct {
 	conn   net.Conn
 	closed int32
 	port   int32
+	portChan chan int
 
 	Upgrade *http.Request
 }
 
-// Accept starts the mock server, listening on the specified address.
-// If a callback is provided, it is invoked with the assigned port.
-func (s *MockServer) Accept(addr string, opts ...func(int)) (err error) {
-	s.ln, err = net.Listen("tcp", addr)
+func NewMockServer() *MockServer {
+	return &MockServer{
+		portChan: make(chan int, 1), // Buffer port channel to prevent blocking server
+	}
+}
+
+// Accept starts the mock server on the specified address.
+// If MockServerDynamicAddr is provided as the address, the server binds to any available port.
+const MockServerDynamicAddr = ""
+func (s *MockServer) Accept(addr string) (err error) {
+	if addr == MockServerDynamicAddr {
+		s.ln, err = net.Listen("tcp", "localhost:0")
+	} else {
+		s.ln, err = net.Listen("tcp", addr)
+	}
 	if err != nil {
 		return err
 	}
 
 	port := int(s.ln.Addr().(*net.TCPAddr).Port)
 	atomic.StoreInt32(&s.port, int32(port))
-
-	// Call port callback if provided
-	if len(opts) > 0 && opts[0] != nil {
-		opts[0](port)
-	}
+	s.portChan <- port
 
 	conn, err := s.ln.Accept()
 	if err != nil {

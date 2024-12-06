@@ -25,7 +25,7 @@ func TestClientReadWrite(t *testing.T) {
 	}
 	dur := time.Duration(idur) * time.Second
 
-	s := &MockServer{}
+	s := NewMockServer()
 
 	go func() {
 		defer s.Close()
