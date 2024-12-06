@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/talostrading/sonic"
@@ -23,15 +22,12 @@ func assertState(t *testing.T, ws *Stream, expected StreamState) {
 func TestClientServerSendsInvalidCloseCode(t *testing.T) {
 	assert := assert.New(t)
 
-	portChan := make(chan int, 1)
+	srv := NewMockServer()
 
 	go func() {
-		srv := &MockServer{
-			portChan: portChan,
-		}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
@@ -64,8 +60,6 @@ func TestClientServerSendsInvalidCloseCode(t *testing.T) {
 		}
 	}()
 
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
-
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -75,7 +69,7 @@ func TestClientServerSendsInvalidCloseCode(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(wsURI, func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,15 +89,12 @@ func TestClientServerSendsInvalidCloseCode(t *testing.T) {
 func TestClientEchoCloseCode(t *testing.T) {
 	assert := assert.New(t)
 
-	portChan := make(chan int, 1)
+	srv := NewMockServer()
 
 	go func() {
-		srv := &MockServer{
-			portChan: portChan,
-		}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
@@ -131,8 +122,6 @@ func TestClientEchoCloseCode(t *testing.T) {
 			assert.Equal(reason, "something")
 		}
 	}()
-	
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -143,7 +132,7 @@ func TestClientEchoCloseCode(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(wsURI, func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,15 +154,12 @@ func TestClientSendPingWithInvalidPayload(t *testing.T) {
 	// the connection immediately with 1002/Protocol Error.
 	assert := assert.New(t)
 
-	portChan := make(chan int, 1)
+	srv := NewMockServer()
 
 	go func() {
-		srv := &MockServer{
-			portChan: portChan,
-		}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
@@ -206,8 +192,6 @@ func TestClientSendPingWithInvalidPayload(t *testing.T) {
 		}
 	}()
 
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
-
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -217,7 +201,7 @@ func TestClientSendPingWithInvalidPayload(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(wsURI, func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -238,15 +222,12 @@ func TestClientSendPingWithInvalidPayload(t *testing.T) {
 func TestClientSendMessageWithPayload126(t *testing.T) {
 	assert := assert.New(t)
 
-	portChan := make(chan int, 1)
+	srv := NewMockServer()
 
 	go func() {
-		srv := &MockServer{
-			portChan: portChan,
-		}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
@@ -262,8 +243,6 @@ func TestClientSendMessageWithPayload126(t *testing.T) {
 		frame.WriteTo(srv.conn)
 	}()
 
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
-
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -273,7 +252,7 @@ func TestClientSendMessageWithPayload126(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(wsURI, func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -297,15 +276,12 @@ func TestClientSendMessageWithPayload126(t *testing.T) {
 func TestClientSendMessageWithPayload127(t *testing.T) {
 	assert := assert.New(t)
 
-	portChan := make(chan int, 1)
+	srv := NewMockServer()
 
 	go func() {
-		srv := &MockServer{
-			portChan: portChan,
-		}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
@@ -321,8 +297,6 @@ func TestClientSendMessageWithPayload127(t *testing.T) {
 		frame.WriteTo(srv.conn)
 	}()
 
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
-
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -332,7 +306,7 @@ func TestClientSendMessageWithPayload127(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(wsURI, func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -354,28 +328,29 @@ func TestClientSendMessageWithPayload127(t *testing.T) {
 }
 
 func TestClientReconnectOnFailedRead(t *testing.T) {
-	port, err := GetFreePort()
-	if err != nil {
-		panic(err)
-	}
-
-	serverURI := fmt.Sprintf("localhost:%d", port)
-	wsURI := fmt.Sprintf("ws://localhost:%d", port)
+	srv := NewMockServer()
+	port := 0
 
 	go func() {
 		for i := 0; i < 10; i++ {
-			srv := &MockServer{}
-
-			err := srv.Accept(serverURI)
+			var err error
+			if port != 0 {
+				err = srv.Accept(fmt.Sprintf("localhost:%d", port))
+			} else {
+				err = srv.Accept(MockServerDynamicAddr)
+			}
 			if err != nil {
 				panic(err)
 			}
 
 			srv.Write([]byte("hello"))
 			srv.Close()
+
+			srv = NewMockServer()
 		}
 	}()
-	time.Sleep(10 * time.Millisecond)
+
+	port = <- srv.portChan
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -422,7 +397,7 @@ func TestClientReconnectOnFailedRead(t *testing.T) {
 	}
 
 	connect = func() {
-		ws.AsyncHandshake(wsURI, onHandshake)
+		ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", port), onHandshake)
 	}
 
 	connect()
@@ -498,20 +473,16 @@ func TestClientFailedHandshakeNoServer(t *testing.T) {
 }
 
 func TestClientSuccessfulHandshake(t *testing.T) {
-	srv := &MockServer{
-		portChan: make(chan int, 1),
-	}
+	srv := NewMockServer()
 
 	go func() {
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
 	}()
-
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-srv.portChan)
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -537,7 +508,7 @@ func TestClientSuccessfulHandshake(t *testing.T) {
 
 	assertState(t, ws, StateHandshake)
 
-	ws.AsyncHandshake(wsURI, func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			assertState(t, ws, StateTerminated)
 		} else {
@@ -560,20 +531,16 @@ func TestClientSuccessfulHandshake(t *testing.T) {
 }
 
 func TestClientSuccessfulHandshakeWithExtraHeaders(t *testing.T) {
-	srv := &MockServer{
-		portChan: make(chan int, 1),
-	}
+	srv := NewMockServer()
 
 	go func() {
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
 	}()
-
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-srv.portChan)
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -597,7 +564,7 @@ func TestClientSuccessfulHandshakeWithExtraHeaders(t *testing.T) {
 	}
 
 	ws.AsyncHandshake(
-		wsURI,
+		fmt.Sprintf("ws://localhost:%d", <-srv.portChan),
 		func(err error) {
 			if err != nil {
 				assertState(t, ws, StateTerminated)
@@ -1683,15 +1650,12 @@ func TestClientAsyncCloseHandshakePeerStarts(t *testing.T) {
 func TestClientAbnormalClose(t *testing.T) {
 	assert := assert.New(t)
 
-	portChan := make(chan int, 1)
+	srv := NewMockServer()
 
 	go func() {
-		srv := &MockServer{
-			portChan: portChan,
-		}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
@@ -1700,15 +1664,13 @@ func TestClientAbnormalClose(t *testing.T) {
 		srv.Close()
 	}()
 
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
-
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
 	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
 	assert.Nil(err)
 
-	err = ws.Handshake(wsURI)
+	err = ws.Handshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan))
 	assert.Nil(err)
 	assert.Equal(ws.State(), StateActive)  // Verify WebSocket active
 
@@ -1728,15 +1690,12 @@ func TestClientAbnormalClose(t *testing.T) {
 func TestClientAsyncAbnormalClose(t *testing.T) {
 	assert := assert.New(t)
 
-	portChan := make(chan int, 1)
+	srv := NewMockServer()
 
 	go func() {
-		srv := &MockServer{
-			portChan: portChan,
-		}
 		defer srv.Close()
 
-		err := srv.Accept("localhost:0")
+		err := srv.Accept(MockServerDynamicAddr)
 		if err != nil {
 			panic(err)
 		}
@@ -1745,8 +1704,6 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 		srv.Close()
 	}()
 
-	wsURI := fmt.Sprintf("ws://localhost:%d", <-portChan)
-
 	ioc := sonic.MustIO()
 	defer ioc.Close()
 
@@ -1754,7 +1711,7 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 	assert.Nil(err)
 
 	done := false
-	ws.AsyncHandshake(wsURI, func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		assert.Nil(err)
 		assert.Equal(ws.State(), StateActive)    // Verify WebSocket active
 
