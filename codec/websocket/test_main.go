@@ -23,20 +23,28 @@ type MockServer struct {
 	Upgrade *http.Request
 }
 
-// Accept starts the mock server, listening on the specified address.
-// If a callback is provided, it is invoked with the assigned port.
+func NewMockServer() *MockServer {
+	return &MockServer{
+		portChan: make(chan int, 1), // Buffer port channel to prevent blocking server
+	}
+}
+
+// Accept starts the mock server on the specified address.
+// If MockServerDynamicAddr is provided as the address, the server binds to any available port.
+const MockServerDynamicAddr = ""
 func (s *MockServer) Accept(addr string) (err error) {
-	s.ln, err = net.Listen("tcp", addr)
+	if addr == MockServerDynamicAddr {
+		s.ln, err = net.Listen("tcp", "localhost:0")
+	} else {
+		s.ln, err = net.Listen("tcp", addr)
+	}
 	if err != nil {
 		return err
 	}
 
 	port := int(s.ln.Addr().(*net.TCPAddr).Port)
 	atomic.StoreInt32(&s.port, int32(port))
-
-	if s.portChan != nil {
-		s.portChan <- port
-	}
+	s.portChan <- port
 
 	conn, err := s.ln.Accept()
 	if err != nil {
@@ -186,18 +194,4 @@ func (s *MockStream) Close() error {
 
 func (s *MockStream) RawFd() int {
 	return -1
-}
-
-// GetFreePort asks the kernel for a free open port that is ready to use.
-// From: https://gist.github.com/sevkin/96bdae9274465b2d09191384f86ef39d
-func GetFreePort() (port int, err error) {
-	var a *net.TCPAddr
-	if a, err = net.ResolveTCPAddr("tcp", "localhost:0"); err == nil {
-		var l *net.TCPListener
-		if l, err = net.ListenTCP("tcp", a); err == nil {
-			defer l.Close()
-			return l.Addr().(*net.TCPAddr).Port, nil
-		}
-	}
-	return
 }
