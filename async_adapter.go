@@ -62,7 +62,7 @@ type asyncAdapterWriteReactor struct {
 	b           []byte
 	writeAll    bool
 	cb          AsyncCallback
-	writtenSoFar int
+	wroteSoFar int
 }
 
 func (r *asyncAdapterWriteReactor) init(b []byte, writeAll bool, cb AsyncCallback) {
@@ -70,15 +70,15 @@ func (r *asyncAdapterWriteReactor) init(b []byte, writeAll bool, cb AsyncCallbac
 	r.writeAll = writeAll
 	r.cb = cb
 
-	r.writtenSoFar = 0
+	r.wroteSoFar = 0
 }
 
 func (r *asyncAdapterWriteReactor) onWrite(err error) {
 	r.adapter.ioc.Deregister(&r.adapter.slot)
 	if err != nil {
-		r.cb(err, r.writtenSoFar)
+		r.cb(err, r.wroteSoFar)
 	} else {
-		r.adapter.asyncWriteNow(r.b, r.writtenSoFar, r.writeAll, r.cb)
+		r.adapter.asyncWriteNow(r.b, r.wroteSoFar, r.writeAll, r.cb)
 	}
 }
 
@@ -139,7 +139,7 @@ func (a *AsyncAdapter) Write(b []byte) (int, error) {
 // buffer is completely filled, use AsyncReadAll.
 func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 	a.readReactor.init(b, false, cb)
-	a.scheduleRead(b, 0, cb)
+	a.scheduleRead(0, cb)
 }
 
 // AsyncReadAll reads data from the underlying file descriptor into b asynchronously.
@@ -150,7 +150,7 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 //     read(...) operations.
 func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
 	a.readReactor.init(b, true, cb)
-	a.scheduleRead(b, 0, cb)
+	a.scheduleRead(0, cb)
 }
 
 func (a *AsyncAdapter) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
@@ -167,10 +167,10 @@ func (a *AsyncAdapter) asyncReadNow(b []byte, readBytes int, readAll bool, cb As
 		return
 	}
 
-	a.scheduleRead(b, readBytes, cb)
+	a.scheduleRead(readBytes, cb)
 }
 
-func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, cb AsyncCallback) {
+func (a *AsyncAdapter) scheduleRead(readBytes int, cb AsyncCallback) {
 	if a.Closed() {
 		cb(io.EOF, readBytes)
 		return
@@ -192,7 +192,7 @@ func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, cb AsyncCallback) {
 // buffer is completely written, use AsyncWriteAll.
 func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 	a.writeReactor.init(b, false, cb)
-	a.scheduleWrite(b, 0, cb)
+	a.scheduleWrite(0, cb)
 }
 
 // AsyncWriteAll writes data from the supplied buffer to the underlying file descriptor asynchronously.
@@ -203,7 +203,7 @@ func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 //     write(...) operations.
 func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {
 	a.writeReactor.init(b, true, cb)
-	a.scheduleWrite(b, 0, cb)
+	a.scheduleWrite(0, cb)
 }
 
 func (a *AsyncAdapter) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
@@ -220,16 +220,16 @@ func (a *AsyncAdapter) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, 
 		return
 	}
 
-	a.scheduleWrite(b, writtenBytes, cb)
+	a.scheduleWrite(writtenBytes, cb)
 }
 
-func (a *AsyncAdapter) scheduleWrite(b []byte, writtenBytes int, cb AsyncCallback) {
+func (a *AsyncAdapter) scheduleWrite(writtenBytes int, cb AsyncCallback) {
 	if a.Closed() {
 		cb(io.EOF, writtenBytes)
 		return
 	}
 
-	a.writeReactor.writtenSoFar = writtenBytes
+	a.writeReactor.wroteSoFar = writtenBytes
 	a.slot.Set(internal.WriteEvent, a.writeReactor.onWrite)
 
 	if err := a.ioc.SetWrite(&a.slot); err != nil {
