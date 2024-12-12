@@ -25,6 +25,61 @@ type AsyncAdapter struct {
 	rw     io.ReadWriter
 	rc     syscall.RawConn
 	closed uint32
+
+	readReactor  asyncAdapterReadReactor
+	writeReactor asyncAdapterWriteReactor
+}
+
+type asyncAdapterReadReactor struct {
+	adapter   *AsyncAdapter
+
+	b         []byte
+	readAll   bool
+	cb        AsyncCallback
+	readSoFar int
+}
+
+func (r *asyncAdapterReadReactor) init(b []byte, readAll bool, cb AsyncCallback) {
+	r.b = b
+	r.readAll = readAll
+	r.cb = cb
+
+	r.readSoFar = 0
+}
+
+func (r *asyncAdapterReadReactor) onRead(err error) {
+	r.adapter.ioc.Deregister(&r.adapter.slot)
+	if err != nil {
+		r.cb(err, r.readSoFar)
+	} else {
+		r.adapter.asyncReadNow(r.b, r.readSoFar, r.readAll, r.cb)
+	}
+}
+
+type asyncAdapterWriteReactor struct {
+	adapter     *AsyncAdapter
+
+	b           []byte
+	writeAll    bool
+	cb          AsyncCallback
+	writtenSoFar int
+}
+
+func (r *asyncAdapterWriteReactor) init(b []byte, writeAll bool, cb AsyncCallback) {
+	r.b = b
+	r.writeAll = writeAll
+	r.cb = cb
+
+	r.writtenSoFar = 0
+}
+
+func (r *asyncAdapterWriteReactor) onWrite(err error) {
+	r.adapter.ioc.Deregister(&r.adapter.slot)
+	if err != nil {
+		r.cb(err, r.writtenSoFar)
+	} else {
+		r.adapter.asyncWriteNow(r.b, r.writtenSoFar, r.writeAll, r.cb)
+	}
 }
 
 // NewAsyncAdapter takes in an IO instance and an interface of syscall.Conn and io.ReadWriter
@@ -54,6 +109,13 @@ func NewAsyncAdapter(
 		}
 		a.slot.Fd = int(fd)
 		err := internal.ApplyOpts(int(fd), opts...)
+
+		a.readReactor = asyncAdapterReadReactor{adapter: a}
+		a.readReactor.init(nil, false, nil)
+
+		a.writeReactor = asyncAdapterWriteReactor{adapter: a}
+		a.writeReactor.init(nil, false, nil)
+
 		cb(err, a)
 	})
 	if err != nil {
@@ -76,7 +138,8 @@ func (a *AsyncAdapter) Write(b []byte) (int, error) {
 // AsyncRead returns no error on short reads. If you want to ensure that the provided
 // buffer is completely filled, use AsyncReadAll.
 func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
-	a.scheduleRead(b, 0, false, cb)
+	a.readReactor.init(b, false, cb)
+	a.scheduleRead(b, 0, cb)
 }
 
 // AsyncReadAll reads data from the underlying file descriptor into b asynchronously.
@@ -86,7 +149,8 @@ func (a *AsyncAdapter) AsyncRead(b []byte, cb AsyncCallback) {
 //   - the provided buffer has been fully filled after zero or several underlying
 //     read(...) operations.
 func (a *AsyncAdapter) AsyncReadAll(b []byte, cb AsyncCallback) {
-	a.scheduleRead(b, 0, true, cb)
+	a.readReactor.init(b, true, cb)
+	a.scheduleRead(b, 0, cb)
 }
 
 func (a *AsyncAdapter) asyncReadNow(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
@@ -103,17 +167,17 @@ func (a *AsyncAdapter) asyncReadNow(b []byte, readBytes int, readAll bool, cb As
 		return
 	}
 
-	a.scheduleRead(b, readBytes, readAll, cb)
+	a.scheduleRead(b, readBytes, cb)
 }
 
-func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, readAll bool, cb AsyncCallback) {
+func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, cb AsyncCallback) {
 	if a.Closed() {
 		cb(io.EOF, readBytes)
 		return
 	}
 
-	handler := a.getReadHandler(b, readBytes, readAll, cb)
-	a.slot.Set(internal.ReadEvent, handler)
+	a.readReactor.readSoFar = readBytes
+	a.slot.Set(internal.ReadEvent, a.readReactor.onRead)
 
 	if err := a.ioc.SetRead(&a.slot); err != nil {
 		cb(err, readBytes)
@@ -122,24 +186,13 @@ func (a *AsyncAdapter) scheduleRead(b []byte, readBytes int, readAll bool, cb As
 	}
 }
 
-func (a *AsyncAdapter) getReadHandler(b []byte, readBytes int, readAll bool, cb AsyncCallback) internal.Handler {
-	return func(err error) {
-		a.ioc.Deregister(&a.slot)
-
-		if err != nil {
-			cb(err, readBytes)
-		} else {
-			a.asyncReadNow(b, readBytes, readAll, cb)
-		}
-	}
-}
-
 // AsyncWrite writes data from the supplied buffer to the underlying file descriptor asynchronously.
 //
 // AsyncWrite returns no error on short writes. If you want to ensure that the provided
 // buffer is completely written, use AsyncWriteAll.
 func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
-	a.scheduleWrite(b, 0, false, cb)
+	a.writeReactor.init(b, false, cb)
+	a.scheduleWrite(b, 0, cb)
 }
 
 // AsyncWriteAll writes data from the supplied buffer to the underlying file descriptor asynchronously.
@@ -149,7 +202,8 @@ func (a *AsyncAdapter) AsyncWrite(b []byte, cb AsyncCallback) {
 //   - the provided buffer has been fully written after zero or several underlying
 //     write(...) operations.
 func (a *AsyncAdapter) AsyncWriteAll(b []byte, cb AsyncCallback) {
-	a.scheduleWrite(b, 0, true, cb)
+	a.writeReactor.init(b, true, cb)
+	a.scheduleWrite(b, 0, cb)
 }
 
 func (a *AsyncAdapter) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
@@ -166,34 +220,22 @@ func (a *AsyncAdapter) asyncWriteNow(b []byte, writtenBytes int, writeAll bool, 
 		return
 	}
 
-	a.scheduleWrite(b, writtenBytes, writeAll, cb)
+	a.scheduleWrite(b, writtenBytes, cb)
 }
 
-func (a *AsyncAdapter) scheduleWrite(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) {
+func (a *AsyncAdapter) scheduleWrite(b []byte, writtenBytes int, cb AsyncCallback) {
 	if a.Closed() {
 		cb(io.EOF, writtenBytes)
 		return
 	}
 
-	handler := a.getWriteHandler(b, writtenBytes, writeAll, cb)
-	a.slot.Set(internal.WriteEvent, handler)
+	a.writeReactor.writtenSoFar = writtenBytes
+	a.slot.Set(internal.WriteEvent, a.writeReactor.onWrite)
 
 	if err := a.ioc.SetWrite(&a.slot); err != nil {
 		cb(err, writtenBytes)
 	} else {
 		a.ioc.Register(&a.slot)
-	}
-}
-
-func (a *AsyncAdapter) getWriteHandler(b []byte, writtenBytes int, writeAll bool, cb AsyncCallback) internal.Handler {
-	return func(err error) {
-		a.ioc.Deregister(&a.slot)
-
-		if err != nil {
-			cb(err, writtenBytes)
-		} else {
-			a.asyncWriteNow(b, writtenBytes, writeAll, cb)
-		}
 	}
 }
 
