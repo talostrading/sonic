@@ -130,40 +130,67 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 		return err
 	}
 
-	if err := syscall.Connect(fd, ToSockaddr(remoteAddr)); err != nil {
-		// this can happen if the socket is nonblocking, so we fix it with a select
-		// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
+	for {
+		// Try to connect, if it succeeds we're done!
+		err := syscall.Connect(fd, ToSockaddr(remoteAddr))
+		if err == nil {
+			return nil
+		}
+
+		// Retry the connect syscall if interrupted
+		if err == syscall.EINTR {
+			continue 
+		}
+
+		// Handle errors
 		if err != syscall.EINPROGRESS && err != syscall.EAGAIN {
 			return os.NewSyscallError("connect", err)
 		}
 
-		var fds unix.FdSet
-		fds.Set(fd)
+		// We got EINPROGRESS or EAGAIN, need to handle separately
+		break
+	}
 
-		t := unix.NsecToTimeval(timeout.Nanoseconds())
+	// we can get EINPROGRESS/EAGAIN if the socket is nonblocking, so we fix it with a select
+	// https://man7.org/linux/man-pages/man2/connect.2.html#EINPROGRESS
 
+	var fds unix.FdSet
+	fds.Set(fd)
+
+	t := unix.NsecToTimeval(timeout.Nanoseconds())
+
+	for {
 		n, err := unix.Select(fd+1, nil, &fds, nil, &t)
-		if err != nil {
+		if err == nil {
+			// Handle timeout
+			if n == 0 {
+				return sonicerrors.ErrTimeout
+			}
+
+			// Select succeeded
+			break 
+		}
+
+		// Handle errors
+		if err != syscall.EINTR {
 			return os.NewSyscallError("select", err)
 		}
 
-		if n == 0 {
-			return sonicerrors.ErrTimeout
-		}
+		// Retry the select syscall if interrupted
+	}
 
-		socketErr, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
-		if err != nil {
-			return os.NewSyscallError("getsockopt", err)
+	socketErr, err := syscall.GetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_ERROR)
+	if err != nil {
+		return os.NewSyscallError("getsockopt", err)
+	}
+	if socketErr != 0 {
+		var err error = syscall.Errno(socketErr)
+		if errors.Is(err, syscall.ECONNREFUSED) {
+			// This is the most likely to happen and on which callers will have custom logic. The rest we can just
+			// propagate.
+			return sonicerrors.ErrConnRefused
 		}
-		if socketErr != 0 {
-			var err error = syscall.Errno(socketErr)
-			if errors.Is(err, syscall.ECONNREFUSED) {
-				// This is the most likely to happen and on which callers will have custom logic. The rest we can just
-				// propagate.
-				return sonicerrors.ErrConnRefused
-			}
-			return err
-		}
+		return err
 	}
 
 	return nil
