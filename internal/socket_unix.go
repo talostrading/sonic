@@ -133,8 +133,8 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 	startTime := time.Now()
 
 	for {
-    // Prevent an infinite connect() loop, time out eventually
-    if time.Since(startTime) > 5 * timeout {
+		// Prevent an infinite connect() loop, time out eventually
+		if time.Since(startTime) > 5 * timeout {
 			return sonicerrors.ErrTimeout
 		}
 
