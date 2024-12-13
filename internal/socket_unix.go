@@ -130,7 +130,14 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 		return err
 	}
 
+	startTime := time.Now()
+
 	for {
+    // Prevent an infinite connect() loop, time out eventually
+    if time.Since(startTime) > 5 * timeout {
+			return sonicerrors.ErrTimeout
+		}
+
 		// Try to connect, if it succeeds we're done!
 		err := syscall.Connect(fd, ToSockaddr(remoteAddr))
 		if err == nil {
@@ -138,12 +145,12 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 		}
 
 		// Retry the connect syscall if interrupted
-		if err == syscall.EINTR {
+		if errors.Is(err, syscall.EINTR) {
 			continue 
 		}
 
 		// Handle errors
-		if err != syscall.EINPROGRESS && err != syscall.EAGAIN {
+		if !errors.Is(err, syscall.EINPROGRESS) && !errors.Is(err, syscall.EAGAIN) {
 			return os.NewSyscallError("connect", err)
 		}
 
@@ -158,8 +165,14 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 	fds.Set(fd)
 
 	t := unix.NsecToTimeval(timeout.Nanoseconds())
+	startTime = time.Now()
 
 	for {
+    // Prevent an infinite select() loop, time out eventually
+    if time.Since(startTime) > 5 * timeout {
+			return sonicerrors.ErrTimeout
+		}
+
 		n, err := unix.Select(fd+1, nil, &fds, nil, &t)
 		if err == nil {
 			// Handle timeout
@@ -172,7 +185,7 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 		}
 
 		// Handle errors
-		if err != syscall.EINTR {
+		if !errors.Is(err, syscall.EINTR) {
 			return os.NewSyscallError("select", err)
 		}
 
