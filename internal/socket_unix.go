@@ -164,15 +164,11 @@ func connect(fd int, remoteAddr net.Addr, timeout time.Duration, opts ...sonicop
 	var fds unix.FdSet
 	fds.Set(fd)
 
-	t := unix.NsecToTimeval(timeout.Nanoseconds())
-	startTime = time.Now()
+	t := unix.NsecToTimeval(5 * timeout.Nanoseconds())
 
 	for {
-    // Prevent an infinite select() loop, time out eventually
-    if time.Since(startTime) > 5 * timeout {
-			return sonicerrors.ErrTimeout
-		}
-
+		// Linux will update t with the time not slept, so we don't need an separate check like before 
+		// https://man7.org/linux/man-pages/man2/select.2.html
 		n, err := unix.Select(fd+1, nil, &fds, nil, &t)
 		if err == nil {
 			// Handle timeout
