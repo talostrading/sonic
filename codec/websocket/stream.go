@@ -1083,3 +1083,134 @@ func (s *Stream) CloseNextLayer() (err error) {
 	}
 	return
 }
+
+// AsyncNextMessageDirect reads the next websocket message asynchronously, returning either
+// one zero-copy slice (if the message fits in one frame) or multiple copied slices
+// (if the message is fragmented).
+//
+// This call first flushes any pending control frames to the underlying stream asynchronously.
+//
+// This call does not block. The provided callback is invoked when one of the following happens:
+//   - an error occurs while flushing the pending control frames
+//   - an error occurs when reading/decoding the message bytes from the underlying stream
+//   - the payload of the message is successfully read
+func (s *Stream) AsyncNextMessageDirect(callback AsyncMessageDirectCallback) {
+	s.AsyncFlush(func(err error) {
+		if errors.Is(err, ErrMessageTooBig) {
+			s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
+			callback(ErrMessageTooBig, TypeNone)
+			return
+		}
+
+		if err == nil && !s.canRead() {
+			err = io.EOF
+		}
+
+		if err == nil {
+			s.asyncNextMessageDirectFirstFrame(callback)
+		} else {
+			s.state = StateTerminated
+			callback(err, TypeNone)
+		}
+	})
+}
+
+// asyncNextMessageDirectFirstFrame reads the first data frame.
+// If it is FIN, we do single-frame zero-copy. Otherwise, we start gathering frames.
+func (s *Stream) asyncNextMessageDirectFirstFrame(cb AsyncMessageDirectCallback) {
+	s.AsyncNextFrame(func(err error, f Frame) {
+		if err != nil {
+			cb(err, TypeNone)
+			return
+		}
+		if f.Opcode().IsControl() {
+			// Handle control frames
+			if s.controlCallback != nil {
+				s.controlCallback(MessageType(f.Opcode()), f.Payload())
+			}
+			s.asyncNextMessageDirectFirstFrame(cb)
+			return
+		}
+
+		mt := MessageType(f.Opcode())
+
+		if f.PayloadLength() > s.maxMessageSize {
+			// Close socket if payload too big
+			s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
+			cb(ErrMessageTooBig, mt)
+			return
+		}
+
+		if f.IsFIN() {
+			// If message is made of a single frame, return that frame's payload (zero copy)
+			cb(nil, mt, f.Payload())
+			return
+		}
+
+		// If message is made of a multiple frames, we must copy each frame's payload
+		// This is because existing codec/ws stream designed around only holding on to one frame at a time
+		payloadCopy := make([]byte, f.PayloadLength())
+		copy(payloadCopy, f.Payload())
+
+		parts := [][]byte{payloadCopy}
+		s.asyncNextMessageDirectFragments(mt, parts, cb)
+	})
+}
+
+// asyncNextMessageDirectFragments reads continuation frames until FIN, storing each payload in parts.
+// For all frames that are not FIN, we do a copy into a new buffer. For the final frame (FIN=true),
+// we append f.Payload() directly (zero-copy).
+func (s *Stream) asyncNextMessageDirectFragments(
+    messageType MessageType,
+    parts [][]byte,
+    cb AsyncMessageDirectCallback,
+) {
+    s.AsyncNextFrame(func(err error, f Frame) {
+        if err != nil {
+            cb(err, messageType, parts...)
+            return
+        }
+        if f.Opcode().IsControl() {
+            // Handle control frames, then keep reading data frames
+            if s.controlCallback != nil {
+                s.controlCallback(MessageType(f.Opcode()), f.Payload())
+            }
+            s.asyncNextMessageDirectFragments(messageType, parts, cb)
+            return
+        }
+        if !f.Opcode().IsContinuation() {
+            // If we encounter a protocol error, close the socket
+            s.AsyncClose(CloseProtocolError, "expected continuation", func(_ error) {})
+            cb(ErrExpectedContinuation, messageType, parts...)
+            return
+        }
+
+        // Check total message size
+        totalSoFar := 0
+        for _, p := range parts {
+            totalSoFar += len(p)
+        }
+        if totalSoFar+f.PayloadLength() > s.maxMessageSize {
+			// Close socket if payload too big
+            s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
+            cb(ErrMessageTooBig, messageType, parts...)
+            return
+        }
+
+        if f.IsFIN() {
+			// If this is final fragment of message, return all of the payload parts
+			// We don't need to copy this final fragment, for the same reason we don't for messages of a
+			// single frame
+            parts = append(parts, f.Payload())
+            cb(nil, messageType, parts...)
+            return
+        }
+
+        // Otherwise, copy this frame and keep reading next fragments
+        payloadCopy := make([]byte, f.PayloadLength())
+        copy(payloadCopy, f.Payload())
+        parts = append(parts, payloadCopy)
+
+        s.asyncNextMessageDirectFragments(messageType, parts, cb)
+    })
+}

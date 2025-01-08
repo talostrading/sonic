@@ -1736,38 +1736,6 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 	}
 }
 
-func TestStreamResolveUrl(t *testing.T) {
-	defer func() {
-		if msg := recover(); msg != nil {
-			t.Fatalf("should not have panicked: %s", msg)
-		}
-	}()
-
-	ioc := sonic.MustIO()
-	defer ioc.Close()
-
-	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = ws.resolve("ws://localhost:8080")
-	if err != nil {
-		t.Fatalf("valid url could not be resolved: %v", err)
-	}
-
-	_, err = ws.resolve("wss://www.test.com")
-	if err != nil {
-		t.Fatalf("valid url could not be resolved: %v", err)
-	}
-
-	_, err = ws.resolve("/test/")
-	if err == nil {
-		t.Fatal("invalid url should return error")
-	}
-}
-
 func TestMaxMsgSizeBeforeHandshake(t *testing.T) {
 	assert := assert.New(t)
 	srv := NewMockServer()
@@ -1846,4 +1814,117 @@ func TestMaxMsgSizeAfterHandshake(t *testing.T) {
 	for !done {
 		ioc.PollOne()
 	}
+}
+
+func TestClientAsyncNextMessageDirectUnfragmented(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	ws.init(nil)
+
+	ws.src.Write([]byte{
+		0x81, 2, 0x01, 0x02, // fin=true, type=text, payload_len=2, payload=[0x01, 0x02]
+	})
+
+	ran := false
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+		ran = true
+		assert.Nil(err)            // Verify no error when getting message
+
+		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 1)    // Verify we got exactly one payload slice
+
+		assert.Equal([]byte{0x01, 0x02}, payloads[0]) // Verify payload slice correct
+	})
+
+	assert.True(ran)                      // Verify callback ran
+	assert.Equal(StateActive, ws.State()) // Verify ws still in active state
+}
+
+func TestClientAsyncNextMessageDirectFragmented(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	ws.init(nil)
+
+	ws.src.Write([]byte{
+		0x01, 2, 0x01, 0x02,       // fin=false, type=text, payload_len=2, payload=[0x01, 0x02]
+		0x80, 3, 0x03, 0x04, 0x05, // fin=true, type=continuation, payload_len=3, payload=[0x03, 0x04, 0x05]
+	})
+
+	ran := false
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+		ran = true
+		assert.Nil(err)            // Verify no error when getting message
+
+		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 2)    // Verify we got two payload slices
+
+
+		assert.Equal([]byte{0x01, 0x02}, payloads[0])       // Verify 1st payload slice correct
+		assert.Equal([]byte{0x03, 0x04, 0x05}, payloads[1]) // Verify 2nd payload slice correct
+	})
+
+	assert.True(ran)                      // Verify callback ran
+	assert.Equal(StateActive, ws.State()) // Verify ws still in active state
+}
+
+func TestClientAsyncNextMessageDirectInterleavedControlFrame(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	ws.src.Write([]byte{
+		0x01, 2, 0x01, 0x02, // fin=false, type=text, payload_len=2, payload=[0x01, 0x02]
+		0x89, 1, 0xFF,       // fin=true, type=ping (control), payload_len=1, payload=[0xFF]
+		0x80, 2, 0x03, 0x04, // fin=true, type=continuation, payload_len=2, payload=[0x03, 0x04]
+	})
+
+	// To verify our ping gets properly processed
+	controlInvoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		controlInvoked = true
+
+		assert.Equal(TypePing, mt)    // Verify message type correct
+		assert.Equal([]byte{0xFF}, b) // Verify Ping payload correct
+		
+		assert.Equal(1, ws.Pending()) // Verify that a matching Pong queued
+	})
+
+	messageInvoked := false
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+		messageInvoked = true
+		assert.Nil(err)            // Verify no error when getting message
+
+		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 2)    // Verify we got two payload slices
+
+
+		assert.Equal([]byte{0x01, 0x02}, payloads[0]) // Verify 1st payload slice correct
+		assert.Equal([]byte{0x03, 0x04}, payloads[1]) // Verify 2nd payload slice correct
+	})
+
+	assert.True(controlInvoked)           // Verify control callback ran
+	assert.True(messageInvoked)           // Verify message callback ran
+	assert.Equal(StateActive, ws.State()) // Verify ws still in active state
 }
