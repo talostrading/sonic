@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"errors"
+
 	"github.com/talostrading/sonic"
 )
 
@@ -21,6 +22,9 @@ type FrameCodec struct {
 
 	decodeFrame Frame // frame we decode into
 	decodeReset bool  // true if we must reset the state on the next decode
+
+	messageBuffer []byte // buffer to store message payload
+	messageLength int    // length of current message payload
 }
 
 func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
@@ -29,6 +33,8 @@ func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
 		src:            src,
 		dst:            dst,
 		maxMessageSize: maxMessageSize,
+		messageBuffer:  make([]byte, maxMessageSize),
+		messageLength:  0,
 	}
 }
 
@@ -111,4 +117,32 @@ func (c *FrameCodec) Encode(frame Frame, dst *sonic.ByteBuffer) error {
 		dst.Consume(int(n))
 	}
 	return err
+}
+
+// ReserveFrame appends the payload portion of the decoded frame into our message buffer.
+func (c *FrameCodec) ReserveFrame() {
+	if c.decodeFrame == nil {
+		return
+	}
+
+	payload := c.decodeFrame.Payload()
+	payloadLen := len(payload)
+
+	if c.messageLength+payloadLen > len(c.messageBuffer) {
+		panic("Payload buffer out of space!")
+	}
+
+	copy(c.messageBuffer[c.messageLength:c.messageLength+payloadLen], payload)
+	c.messageLength += payloadLen
+}
+
+// ReleaseFrames clears our message buffer.
+func (c *FrameCodec) ReleaseFrames() {
+	c.messageLength = 0
+}
+
+// MessagePayload returns our message buffer, which stores the payloads of all
+// frames on which ReserveFrame() was called concatenated together.
+func (c *FrameCodec) MessagePayload() []byte {
+	return c.messageBuffer[:c.messageLength]
 }
