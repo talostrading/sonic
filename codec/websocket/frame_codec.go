@@ -23,8 +23,8 @@ type FrameCodec struct {
 	decodeFrame Frame // frame we decode into
 	decodeReset bool  // true if we must reset the state on the next decode
 
-	messageBuffer []byte // buffer to store message payload
-	messageLength int    // length of current message payload
+	messageFrames []sonic.Slot // references to reserved frames
+	messageSize int 					 // total size of reserved frame payloads
 }
 
 func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
@@ -33,8 +33,8 @@ func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
 		src:            src,
 		dst:            dst,
 		maxMessageSize: maxMessageSize,
-		messageBuffer:  make([]byte, maxMessageSize),
-		messageLength:  0,
+		messageFrames: make([]sonic.Slot, 0, 32), // preallocate 32 frame references
+		messageSize: 0,
 	}
 }
 
@@ -119,30 +119,38 @@ func (c *FrameCodec) Encode(frame Frame, dst *sonic.ByteBuffer) error {
 	return err
 }
 
-// ReserveFrame appends the payload portion of the decoded frame into our message buffer.
+// ReserveFrame saves a frame so that we can refer to it after we decode the next frame
 func (c *FrameCodec) ReserveFrame() {
 	if c.decodeFrame == nil {
 		return
 	}
 
-	payload := c.decodeFrame.Payload()
-	payloadLen := len(payload)
+	frameLen := len(c.decodeFrame)
+	frameSlot := c.src.Save(frameLen)
 
-	if c.messageLength+payloadLen > len(c.messageBuffer) {
-		panic("Payload buffer out of space!")
+	c.decodeReset = false
+
+	c.messageFrames = append(c.messageFrames, frameSlot)
+	c.messageSize += len(c.decodeFrame.Payload())
+}
+
+// ReleaseFrames releases our reserved frames
+func (c *FrameCodec) ReleaseFrames() {
+	c.src.DiscardAll()
+	c.messageFrames = c.messageFrames[:0]
+	c.messageSize = 0
+}
+
+// ReservedFramePayloads returns references to the payloads of our reserved frames
+func (c *FrameCodec) ReservedFramePayloads() [][]byte {
+	numFrames := len(c.messageFrames)
+	payloads := make([][]byte, 0, numFrames)
+
+	for _, frameSlot := range c.messageFrames {
+		reservedFrame := Frame(c.src.SavedSlot(frameSlot))
+		
+		payloads = append(payloads, reservedFrame.Payload())
 	}
 
-	copy(c.messageBuffer[c.messageLength:c.messageLength+payloadLen], payload)
-	c.messageLength += payloadLen
-}
-
-// ReleaseFrames clears our message buffer.
-func (c *FrameCodec) ReleaseFrames() {
-	c.messageLength = 0
-}
-
-// MessagePayload returns our message buffer, which stores the payloads of all
-// frames on which ReserveFrame() was called concatenated together.
-func (c *FrameCodec) MessagePayload() []byte {
-	return c.messageBuffer[:c.messageLength]
+	return payloads;
 }

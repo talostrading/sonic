@@ -1109,7 +1109,7 @@ func (s *Stream) asyncNextMessageDirect(
 		if err != nil {
 			// If we get an error decoding a frame, invoke our callback with the error 
 			// and our decoded message payload thus far
-			cb(err, messageType, s.codec.MessagePayload())
+			cb(err, messageType, s.codec.ReservedFramePayloads()...)
 			s.codec.ReleaseFrames()
 			return
 		}
@@ -1131,17 +1131,16 @@ func (s *Stream) asyncNextMessageDirect(
 			// If this is not the first frame, but continuation bit not set, close
 			// our connection and invoke our callback with the error
 			s.AsyncClose(CloseProtocolError, "expected continuation", func(_ error) {})
-			cb(ErrExpectedContinuation, messageType, s.codec.MessagePayload())
+			cb(ErrExpectedContinuation, messageType, s.codec.ReservedFramePayloads()...)
 			s.codec.ReleaseFrames()
 			return
 		}
 
-		msgSize := len(s.codec.MessagePayload())
-		if msgSize+f.PayloadLength() > s.maxMessageSize {
+		if s.codec.messageSize+f.PayloadLength() > s.maxMessageSize {
 			// If our message payload exceeds the maximum size, close our connection
 			// and invoke our callback with the error
 			s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
-			cb(ErrMessageTooBig, messageType, s.codec.MessagePayload())
+			cb(ErrMessageTooBig, messageType, s.codec.ReservedFramePayloads()...)
 			s.codec.ReleaseFrames()
 			return
 		}
@@ -1152,7 +1151,7 @@ func (s *Stream) asyncNextMessageDirect(
 		// If this is the last frame in our message, return the assembled payload,
 		// otherwise keep going
 		if f.IsFIN() {
-			cb(nil, messageType, s.codec.MessagePayload())
+			cb(nil, messageType, s.codec.ReservedFramePayloads()...)
 			s.codec.ReleaseFrames()
 		} else {
 			s.asyncNextMessageDirect(cb, false, messageType)

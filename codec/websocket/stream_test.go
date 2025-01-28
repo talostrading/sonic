@@ -1833,13 +1833,14 @@ func TestClientAsyncNextMessageDirectUnfragmented(t *testing.T) {
 	})
 
 	ran := false
-	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payload []byte) {
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
 		ran = true
 		assert.Nil(err)            // Verify no error when getting message
 
 		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 1)    // Verify we got exactly one payload slice
 
-		assert.Equal([]byte{0x01, 0x02}, payload) // Verify payload correct
+		assert.Equal([]byte{0x01, 0x02}, payloads[0]) // Verify payload slice correct
 	})
 
 	assert.True(ran)                      // Verify callback ran
@@ -1864,13 +1865,15 @@ func TestClientAsyncNextMessageDirectFragmented(t *testing.T) {
 	})
 
 	ran := false
-	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payload []byte) {
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
 		ran = true
 		assert.Nil(err)            // Verify no error when getting message
 
 		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 2)    // Verify we got two payload slices
 
-		assert.Equal([]byte{0x01, 0x02, 0x03, 0x04, 0x05}, payload) // Verify payload correct
+		assert.Equal([]byte{0x01, 0x02}, payloads[0])       // Verify 1st payload slice correct
+		assert.Equal([]byte{0x03, 0x04, 0x05}, payloads[1]) // Verify 2nd payload slice correct
 	})
 
 	assert.True(ran)                      // Verify callback ran
@@ -1908,13 +1911,15 @@ func TestClientAsyncNextMessageDirectInterleavedControlFrame(t *testing.T) {
 	})
 
 	messageInvoked := false
-	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payload []byte) {
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
 		messageInvoked = true
 		assert.Nil(err)            // Verify no error when getting message
 
 		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 2)    // Verify we got two payload slices
 
-		assert.Equal([]byte{0x01, 0x02, 0x03, 0x04}, payload) // Verify payload correct
+		assert.Equal([]byte{0x01, 0x02}, payloads[0]) // Verify 1st payload slice correct
+		assert.Equal([]byte{0x03, 0x04}, payloads[1]) // Verify 2nd payload slice correct
 	})
 
 	assert.True(controlInvoked)           // Verify control callback ran
