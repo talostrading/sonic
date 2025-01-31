@@ -350,7 +350,7 @@ func TestClientReconnectOnFailedRead(t *testing.T) {
 		}
 	}()
 
-	port = <- srv.portChan
+	port = <-srv.portChan
 
 	ioc := sonic.MustIO()
 	defer ioc.Close()
@@ -1672,13 +1672,13 @@ func TestClientAbnormalClose(t *testing.T) {
 
 	err = ws.Handshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan))
 	assert.Nil(err)
-	assert.Equal(ws.State(), StateActive)  // Verify WebSocket active
+	assert.Equal(ws.State(), StateActive) // Verify WebSocket active
 
 	// Attempt to read a frame; this should return the 1006 close frame directly
 	frame, err := ws.NextFrame()
-	assert.Equal(io.EOF, err)              // Verify frame error is EOF
+	assert.Equal(io.EOF, err) // Verify frame error is EOF
 
-	assert.True(frame.Opcode().IsClose())  // Verify we got a close frame
+	assert.True(frame.Opcode().IsClose()) // Verify we got a close frame
 
 	closeCode, reason := DecodeCloseFramePayload(frame.Payload())
 	assert.Equal(CloseAbnormal, closeCode) // Verify the close code is 1006
@@ -1713,13 +1713,13 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 	done := false
 	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
 		assert.Nil(err)
-		assert.Equal(ws.State(), StateActive)    // Verify WebSocket active
+		assert.Equal(ws.State(), StateActive) // Verify WebSocket active
 
 		// Attempt to read a frame; this should fail due to the server's abnormal closure
 		ws.AsyncNextFrame(func(err error, f Frame) {
-			assert.Equal(io.EOF, err)              // Verify frame error is EOF
+			assert.Equal(io.EOF, err) // Verify frame error is EOF
 
-			assert.True(f.Opcode().IsClose())      // Verify we got a close frame
+			assert.True(f.Opcode().IsClose()) // Verify we got a close frame
 
 			closeCode, reason := DecodeCloseFramePayload(f.Payload())
 			assert.Equal(CloseAbnormal, closeCode) // Verify close code is 1006
@@ -1733,5 +1733,37 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 
 	for !done {
 		ioc.PollOne()
+	}
+}
+
+func TestStreamResolveUrl(t *testing.T) {
+	defer func() {
+		if msg := recover(); msg != nil {
+			t.Fatalf("should not have panicked: %s", msg)
+		}
+	}()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = ws.resolve("ws://localhost:8080")
+	if err != nil {
+		t.Fatalf("valid url could not be resolved: %v", err)
+	}
+
+	_, err = ws.resolve("wss://www.test.com")
+	if err != nil {
+		t.Fatalf("valid url could not be resolved: %v", err)
+	}
+
+	_, err = ws.resolve("/test/")
+	if err == nil {
+		t.Fatal("invalid url should return error")
 	}
 }
