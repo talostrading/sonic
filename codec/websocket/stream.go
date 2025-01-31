@@ -831,14 +831,14 @@ func (s *Stream) handshake(addr string, headers []Header, callback func(err erro
 	}
 }
 
-func (s *Stream) resolve(addr string) (url *url.URL, err error) {
-	url, err = url.Parse(addr)
+func (s *Stream) resolve(addr string) (resolvedUrl *url.URL, err error) {
+	resolvedUrl, err = url.Parse(addr)
 	if err == nil {
-		switch url.Scheme {
+		switch resolvedUrl.Scheme {
 		case "ws":
-			url.Scheme = "http"
+			resolvedUrl.Scheme = "http"
 		case "wss":
-			url.Scheme = "https"
+			resolvedUrl.Scheme = "https"
 		default:
 			err = ErrInvalidAddress
 		}
