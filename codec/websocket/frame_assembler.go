@@ -22,7 +22,7 @@ func (fa *FrameAssembler) Slices() [][]byte {
 	return fa.parts
 }
 
-// Reassemble concatenates all slices into a single new []byte buffer.
+// Reassemble concatenates all slices into a single new (allocated) []byte buffer.
 func (fa *FrameAssembler) Reassemble() []byte {
 	total := 0
 	for _, p := range fa.parts {
@@ -35,4 +35,13 @@ func (fa *FrameAssembler) Reassemble() []byte {
 		offset += len(p)
 	}
 	return out
+}
+
+// ReassembleInto concatenates all slices into the provided []byte buffer.
+func (fa *FrameAssembler) ReassembleInto(b []byte) {
+	offset := 0
+	for _, p := range fa.parts {
+		copy(b[offset:], p)
+		offset += len(p)
+	}
 }
