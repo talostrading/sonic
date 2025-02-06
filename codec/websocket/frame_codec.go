@@ -23,7 +23,7 @@ type FrameCodec struct {
 	decodeFrame Frame // frame we decode into
 	decodeReset bool  // true if we must reset the state on the next decode
 
-	messageFrames []sonic.Slot // references to reserved frames
+	messagePayloads [][]byte 	 // references to reserved frame payloads
 	messageSize int 					 // total size of reserved frame payloads
 }
 
@@ -33,7 +33,7 @@ func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
 		src:            src,
 		dst:            dst,
 		maxMessageSize: maxMessageSize,
-		messageFrames: make([]sonic.Slot, 0, 32), // preallocate 32 frame references
+		messagePayloads: make([][]byte, 0, 32), // preallocate 32 frame payload references
 		messageSize: 0,
 	}
 }
@@ -122,35 +122,35 @@ func (c *FrameCodec) Encode(frame Frame, dst *sonic.ByteBuffer) error {
 // ReserveFrame saves a frame so that we can refer to it after we decode the next frame
 func (c *FrameCodec) ReserveFrame() {
 	if c.decodeFrame == nil {
-		return
+		panic("No decoded frame to reserve")
 	}
 
+	// Move memory backing decodeFrame from read to save area
 	frameLen := len(c.decodeFrame)
-	frameSlot := c.src.Save(frameLen)
+	c.src.Save(frameLen)
 
+	// Since we're holding on to the area of the buffer holding this frame
+	// by moving it from the read to save area, we shouldn't also 
+	// try to discard this area in resetDecode()
+	// 
+	// (you could think of this almost like preventing a double-free error)
 	c.decodeReset = false
 
-	c.messageFrames = append(c.messageFrames, frameSlot)
-	c.messageSize += len(c.decodeFrame.Payload())
+	framePayload := c.decodeFrame.Payload()
+
+	// Store reference to frame payload
+	c.messagePayloads = append(c.messagePayloads, framePayload)
+	c.messageSize += len(framePayload)
 }
 
 // ReleaseFrames releases our reserved frames
 func (c *FrameCodec) ReleaseFrames() {
 	c.src.DiscardAll()
-	c.messageFrames = c.messageFrames[:0]
+	c.messagePayloads = c.messagePayloads[:0]
 	c.messageSize = 0
 }
 
 // ReservedFramePayloads returns references to the payloads of our reserved frames
 func (c *FrameCodec) ReservedFramePayloads() [][]byte {
-	numFrames := len(c.messageFrames)
-	payloads := make([][]byte, 0, numFrames)
-
-	for _, frameSlot := range c.messageFrames {
-		reservedFrame := Frame(c.src.SavedSlot(frameSlot))
-		
-		payloads = append(payloads, reservedFrame.Payload())
-	}
-
-	return payloads;
+	return c.messagePayloads;
 }

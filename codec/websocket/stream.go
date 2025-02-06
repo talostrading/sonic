@@ -1084,19 +1084,21 @@ func (s *Stream) CloseNextLayer() (err error) {
 	return
 }
 
-// AsyncNextMessageDirect reads the next websocket message asynchronously, providing a buffer
-// containing the completed websocket message in its callback
+// AsyncNextMessageDirect reads the next websocket message asynchronously, 
+// providing providing one more slices representing each payload fragment of a message. 
 //
-// This call first flushes any pending control frames to the underlying stream asynchronously.
+// - If the next message is unfragmented, then a single byte slice is provided, 
+// representing the message's full payload. 
 //
-// This call does not block. The provided callback is invoked when one of the following happens:
-//   - an error occurs while flushing the pending control frames
-//   - an error occurs when reading/decoding the message bytes from the underlying stream
-//   - the payload of the message is successfully read
+// - If the message is fragmented into n fragments, then n payloads are provided. 
+// Callers can reconstruct the full message payload by a copying out the provided 
+// slices into a continuous memory chunk, or by using the FrameAssembler. 
 //
-// The returned buffer is reused between messages, so its contents must be copied out 
-// if needed to be used outside of its callback  
+// The returned slices are only valid until the next invocation of AsyncNextMessageDirect.
 func (s *Stream) AsyncNextMessageDirect(cb AsyncMessageDirectCallback) {
+	// Release frames (if any) saved from previous call
+	s.codec.ReleaseFrames() 
+
 	s.asyncNextMessageDirect(cb, true, TypeNone)
 }
 
@@ -1110,7 +1112,6 @@ func (s *Stream) asyncNextMessageDirect(
 			// If we get an error decoding a frame, invoke our callback with the error 
 			// and our decoded message payload thus far
 			cb(err, messageType, s.codec.ReservedFramePayloads()...)
-			s.codec.ReleaseFrames()
 			return
 		}
 
@@ -1132,7 +1133,6 @@ func (s *Stream) asyncNextMessageDirect(
 			// our connection and invoke our callback with the error
 			s.AsyncClose(CloseProtocolError, "expected continuation", func(_ error) {})
 			cb(ErrExpectedContinuation, messageType, s.codec.ReservedFramePayloads()...)
-			s.codec.ReleaseFrames()
 			return
 		}
 
@@ -1141,7 +1141,6 @@ func (s *Stream) asyncNextMessageDirect(
 			// and invoke our callback with the error
 			s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
 			cb(ErrMessageTooBig, messageType, s.codec.ReservedFramePayloads()...)
-			s.codec.ReleaseFrames()
 			return
 		}
 
@@ -1152,7 +1151,6 @@ func (s *Stream) asyncNextMessageDirect(
 		// otherwise keep going
 		if f.IsFIN() {
 			cb(nil, messageType, s.codec.ReservedFramePayloads()...)
-			s.codec.ReleaseFrames()
 		} else {
 			s.asyncNextMessageDirect(cb, false, messageType)
 		}
