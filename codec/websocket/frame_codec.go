@@ -23,8 +23,8 @@ type FrameCodec struct {
 	decodeFrame Frame // frame we decode into
 	decodeReset bool  // true if we must reset the state on the next decode
 
-	messagePayloads [][]byte 	 // references to reserved frame payloads
-	messageSize int 					 // total size of reserved frame payloads
+	messagePayloads [][]byte	// references to reserved frame payloads
+	messageSize int						// total size of reserved frame payloads
 }
 
 func NewFrameCodec(src, dst *sonic.ByteBuffer, maxMessageSize int) *FrameCodec {
