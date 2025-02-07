@@ -28,20 +28,35 @@ func (fa *FrameAssembler) Reassemble() []byte {
 	for _, p := range fa.parts {
 		total += len(p)
 	}
+
 	out := make([]byte, total)
 	offset := 0
 	for _, p := range fa.parts {
 		copy(out[offset:], p)
 		offset += len(p)
 	}
+
 	return out
 }
 
 // ReassembleInto concatenates all slices into the provided []byte buffer.
-func (fa *FrameAssembler) ReassembleInto(b []byte) {
+//
+// Returns true on success, or false if slices won't fit into the 
+// buffer (leaving it untouched).
+func (fa *FrameAssembler) ReassembleInto(b []byte) bool {
+	total := 0
+	for _, p := range fa.parts {
+		total += len(p)
+	}
+	if len(b) < total {
+		return false
+	}
+
 	offset := 0
 	for _, p := range fa.parts {
 		copy(b[offset:], p)
 		offset += len(p)
 	}
+
+	return true
 }
