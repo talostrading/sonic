@@ -54,6 +54,28 @@ func TestFrameAssemblerMulti(t *testing.T) {
 	assert.Equal(want, reassembled)
 }
 
+func TestFrameAssemblerReassembleInto(t *testing.T) {
+	assert := assert.New(t)
+
+	payload1 := []byte{0x01, 0x02}
+	payload2 := []byte{0x03, 0x04, 0x05}
+	payload3 := []byte{0x06}
+
+	assembler := NewFrameAssembler(payload1, payload2, payload3)
+
+	want := make([]byte, 2)
+
+	smallBuffer := make([]byte, 2)
+	assert.False(assembler.ReassembleInto(smallBuffer))
+	assert.Equal(want, smallBuffer)
+
+	want = bytes.Join([][]byte{payload1, payload2, payload3}, nil)
+
+	reassembleBuffer := make([]byte, len(want))
+	assert.True(assembler.ReassembleInto(reassembleBuffer))
+	assert.Equal(want, reassembleBuffer)
+}
+
 func TestFrameAssemblerAppend(t *testing.T) {
 	assert := assert.New(t)
 
