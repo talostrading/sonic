@@ -261,6 +261,7 @@ func (s *Stream) nextFrame() (f Frame, err error) {
 //   - a frame is successfully read from the underlying stream
 func (s *Stream) AsyncNextFrame(callback AsyncFrameCallback) {
 	s.AsyncFlush(func(err error) {
+		// This handles errors related to control frames we're sending
 		if errors.Is(err, ErrMessageTooBig) {
 			s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
 			callback(ErrMessageTooBig, nil)
@@ -1108,6 +1109,14 @@ func (s *Stream) asyncNextMessageDirect(
 	messageType MessageType,
 ) {
 	s.AsyncNextFrame(func(err error, f Frame) {
+		if errors.Is(err, ErrPayloadOverMaxSize) {
+			// If a single frame's payload exceeds the max size, close our connection
+			// and invoke our callback with the error
+			s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
+			cb(ErrMessageTooBig, messageType, s.codec.ReservedFramePayloads()...)
+			return
+		}
+
 		if err != nil {
 			// If we get an error decoding a frame, invoke our callback with the error 
 			// and our decoded message payload thus far
@@ -1128,6 +1137,14 @@ func (s *Stream) asyncNextMessageDirect(
 		if isFirst {
 			// If this is the first frame we decode, get the message type from the opcode
 			messageType = MessageType(f.Opcode())
+
+			if f.Opcode().IsContinuation() {
+				// Since this is our first frame, if continuation bit set, close
+				// our connection and invoke our callback with the error
+				s.AsyncClose(CloseProtocolError, "unexpected continuation", func(_ error) {})
+				cb(ErrUnexpectedContinuation, messageType, s.codec.ReservedFramePayloads()...)
+				return
+			}
 		} else if !f.Opcode().IsContinuation() {
 			// If this is not the first frame, but continuation bit not set, close
 			// our connection and invoke our callback with the error
