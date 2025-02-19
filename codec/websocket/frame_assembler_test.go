@@ -18,6 +18,8 @@ func TestFrameAssemblerEmpty(t *testing.T) {
 
 	reassembled := assembler.Reassemble()
 	assert.Equal(0, len(reassembled))
+
+	assert.Equal(0, assembler.Length())
 }
 
 func TestFrameAssemblerSingle(t *testing.T) {
@@ -32,6 +34,8 @@ func TestFrameAssemblerSingle(t *testing.T) {
 
 	reassembled := assembler.Reassemble()
 	assert.Equal(payload, reassembled)
+
+	assert.Equal(len(payload), assembler.Length())
 }
 
 func TestFrameAssemblerMulti(t *testing.T) {
@@ -52,6 +56,8 @@ func TestFrameAssemblerMulti(t *testing.T) {
 	reassembled := assembler.Reassemble()
 	want := bytes.Join([][]byte{payload1, payload2, payload3}, nil)
 	assert.Equal(want, reassembled)
+	
+	assert.Equal(len(want), assembler.Length())
 }
 
 func TestFrameAssemblerReassembleInto(t *testing.T) {
@@ -74,6 +80,8 @@ func TestFrameAssemblerReassembleInto(t *testing.T) {
 	reassembleBuffer := make([]byte, len(want))
 	assert.True(assembler.ReassembleInto(reassembleBuffer))
 	assert.Equal(want, reassembleBuffer)
+
+	assert.Equal(len(want), assembler.Length())
 }
 
 func TestFrameAssemblerAppend(t *testing.T) {
@@ -88,4 +96,6 @@ func TestFrameAssemblerAppend(t *testing.T) {
 	want := []byte{0x01, 0x02, 0x03, 0x04}
 	reassembled := assembler.Reassemble()
 	assert.Equal(want, reassembled)
+
+	assert.Equal(len(want), assembler.Length())
 }
