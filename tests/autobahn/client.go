@@ -103,14 +103,17 @@ func runTest(i int) {
 
 		b := make([]byte, 1024*1024)
 
-		var onAsyncRead websocket.AsyncMessageCallback
+		var onAsyncRead websocket.AsyncMessageDirectCallback
 
-		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
+		onAsyncRead = func(err error, mt websocket.MessageType, pl ...[]byte) {
 			if err != nil {
 				s.Flush()
 				done = true
 			} else {
-				b = b[:n]
+				asm := websocket.NewFrameAssembler(pl...)
+
+				asm.ReassembleInto(b)
+				b = b[:asm.Length()]
 
 				switch mt {
 				case websocket.TypeText, websocket.TypeBinary:
@@ -120,7 +123,7 @@ func runTest(i int) {
 						}
 
 						b = b[:cap(b)]
-						s.AsyncNextMessage(b, onAsyncRead)
+						s.AsyncNextMessageDirect(onAsyncRead)
 					})
 				case websocket.TypeClose:
 					s.AsyncFlush(func(err error) {
@@ -131,12 +134,12 @@ func runTest(i int) {
 					})
 				default:
 					b = b[:cap(b)]
-					s.AsyncNextMessage(b, onAsyncRead)
+					s.AsyncNextMessageDirect(onAsyncRead)
 				}
 			}
 		}
 
-		s.AsyncNextMessage(b, onAsyncRead)
+		s.AsyncNextMessageDirect(onAsyncRead)
 	})
 
 	for {
