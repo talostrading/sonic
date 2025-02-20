@@ -51,22 +51,18 @@ func main() {
 				panic(err)
 			}
 
-			var (
-				b      [1024 * 512]byte
-				onRead websocket.AsyncMessageDirectCallback
-			)
+			var onRead websocket.AsyncMessageDirectCallback
 			onRead = func(err error, mt websocket.MessageType, pl ...[]byte) {
 				if err != nil {
 					panic(err)
 				}
 
-				asm := websocket.NewFrameAssembler(pl...)
-
-				asm.ReassembleInto(b[:])
-				n := asm.Length()
+				if len(pl) != 1 {
+					panic("Derabit should only be sending single frame messages.")
+				}
 
 				if *verbose {
-					fmt.Println(string(b[:n]))
+					fmt.Println(string(pl[0]))
 				}
 				ws.AsyncNextMessageDirect(onRead)
 			}
