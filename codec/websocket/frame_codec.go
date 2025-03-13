@@ -13,8 +13,10 @@ var (
 
 // FrameCodec is a stateful streaming parser handling the encoding and decoding of WebSocket `Frame`s.
 type FrameCodec struct {
-	src            *sonic.ByteBuffer // buffer we decode from
-	dst            *sonic.ByteBuffer // buffer we encode to
+	src *sonic.ByteBuffer // buffer we decode from
+	dst *sonic.ByteBuffer // buffer we encode to
+
+	// TODO should be renamed to maxFrameSize? or cummulate the size of all fragments from a message
 	maxMessageSize int
 
 	decodeFrame Frame // frame we decode into

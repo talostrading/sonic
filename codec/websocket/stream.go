@@ -285,8 +285,8 @@ func (s *Stream) asyncNextFrame(callback AsyncFrameCallback) {
 		if err == nil {
 			err = s.handleFrame(f)
 
-		// If we get an EOF error, TCP stream was closed
-		// This is an abnormal closure from the server
+			// If we get an EOF error, TCP stream was closed
+			// This is an abnormal closure from the server
 		} else if s.state != StateTerminated && err == io.EOF {
 			s.state = StateTerminated
 
@@ -1050,7 +1050,11 @@ func (s *Stream) SetMaxMessageSize(bytes int) {
 	// header. The sizes of the buffers in which we read or write the messages
 	// are dynamically adjusted in frame_codec.
 	s.maxMessageSize = bytes
-	s.codec.maxMessageSize = bytes
+
+	// SetMaxMessageSize might get called before init() where s.codec is initialized.
+	if s.codec != nil {
+		s.codec.maxMessageSize = bytes
+	}
 }
 
 func (s *Stream) MaxMessageSize() int {
