@@ -1767,3 +1767,83 @@ func TestStreamResolveUrl(t *testing.T) {
 		t.Fatal("invalid url should return error")
 	}
 }
+
+func TestMaxMsgSizeBeforeHandshake(t *testing.T) {
+	assert := assert.New(t)
+	srv := NewMockServer()
+	msgSize := DefaultMaxMessageSize * 2
+	go func() {
+		defer srv.Close()
+		assert.Nil(srv.Accept(MockServerDynamicAddr))
+		assert.Nil(srv.Write(make([]byte, msgSize+1)))
+	}()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+	assert.Equal(DefaultMaxMessageSize, ws.MaxMessageSize())
+
+	// ensure it can be set before the handshake
+	for msgSize < ws.src.Cap() {
+		msgSize *= 2
+	}
+	ws.SetMaxMessageSize(msgSize)
+	assert.Equal(msgSize, ws.MaxMessageSize())
+
+	// we now check if the max message size is enforced
+	done := false
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+		assert.Nil(err)
+
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			assert.ErrorIs(ErrPayloadOverMaxSize, err)
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
+func TestMaxMsgSizeAfterHandshake(t *testing.T) {
+	assert := assert.New(t)
+	srv := NewMockServer()
+	msgSize := DefaultMaxMessageSize * 2
+	go func() {
+		defer srv.Close()
+		assert.Nil(srv.Accept(MockServerDynamicAddr))
+		assert.Nil(srv.Write(make([]byte, msgSize)))
+	}()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+	assert.Equal(DefaultMaxMessageSize, ws.MaxMessageSize())
+
+	// we now check if the max message size is enforced
+	done := false
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+		assert.Nil(err)
+
+		// check that increasing it after the handshake works
+		for msgSize < ws.src.Cap() {
+			msgSize *= 2
+		}
+		ws.SetMaxMessageSize(msgSize)
+		assert.Equal(msgSize, ws.MaxMessageSize())
+
+		ws.AsyncNextFrame(func(err error, f Frame) {
+			assert.Nil(err)
+			done = true
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
