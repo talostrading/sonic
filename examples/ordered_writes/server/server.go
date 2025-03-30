@@ -23,10 +23,6 @@ func main() {
 
 		fmt.Println("accepted conn", conn.RemoteAddr())
 
-		//_, ok := conn.(*tls.Conn)
-		//if ok {
-		//	fmt.Println("client is using TLS")
-		//}
 		go handle(conn)
 	}
 
@@ -49,16 +45,10 @@ func handle(conn net.Conn) {
 
 		buf = buf[:n]
 		fmt.Println(string(buf))
-		//fmt.Println("echoing")
-
-		//n, err = conn.Write(buf)
-		//if err != nil {
-		//	if err != io.EOF {
-		//		panic(err)
-		//	} else {
-		//		break
-		//	}
-		//}
+		_, err = conn.Write([]byte("1"))
+		if err != nil {
+			return
+		}
 	}
 
 	//fmt.Println("conn", conn.RemoteAddr(), "closed")

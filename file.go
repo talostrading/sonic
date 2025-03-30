@@ -74,16 +74,6 @@ func (r *fileWriteReactor) onWrite(err error) {
 	}
 }
 
-//TODO: Try maybe to have something that returns the outcome of the write event or signal its completion
-//func (r *fileWriteReactor) onQueuedWrite(err error) (int, error) {
-//	r.file.ioc.Deregister(&r.file.slot)
-//	if err != nil {
-//
-//	} else {
-//		r.file.asyncWriteNow(r.b, r.wroteSoFar, r.writeAll, r.cb)
-//	}
-//}
-
 func newFile(ioc *IO, fd int) *file {
 	f := &file{
 		ioc:  ioc,
@@ -100,7 +90,7 @@ func newFile(ioc *IO, fd int) *file {
 	return f
 }
 
-func newFileQueue(ioc *IO, fd int, q *Queue) *file {
+func newFileWithQueue(ioc *IO, fd int, q *Queue) *file {
 	f := &file{
 		ioc:   ioc,
 		slot:  internal.Slot{Fd: fd},
@@ -243,18 +233,22 @@ func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
 
 func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
 	f.writeReactor.init(b, writeAll, cb)
-	//TODO: Added this here
-	f.queue.Enqueue(f)
-	f.scheduleWrite(0, cb)
-	//if f.ioc.Dispatched < MaxCallbackDispatch {
-	//	f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
-	//		f.ioc.Dispatched++
-	//		cb(err, n)
-	//		f.ioc.Dispatched--
-	//	})
-	//} else {
-	//	f.scheduleWrite(0 /* this is the starting point, we did not write anything yet */, cb)
-	//}
+
+	if f.queue != nil {
+		f.queue.Enqueue(f)
+		f.scheduleWrite(0, cb)
+		return
+	}
+
+	if f.ioc.Dispatched < MaxCallbackDispatch {
+		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
+			f.ioc.Dispatched++
+			cb(err, n)
+			f.ioc.Dispatched--
+		})
+	} else {
+		f.scheduleWrite(0 /* this is the starting point, we did not write anything yet */, cb)
+	}
 }
 
 func (f *file) asyncWriteNow(b []byte, wroteSoFar int, writeAll bool, cb AsyncCallback) {

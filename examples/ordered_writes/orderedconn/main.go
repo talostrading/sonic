@@ -19,8 +19,7 @@ func main() {
 	}
 
 	for i := 0; i < c; i++ {
-		j := i
-		conns[i].AsyncWrite([]byte(fmt.Sprintf("Write from %v", j)), func(error, int) {})
+		conns[i].AsyncWrite([]byte(fmt.Sprintf("Write from %v", i)), func(error, int) {})
 	}
 
 	ioc.RunPending()

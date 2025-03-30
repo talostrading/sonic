@@ -28,17 +28,12 @@ func (q *Queue) Dequeue(file *file) {
 	if len(q.order) == 0 {
 		return
 	}
-	if file != q.order[0] {
+	if file == q.order[0] {
+		q.dequeue()
+	} else {
 		q.suspend(file)
-		q.executePending()
-		return
 	}
-	q.dequeue()
 	q.executePending()
-	if len(q.order) == 0 {
-		q.executePending()
-		return
-	}
 }
 
 func (q *Queue) dequeue() {
@@ -50,12 +45,18 @@ func (q *Queue) dequeue() {
 }
 
 func (q *Queue) deregister(file *file, err error) {
-	//TODO:add removal from que
-	//TODO: why not use f.writeReactor.onWrite(err)
-	file.ioc.Deregister(&file.writeReactor.file.slot)
-	if err != nil {
-		file.writeReactor.cb(err, file.writeReactor.wroteSoFar)
+	q.findFunc(file, func(q *Queue, index int) {
+		removeAtIndex(q, index)
+	})
+	file.writeReactor.onWrite(err)
+}
+
+func removeAtIndex(q *Queue, index int) {
+	if index < 0 || index >= len(q.order) {
+		return
 	}
+	q.order = append(q.order[:index], q.order[index+1:]...)
+	q.pending = append(q.pending[:index], q.pending[index+1:]...)
 }
 
 func (q *Queue) executePending() {
@@ -67,16 +68,21 @@ func (q *Queue) executePending() {
 			break
 		}
 		q.dequeue()
-		break
 	}
 }
 
 func (q *Queue) suspend(f *file) {
+	q.findFunc(f, func(q *Queue, index int) {
+		q.pending[index] = true
+	})
+}
+
+func (q *Queue) findFunc(f *file, consume func(q *Queue, index int)) {
 	for i := 0; i < len(q.order); i++ {
 		if q.order[i] != f {
 			continue
 		}
-		q.pending[i] = true
+		consume(q, i)
 		break
 	}
 }
@@ -108,7 +114,7 @@ func newConnQ(
 	localAddr, remoteAddr net.Addr, q *Queue,
 ) *conn {
 	return &conn{
-		file:       newFileQueue(ioc, fd, q),
+		file:       newFileWithQueue(ioc, fd, q),
 		localAddr:  localAddr,
 		remoteAddr: remoteAddr,
 	}
