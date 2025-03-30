@@ -58,7 +58,7 @@ func main() {
 				}
 
 				if len(pl) != 1 {
-					panic("Derabit should only be sending single frame messages.")
+					panic("Deribit should only be sending single frame messages.")
 				}
 
 				if *verbose {
