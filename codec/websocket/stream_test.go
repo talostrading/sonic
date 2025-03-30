@@ -2211,8 +2211,8 @@ func TestClientMixedAsyncNextMessageDirectAndAsyncNextMessage(t *testing.T) {
 					assert.Nil(err)                   // Verify no error reading message
 
 					expect := messages[index]
-					assert.Equal(expect.mt, mt)       // Verify message type matches expected
-					assert.Equal(expect.payload, buf) // Verify message payload matches expected
+					assert.Equal(expect.mt, mt)           // Verify message type matches expected
+					assert.Equal(expect.payload, buf[:n]) // Verify message payload matches expected
 
 					index++
 					readNext()
