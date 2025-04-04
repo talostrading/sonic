@@ -2,10 +2,7 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"net"
-	"os"
-	"syscall"
 )
 
 func main() {
@@ -37,15 +34,7 @@ func handle(conn net.Conn) {
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-			if isConnReset(err) {
-				fmt.Println("Client reset connection")
-				return
-			}
-			fmt.Println("Read error:", err)
-			return
+			break
 		}
 
 		buf = buf[:n]
@@ -56,17 +45,4 @@ func handle(conn net.Conn) {
 			return
 		}
 	}
-
-	//fmt.Println("conn", conn.RemoteAddr(), "closed")
-}
-
-func isConnReset(err error) bool {
-	if opErr, ok := err.(*net.OpError); ok {
-		if sysErr, ok := opErr.Err.(*os.SyscallError); ok {
-			if sysErr.Err == syscall.ECONNRESET {
-				return true
-			}
-		}
-	}
-	return false
 }
