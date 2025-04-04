@@ -39,7 +39,6 @@ func (q *Queue) Dequeue(file *file) {
 func (q *Queue) dequeue() {
 	f := q.order[0]
 	f.writeReactor.onWrite(nil)
-	time.Sleep(500 * time.Microsecond)
 	q.order = q.order[1:]
 	q.pending = q.pending[1:]
 }
@@ -87,15 +86,15 @@ func (q *Queue) findFunc(f *file, consume func(q *Queue, index int)) {
 	}
 }
 
-func DialQ(
+func QDial(
 	ioc *IO,
 	network, addr string, q *Queue,
 	opts ...sonicopts.Option,
 ) (Conn, error) {
-	return DialTimeoutQ(ioc, network, addr, 10*time.Second, q, opts...)
+	return DialTimeoutWithQueue(ioc, network, addr, 10*time.Second, q, opts...)
 }
 
-func DialTimeoutQ(
+func DialTimeoutWithQueue(
 	ioc *IO, network, addr string,
 	timeout time.Duration, q *Queue,
 	opts ...sonicopts.Option,
@@ -105,17 +104,16 @@ func DialTimeoutQ(
 		return nil, err
 	}
 
-	return newConnQ(ioc, fd, localAddr, remoteAddr, q), nil
+	return newQConn(ioc, fd, localAddr, remoteAddr, q), nil
 }
 
-func newConnQ(
+func newQConn(
 	ioc *IO,
 	fd int,
 	localAddr, remoteAddr net.Addr, q *Queue,
-) *conn {
-	return &conn{
-		file:       newFileWithQueue(ioc, fd, q),
-		localAddr:  localAddr,
-		remoteAddr: remoteAddr,
+) *qConn {
+	return &qConn{
+		conn:  newConn(ioc, fd, localAddr, remoteAddr),
+		queue: q,
 	}
 }

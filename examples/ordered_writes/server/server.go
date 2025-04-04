@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"syscall"
 )
 
 func main() {
@@ -33,23 +35,38 @@ func handle(conn net.Conn) {
 
 	buf := make([]byte, 4096)
 	for {
-		//fmt.Println("conn waiting to read")
 		n, err := conn.Read(buf)
 		if err != nil {
-			if err != io.EOF {
-				panic(err)
-			} else {
+			if err == io.EOF {
 				break
 			}
+			if isConnReset(err) {
+				fmt.Println("Client reset connection")
+				return
+			}
+			fmt.Println("Read error:", err)
+			return
 		}
 
 		buf = buf[:n]
 		fmt.Println(string(buf))
 		_, err = conn.Write([]byte("1"))
 		if err != nil {
+			fmt.Println("Write error:", err)
 			return
 		}
 	}
 
 	//fmt.Println("conn", conn.RemoteAddr(), "closed")
+}
+
+func isConnReset(err error) bool {
+	if opErr, ok := err.(*net.OpError); ok {
+		if sysErr, ok := opErr.Err.(*os.SyscallError); ok {
+			if sysErr.Err == syscall.ECONNRESET {
+				return true
+			}
+		}
+	}
+	return false
 }

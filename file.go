@@ -18,8 +18,6 @@ type file struct {
 	closed       uint32
 	readReactor  fileReadReactor
 	writeReactor fileWriteReactor
-
-	queue *Queue
 }
 
 type fileReadReactor struct {
@@ -78,23 +76,6 @@ func newFile(ioc *IO, fd int) *file {
 	f := &file{
 		ioc:  ioc,
 		slot: internal.Slot{Fd: fd},
-	}
-	atomic.StoreUint32(&f.closed, 0)
-
-	f.readReactor = fileReadReactor{file: f}
-	f.readReactor.init(nil, false, nil)
-
-	f.writeReactor = fileWriteReactor{file: f}
-	f.writeReactor.init(nil, false, nil)
-
-	return f
-}
-
-func newFileWithQueue(ioc *IO, fd int, q *Queue) *file {
-	f := &file{
-		ioc:   ioc,
-		slot:  internal.Slot{Fd: fd},
-		queue: q,
 	}
 	atomic.StoreUint32(&f.closed, 0)
 
@@ -234,12 +215,6 @@ func (f *file) AsyncWriteAll(b []byte, cb AsyncCallback) {
 func (f *file) asyncWrite(b []byte, writeAll bool, cb AsyncCallback) {
 	f.writeReactor.init(b, writeAll, cb)
 
-	if f.queue != nil {
-		f.queue.Enqueue(f)
-		f.scheduleWrite(0, cb)
-		return
-	}
-
 	if f.ioc.Dispatched < MaxCallbackDispatch {
 		f.asyncWriteNow(b, 0, writeAll, func(err error, n int) {
 			f.ioc.Dispatched++
@@ -271,26 +246,23 @@ func (f *file) asyncWriteNow(b []byte, wroteSoFar int, writeAll bool, cb AsyncCa
 }
 
 func (f *file) scheduleWrite(wroteSoFar int, cb AsyncCallback) {
+	f.scheduleWriteFunc(wroteSoFar, cb, f.writeReactor.onWrite)
+}
+
+func (f *file) scheduleWriteFunc(wroteSoFar int, cb AsyncCallback, handlerFunc func(error)) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
 	f.writeReactor.wroteSoFar = wroteSoFar
-	f.slot.Set(internal.WriteEvent, f.onWrite)
+	f.slot.Set(internal.WriteEvent, handlerFunc)
 
 	if err := f.ioc.SetWrite(&f.slot); err != nil {
 		cb(err, wroteSoFar)
 	} else {
 		f.ioc.Register(&f.slot)
 	}
-}
-
-func (f *file) onWrite(err error) {
-	if err != nil {
-		f.queue.deregister(f, err)
-	}
-	f.queue.Dequeue(f)
 }
 
 func (f *file) Close() error {

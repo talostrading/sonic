@@ -17,57 +17,50 @@ func TestDequeueWithTenFiles(t *testing.T) {
 			c.Close()
 		})
 	}
-	queue.Dequeue(conns[1].(*conn).file)
+	queue.Dequeue(conns[1].(*qConn).file)
 	if queue.pending[1] != true {
 		t.Fatal("file 1 should be pending")
 	}
-	queue.Dequeue(conns[0].(*conn).file)
+	queue.Dequeue(conns[0].(*qConn).file)
 	if len(queue.order) != 8 && len(queue.pending) != 8 {
 		t.Fatal("queue should have 8 items")
 	}
-	queue.Dequeue(conns[2].(*conn).file)
+	queue.Dequeue(conns[2].(*qConn).file)
 	if len(queue.order) != 7 && len(queue.pending) != 7 {
 		t.Fatal("queue should have 7 items")
 	}
-	queue.Dequeue(conns[3].(*conn).file)
+	queue.Dequeue(conns[3].(*qConn).file)
 	if len(queue.order) != 6 && len(queue.pending) != 6 {
 		t.Fatal("queue should have 6 items")
 	}
-	queue.Dequeue(conns[6].(*conn).file)
+	queue.Dequeue(conns[6].(*qConn).file)
 	if queue.pending[2] != true && len(queue.order) != 6 && len(queue.pending) != 6 {
 		t.Fatal("file 6 should be pending and queue should have 6 items")
 	}
-	queue.Dequeue(conns[5].(*conn).file)
+	queue.Dequeue(conns[5].(*qConn).file)
 	if queue.pending[1] != true && queue.pending[2] != true && len(queue.order) != 6 && len(queue.pending) != 6 {
 		t.Fatal("file 5 and 6 should be pending and queue should have 5 items")
 	}
-	queue.Dequeue(conns[4].(*conn).file)
+	queue.Dequeue(conns[4].(*qConn).file)
 	if len(queue.order) != 3 && len(queue.pending) != 3 {
 		t.Fatal("queue should have 3 items")
 	}
-	queue.Dequeue(conns[8].(*conn).file)
+	queue.Dequeue(conns[8].(*qConn).file)
 	if queue.pending[1] != true && len(queue.order) != 3 && len(queue.pending) != 3 {
 		t.Fatal("file 8 should be pending and queue should have 3 items")
 	}
-	queue.Dequeue(conns[7].(*conn).file)
+	queue.Dequeue(conns[7].(*qConn).file)
 	if len(queue.order) != 1 && len(queue.pending) != 1 {
 		t.Fatal("file 8 should be pending and queue should have 3 items")
 	}
-	queue.Dequeue(conns[9].(*conn).file)
+	queue.Dequeue(conns[9].(*qConn).file)
 	if len(queue.order) != 0 && len(queue.pending) != 0 {
 		t.Fatal("que should have 0 items")
 	}
 }
 
 func TestDeregister(t *testing.T) {
-	//serv := newServer("tcp", ":8080", 10)
-	//serv.start()
-	//conns, _, queue := createDefaultTestEnv()
-	//for i, c := range conns {
-	//	c.AsyncWrite([]byte(fmt.Sprintf("%v", i)), func(error, int) {
-	//		c.Close()
-	//	})
-	//}
+	//TODO: shiakas
 }
 
 func Test(t *testing.T) {
@@ -95,7 +88,7 @@ func createTestEnv(numberOfConnections int, connType, port string) ([]Conn, func
 	queue := NewQueue()
 	conns := make([]Conn, numberOfConnections)
 	for i := 0; i < numberOfConnections; i++ {
-		conns[i], _ = DialQ(ioc, connType, port, queue)
+		conns[i], _ = QDial(ioc, connType, port, queue)
 	}
 	runner := func() error {
 		err := ioc.RunPending()
