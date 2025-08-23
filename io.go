@@ -39,8 +39,9 @@ type IO struct {
 		static [4096]*internal.Slot
 
 		// This map covers the 1%, the degenerate case. Any Slot whose file descriptor is greater than or equal to 4096
-		// goes here. This is lazily initialized.
-		dynamic map[*internal.Slot]struct{}
+		// goes here. This is lazily initialized. It is keyed by the file descriptor (fd) so lookups are consistent
+		// with `static` which is an array indexed by fd.
+		dynamic map[int]*internal.Slot
 	}
 	pendingTimers map[*Timer]struct{} // XXX: should be embedded into the above pending struct
 
@@ -81,9 +82,9 @@ func MustIO() *IO {
 func (ioc *IO) Register(slot *internal.Slot) {
 	if slot.Fd >= len(ioc.pending.static) {
 		if ioc.pending.dynamic == nil {
-			ioc.pending.dynamic = make(map[*internal.Slot]struct{})
+			ioc.pending.dynamic = make(map[int]*internal.Slot)
 		}
-		ioc.pending.dynamic[slot] = struct{}{}
+		ioc.pending.dynamic[slot.Fd] = slot
 	} else {
 		ioc.pending.static[slot.Fd] = slot
 	}
@@ -91,7 +92,7 @@ func (ioc *IO) Register(slot *internal.Slot) {
 
 func (ioc *IO) Deregister(slot *internal.Slot) {
 	if slot.Fd >= len(ioc.pending.static) {
-		delete(ioc.pending.dynamic, slot)
+		delete(ioc.pending.dynamic, slot.Fd)
 	} else {
 		ioc.pending.static[slot.Fd] = nil
 	}
