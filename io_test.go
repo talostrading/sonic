@@ -2,11 +2,12 @@ package sonic
 
 import (
 	"errors"
-	"github.com/talostrading/sonic/internal"
 	"log"
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/talostrading/sonic/internal"
 
 	"github.com/talostrading/sonic/sonicerrors"
 )
@@ -313,6 +314,27 @@ func TestIOPending(t *testing.T) {
 		if slot != nil {
 			t.Fatal("static slot should be nil")
 		}
+	}
+}
+
+func TestIOPendingDynamicKeyedByFd(t *testing.T) {
+	ioc := MustIO()
+	defer ioc.Close()
+
+	// choose an fd >= len(static) to ensure we hit the dynamic map
+	highFd := len(ioc.pending.static) + 10
+	slot := &internal.Slot{Fd: highFd}
+
+	// Register should insert into pending.dynamic keyed by fd
+	ioc.Register(slot)
+	if got, ok := ioc.pending.dynamic[highFd]; !ok || got != slot {
+		t.Fatalf("pending.dynamic should contain slot at fd=%d", highFd)
+	}
+
+	// Deregister should remove the fd key from pending.dynamic
+	ioc.Deregister(slot)
+	if _, ok := ioc.pending.dynamic[highFd]; ok {
+		t.Fatalf("pending.dynamic should not contain fd=%d after Deregister", highFd)
 	}
 }
 
