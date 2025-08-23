@@ -65,9 +65,13 @@ type poller struct {
 	// entails writing a single byte to the write end of the wakeupPipe.
 	posts []func()
 
+	// runq is a reusable buffer used to swap out the posts slice during dispatch
+	// to avoid allocations and copies while we execute callbacks without holding the lock.
+	runq []func()
+
 	// lck synchronizes access to the posts slice.
 	// This is needed because multiple goroutines can call ioc.Post(...)
-	// on the same IO object.
+	// on the same IO object. Callbacks run outside the lock to avoid starvation.
 	lck sync.Mutex
 
 	// pending is the number of pending posts the poller needs to execute
@@ -105,13 +109,13 @@ func NewPoller() (Poller, error) {
 		return nil, err
 	}
 	// ignore the waker
-	p.pending--
+	atomic.AddInt64(&p.pending, -1)
 
 	return p, err
 }
 
 func (p *poller) Pending() int64 {
-	return p.pending
+	return atomic.LoadInt64(&p.pending)
 }
 
 func (p *poller) Close() error {
@@ -128,14 +132,19 @@ func (p *poller) Closed() bool {
 }
 
 func (p *poller) Post(handler func()) error {
+	// Coalesce wakes: only write to the eventfd when transitioning from empty -> non-empty.
 	p.lck.Lock()
+	wasEmpty := len(p.posts) == 0
 	p.posts = append(p.posts, handler)
-	p.pending++
+	atomic.AddInt64(&p.pending, 1)
 	p.lck.Unlock()
 
-	// Concurrent writes are thread safe for eventfds.
-	_, err := p.waker.Write(1)
-	return err
+	if wasEmpty {
+		// Concurrent writes are thread safe for eventfds.
+		_, err := p.waker.Write(1)
+		return err
+	}
+	return nil
 }
 
 func (p *poller) Posted() int {
@@ -210,13 +219,27 @@ func (p *poller) dispatch() {
 		}
 	}
 
+	// Swap handlers under lock, assign a fresh queue for new posts, then execute without holding the lock.
 	p.lck.Lock()
-	for _, handler := range p.posts {
-		handler()
-		p.pending--
-	}
-	p.posts = p.posts[:0]
+	handlers := p.posts
+	// Reuse previous runq (if any) as the new posts buffer to preserve capacity and minimize allocs.
+	// First-run nil safety: if runq is nil, p.posts becomes a nil slice (intentional).
+	p.posts = p.runq[:0]
 	p.lck.Unlock()
+
+	for _, handler := range handlers {
+		func() {
+			defer func() { _ = recover() }()
+			handler()
+		}()
+	}
+
+	// Reuse the handlers' capacity for the next swap and batch-decrement pending safely.
+	// pending is incremented under p.lck in Post; we batch-pair the decrement here.
+	p.lck.Lock()
+	p.runq = handlers[:0]
+	p.lck.Unlock()
+	atomic.AddInt64(&p.pending, -int64(len(handlers)))
 }
 
 func (p *poller) SetRead(slot *Slot) error {
@@ -230,7 +253,7 @@ func (p *poller) SetWrite(slot *Slot) error {
 func (p *poller) setRW(fd int, slot *Slot, flag PollerEvent) error {
 	events := &slot.Events
 	if *events&flag != flag {
-		p.pending++
+		atomic.AddInt64(&p.pending, 1)
 
 		oldEvents := *events
 		*events |= flag
@@ -287,7 +310,7 @@ func (p *poller) Del(slot *Slot) error {
 func (p *poller) DelRead(slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerReadEvent == PollerReadEvent {
-		p.pending--
+		atomic.AddInt64(&p.pending, -1)
 		*events ^= PollerReadEvent
 		if *events != 0 {
 			return p.modify(slot.Fd, createEvent(*events, slot))
@@ -300,7 +323,7 @@ func (p *poller) DelRead(slot *Slot) error {
 func (p *poller) DelWrite(slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerWriteEvent == PollerWriteEvent {
-		p.pending--
+		atomic.AddInt64(&p.pending, -1)
 		*events ^= PollerWriteEvent
 		if *events != 0 {
 			return p.modify(slot.Fd, createEvent(*events, slot))
