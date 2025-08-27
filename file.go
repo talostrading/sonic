@@ -246,13 +246,17 @@ func (f *file) asyncWriteNow(b []byte, wroteSoFar int, writeAll bool, cb AsyncCa
 }
 
 func (f *file) scheduleWrite(wroteSoFar int, cb AsyncCallback) {
+	f.scheduleWriteFunc(wroteSoFar, cb, f.writeReactor.onWrite)
+}
+
+func (f *file) scheduleWriteFunc(wroteSoFar int, cb AsyncCallback, handlerFunc func(error)) {
 	if f.Closed() {
 		cb(io.EOF, 0)
 		return
 	}
 
 	f.writeReactor.wroteSoFar = wroteSoFar
-	f.slot.Set(internal.WriteEvent, f.writeReactor.onWrite)
+	f.slot.Set(internal.WriteEvent, handlerFunc)
 
 	if err := f.ioc.SetWrite(&f.slot); err != nil {
 		cb(err, wroteSoFar)
