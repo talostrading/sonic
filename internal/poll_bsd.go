@@ -58,9 +58,13 @@ type poller struct {
 	// entails writing a single byte to the write end of the wakeupPipe.
 	posts []func()
 
-	// lck synchronizes access to the handlers slice.
+	// runq is a reusable buffer used to swap out the posts slice during dispatch
+	// to avoid allocations and copies while we execute callbacks without holding the lock.
+	runq []func()
+
+	// lck synchronizes access to the posts slice.
 	// This is needed because multiple goroutines can call ioc.Post(...)
-	// on the same IO object.
+	// on the same IO object. Callbacks run outside the lock to avoid starvation.
 	lck sync.Mutex
 
 	// pending is the number of pending handlers the poller needs to execute
@@ -113,13 +117,13 @@ func NewPoller() (Poller, error) {
 		_ = syscall.Close(kqueueFd)
 		return nil, err
 	}
-	p.pending-- // ignore the pipe read
+	atomic.AddInt64(&p.pending, -1) // ignore the pipe read
 
 	return p, nil
 }
 
 func (p *poller) Pending() int64 {
-	return p.pending
+	return atomic.LoadInt64(&p.pending)
 }
 
 func (p *poller) Close() error {
@@ -136,15 +140,20 @@ func (p *poller) Closed() bool {
 }
 
 func (p *poller) Post(handler func()) error {
+	// Coalesce wakes: only write to the pipe when transitioning from empty -> non-empty.
 	p.lck.Lock()
+	wasEmpty := len(p.posts) == 0
 	p.posts = append(p.posts, handler)
-	p.pending++
+	atomic.AddInt64(&p.pending, 1)
 	p.lck.Unlock()
 
-	// Concurrent writes are thread safe for pipes if less
-	// than 512 bytes are written.
-	_, err := p.waker.Write(oneByte[:])
-	return err
+	if wasEmpty {
+		// Concurrent writes are thread safe for pipes if less
+		// than 512 bytes are written.
+		_, err := p.waker.Write(oneByte[:])
+		return err
+	}
+	return nil
 }
 
 func (p *poller) Posted() int {
@@ -194,13 +203,13 @@ func (p *poller) Poll(timeoutMs int) (n int, err error) {
 		}
 
 		if events&slot.Events&PollerReadEvent == PollerReadEvent {
-			p.pending--
+			atomic.AddInt64(&p.pending, -1)
 			slot.Events ^= PollerReadEvent
 			slot.Handlers[ReadEvent](nil)
 		}
 
 		if events&slot.Events&PollerWriteEvent == PollerWriteEvent {
-			p.pending--
+			atomic.AddInt64(&p.pending, -1)
 			slot.Events ^= PollerWriteEvent
 			slot.Handlers[WriteEvent](nil)
 		}
@@ -217,13 +226,27 @@ func (p *poller) executePost() {
 		}
 	}
 
+	// Swap handlers under lock, assign fresh queue, then execute without holding the lock
 	p.lck.Lock()
-	for _, handler := range p.posts {
-		handler()
-		p.pending--
-	}
-	p.posts = p.posts[:0]
+	handlers := p.posts
+	// Reuse previous runq (if any) for future posts while we execute current handlers.
+	// First-run nil safety: if runq is nil, p.posts becomes a nil slice (intentional).
+	p.posts = p.runq[:0]
 	p.lck.Unlock()
+
+	for _, handler := range handlers {
+		func() {
+			defer func() { _ = recover() }()
+			handler()
+		}()
+	}
+
+	// Reuse handlers capacity for next swap and batch-decrement pending safely.
+	// pending is incremented under p.lck in Post; we batch-pair the decrement here.
+	p.lck.Lock()
+	p.runq = handlers[:0]
+	p.lck.Unlock()
+	atomic.AddInt64(&p.pending, -int64(len(handlers)))
 }
 
 func (p *poller) SetRead(slot *Slot) error {
@@ -233,7 +256,7 @@ func (p *poller) SetRead(slot *Slot) error {
 func (p *poller) setRead(fd int, flags uint16, slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerReadEvent != PollerReadEvent {
-		p.pending++
+		atomic.AddInt64(&p.pending, 1)
 		*events |= PollerReadEvent
 		return p.set(fd, createEvent(flags, -PollerReadEvent, slot, 0))
 	}
@@ -243,7 +266,7 @@ func (p *poller) setRead(fd int, flags uint16, slot *Slot) error {
 func (p *poller) SetWrite(slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerWriteEvent != PollerWriteEvent {
-		p.pending++
+		atomic.AddInt64(&p.pending, 1)
 		*events |= PollerWriteEvent
 		return p.set(slot.Fd, createEvent(syscall.EV_ADD|syscall.EV_ONESHOT, -PollerWriteEvent, slot, 0))
 	}
@@ -253,7 +276,7 @@ func (p *poller) SetWrite(slot *Slot) error {
 func (p *poller) DelRead(slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerReadEvent == PollerReadEvent {
-		p.pending--
+		atomic.AddInt64(&p.pending, -1)
 		*events ^= PollerReadEvent
 		return p.set(slot.Fd, createEvent(syscall.EV_DELETE, -PollerReadEvent, slot, 0))
 	}
@@ -263,7 +286,7 @@ func (p *poller) DelRead(slot *Slot) error {
 func (p *poller) DelWrite(slot *Slot) error {
 	events := &slot.Events
 	if *events&PollerWriteEvent == PollerWriteEvent {
-		p.pending--
+		atomic.AddInt64(&p.pending, -1)
 		*events ^= PollerWriteEvent
 		return p.set(slot.Fd, createEvent(syscall.EV_DELETE, -PollerWriteEvent, slot, 0))
 	}
