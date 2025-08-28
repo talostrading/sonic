@@ -10,9 +10,11 @@ import (
 )
 
 var (
-	addr     = flag.String("addr", "ws://localhost:9001", "server address")
-	testCase = flag.Int("case", -1, "autobahn test case to run")
-	utf8     = flag.Bool("utf8", false, "if true, payloads of text frames are utf8 validated")
+	addr       = flag.String("addr", "ws://localhost:9001", "server address")
+	testCase   = flag.Int("case", -1, "autobahn test case to run")
+	utf8       = flag.Bool("utf8", false, "if true, payloads of text frames are utf8 validated")
+	readDirect = flag.Bool("readdirect", false,
+	                       "if true, messages are read using the more memory efficient AsyncNextMessageDirect")
 )
 
 func main() {
@@ -103,7 +105,10 @@ func runTest(i int) {
 
 		b := make([]byte, 1024*1024)
 
-		var onAsyncRead websocket.AsyncMessageCallback
+		var (
+			onAsyncRead websocket.AsyncMessageCallback
+			onAsyncReadDirect websocket.AsyncMessageDirectCallback
+		)
 
 		onAsyncRead = func(err error, n int, mt websocket.MessageType) {
 			if err != nil {
@@ -136,7 +141,45 @@ func runTest(i int) {
 			}
 		}
 
-		s.AsyncNextMessage(b, onAsyncRead)
+		onAsyncReadDirect = func(err error, mt websocket.MessageType, pl ...[]byte) {
+			if err != nil {
+				s.Flush()
+				done = true
+			} else {
+				asm := websocket.NewFrameAssembler(pl...)
+
+				asm.ReassembleInto(b)
+				b = b[:asm.Length()]
+
+				switch mt {
+				case websocket.TypeText, websocket.TypeBinary:
+					s.AsyncWrite(b, mt, func(err error) {
+						if err != nil {
+							panic(err)
+						}
+
+						b = b[:cap(b)]
+						s.AsyncNextMessageDirect(onAsyncReadDirect)
+					})
+				case websocket.TypeClose:
+					s.AsyncFlush(func(err error) {
+						if err != nil {
+							panic(err)
+						}
+						done = true
+					})
+				default:
+					b = b[:cap(b)]
+					s.AsyncNextMessageDirect(onAsyncReadDirect)
+				}
+			}
+		}
+
+		if *readDirect {
+			s.AsyncNextMessageDirect(onAsyncReadDirect)
+		} else {
+			s.AsyncNextMessage(b, onAsyncRead)
+		}
 	})
 
 	for {

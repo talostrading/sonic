@@ -261,6 +261,7 @@ func (s *Stream) nextFrame() (f Frame, err error) {
 //   - a frame is successfully read from the underlying stream
 func (s *Stream) AsyncNextFrame(callback AsyncFrameCallback) {
 	s.AsyncFlush(func(err error) {
+		// This handles errors related to control frames we're sending
 		if errors.Is(err, ErrMessageTooBig) {
 			s.AsyncClose(CloseGoingAway, "payload too big", func(err error) {})
 			callback(ErrMessageTooBig, nil)
@@ -1082,4 +1083,93 @@ func (s *Stream) CloseNextLayer() (err error) {
 		s.conn = nil
 	}
 	return
+}
+
+// AsyncNextMessageDirect reads the next websocket message asynchronously, 
+// providing providing one more slices representing each payload fragment of a message. 
+//
+// - If the next message is unfragmented, then a single byte slice is provided, 
+// representing the message's full payload. 
+//
+// - If the message is fragmented into n fragments, then n payloads are provided. 
+// Callers can reconstruct the full message payload by a copying out the provided 
+// slices into a continuous memory chunk, or by using the FrameAssembler. 
+//
+// The returned slices are only valid until the next invocation of AsyncNextMessageDirect.
+func (s *Stream) AsyncNextMessageDirect(cb AsyncMessageDirectCallback) {
+	// Release frames (if any) saved from previous call
+	s.codec.ReleaseFrames() 
+
+	s.asyncNextMessageDirect(cb, true, TypeNone)
+}
+
+func (s *Stream) asyncNextMessageDirect(
+	cb AsyncMessageDirectCallback,
+	isFirst bool,
+	messageType MessageType,
+) {
+	s.AsyncNextFrame(func(err error, f Frame) {
+		if errors.Is(err, ErrPayloadOverMaxSize) {
+			// If a single frame's payload exceeds the max size, close our connection
+			// and invoke our callback with the error
+			s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
+			cb(ErrMessageTooBig, messageType, s.codec.ReservedFramePayloads()...)
+			return
+		}
+
+		if err != nil {
+			// If we get an error decoding a frame, invoke our callback with the error 
+			// and our decoded message payload thus far
+			cb(err, messageType, s.codec.ReservedFramePayloads()...)
+			return
+		}
+
+		if f.Opcode().IsControl() {
+			// If we decode a control frame, invoke our controlCallback then proceed to
+			// handle the next frame
+			if s.controlCallback != nil {
+				s.controlCallback(MessageType(f.Opcode()), f.Payload())
+			}
+			s.asyncNextMessageDirect(cb, isFirst, messageType)
+			return
+		}
+
+		if isFirst {
+			// If this is the first frame we decode, get the message type from the opcode
+			messageType = MessageType(f.Opcode())
+
+			if f.Opcode().IsContinuation() {
+				// Since this is our first frame, if continuation bit set, close
+				// our connection and invoke our callback with the error
+				s.AsyncClose(CloseProtocolError, "unexpected continuation", func(_ error) {})
+				cb(ErrUnexpectedContinuation, messageType, s.codec.ReservedFramePayloads()...)
+				return
+			}
+		} else if !f.Opcode().IsContinuation() {
+			// If this is not the first frame, but continuation bit not set, close
+			// our connection and invoke our callback with the error
+			s.AsyncClose(CloseProtocolError, "expected continuation", func(_ error) {})
+			cb(ErrExpectedContinuation, messageType, s.codec.ReservedFramePayloads()...)
+			return
+		}
+
+		if s.codec.messageSize+f.PayloadLength() > s.maxMessageSize {
+			// If our message payload exceeds the maximum size, close our connection
+			// and invoke our callback with the error
+			s.AsyncClose(CloseGoingAway, "payload too big", func(_ error) {})
+			cb(ErrMessageTooBig, messageType, s.codec.ReservedFramePayloads()...)
+			return
+		}
+
+		// Append our current frame's payload to the codec's internal payload buffer
+		s.codec.ReserveFrame()
+
+		// If this is the last frame in our message, return the assembled payload,
+		// otherwise keep going
+		if f.IsFIN() {
+			cb(nil, messageType, s.codec.ReservedFramePayloads()...)
+		} else {
+			s.asyncNextMessageDirect(cb, false, messageType)
+		}
+	})
 }

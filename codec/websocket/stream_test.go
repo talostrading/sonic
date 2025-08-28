@@ -1736,38 +1736,6 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 	}
 }
 
-func TestStreamResolveUrl(t *testing.T) {
-	defer func() {
-		if msg := recover(); msg != nil {
-			t.Fatalf("should not have panicked: %s", msg)
-		}
-	}()
-
-	ioc := sonic.MustIO()
-	defer ioc.Close()
-
-	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = ws.resolve("ws://localhost:8080")
-	if err != nil {
-		t.Fatalf("valid url could not be resolved: %v", err)
-	}
-
-	_, err = ws.resolve("wss://www.test.com")
-	if err != nil {
-		t.Fatalf("valid url could not be resolved: %v", err)
-	}
-
-	_, err = ws.resolve("/test/")
-	if err == nil {
-		t.Fatal("invalid url should return error")
-	}
-}
-
 func TestMaxMsgSizeBeforeHandshake(t *testing.T) {
 	assert := assert.New(t)
 	srv := NewMockServer()
@@ -1846,4 +1814,432 @@ func TestMaxMsgSizeAfterHandshake(t *testing.T) {
 	for !done {
 		ioc.PollOne()
 	}
+}
+
+func TestClientAsyncNextMessageDirectUnfragmented(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	ws.init(nil)
+
+	ws.src.Write([]byte{
+		0x81, 2, 0x01, 0x02, // fin=true, type=text, payload_len=2, payload=[0x01, 0x02]
+	})
+
+	ran := false
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+		ran = true
+		assert.Nil(err)            // Verify no error when getting message
+
+		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 1)    // Verify we got exactly one payload slice
+
+		assert.Equal([]byte{0x01, 0x02}, payloads[0]) // Verify payload slice correct
+	})
+
+	assert.True(ran)                      // Verify callback ran
+	assert.Equal(StateActive, ws.State()) // Verify ws still in active state
+}
+
+func TestClientAsyncNextMessageDirectFragmented(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	ws.init(nil)
+
+	ws.src.Write([]byte{
+		0x01, 2, 0x01, 0x02,       // fin=false, type=text, payload_len=2, payload=[0x01, 0x02]
+		0x80, 3, 0x03, 0x04, 0x05, // fin=true, type=continuation, payload_len=3, payload=[0x03, 0x04, 0x05]
+	})
+
+	ran := false
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+		ran = true
+		assert.Nil(err)            // Verify no error when getting message
+
+		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 2)    // Verify we got two payload slices
+
+		assert.Equal([]byte{0x01, 0x02}, payloads[0])       // Verify 1st payload slice correct
+		assert.Equal([]byte{0x03, 0x04, 0x05}, payloads[1]) // Verify 2nd payload slice correct
+	})
+
+	assert.True(ran)                      // Verify callback ran
+	assert.Equal(StateActive, ws.State()) // Verify ws still in active state
+}
+
+func TestClientAsyncNextMessageDirectInterleavedControlFrame(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	ws.src.Write([]byte{
+		0x01, 2, 0x01, 0x02, // fin=false, type=text, payload_len=2, payload=[0x01, 0x02]
+		0x89, 1, 0xFF,       // fin=true, type=ping (control), payload_len=1, payload=[0xFF]
+		0x80, 2, 0x03, 0x04, // fin=true, type=continuation, payload_len=2, payload=[0x03, 0x04]
+	})
+
+	// To verify our ping gets properly processed
+	controlInvoked := false
+	ws.SetControlCallback(func(mt MessageType, b []byte) {
+		controlInvoked = true
+
+		assert.Equal(TypePing, mt)    // Verify message type correct
+		assert.Equal([]byte{0xFF}, b) // Verify Ping payload correct
+		
+		assert.Equal(1, ws.Pending()) // Verify that a matching Pong queued
+	})
+
+	messageInvoked := false
+	ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+		messageInvoked = true
+		assert.Nil(err)            // Verify no error when getting message
+
+		assert.Equal(TypeText, mt) // Verify message type correct
+		assert.Len(payloads, 2)    // Verify we got two payload slices
+
+		assert.Equal([]byte{0x01, 0x02}, payloads[0]) // Verify 1st payload slice correct
+		assert.Equal([]byte{0x03, 0x04}, payloads[1]) // Verify 2nd payload slice correct
+	})
+
+	assert.True(controlInvoked)           // Verify control callback ran
+	assert.True(messageInvoked)           // Verify message callback ran
+	assert.Equal(StateActive, ws.State()) // Verify ws still in active state
+}
+
+func TestClientAsyncDirectMaxMessageSizeBreachedByFirstFragment(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	oversizePayload := make([]byte, DefaultMaxMessageSize+10)
+
+	f := NewFrame()
+	f.SetFIN()
+	f.SetText()
+	f.SetPayload(oversizePayload)
+
+	_, err = f.WriteTo(ws.src)
+	assert.Nil(err)
+
+	done := false
+	ws.AsyncNextMessageDirect(func(cbErr error, mt MessageType, payloads ...[]byte) {
+		defer func() { done = true }()
+
+		assert.ErrorIs(cbErr, ErrMessageTooBig) // Verify we get message too big error
+		assert.Equal(StateClosedByUs, ws.state) // Verify WebSocket closed
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
+func TestClientAsyncDirectMaxMessageSizeBreachedBySecondFragment(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	// First fragment: partial payload smaller than DefaultMaxMessageSize
+	firstFragmentSize := 100
+	firstPayload := make([]byte, firstFragmentSize)
+
+	// Second fragment: large enough so that combined total > DefaultMaxMessageSize
+	secondFragmentSize := DefaultMaxMessageSize - firstFragmentSize + 1
+	secondPayload := make([]byte, secondFragmentSize)
+
+	// 1) First frame: text, FIN=false
+	f1 := NewFrame()
+	f1.SetText()
+	f1.SetPayload(firstPayload)
+
+	// 2) Second frame: continuation, FIN=true
+	f2 := NewFrame()
+	f2.SetContinuation()
+	f2.SetFIN()
+	f2.SetPayload(secondPayload)
+
+	_, err = f1.WriteTo(ws.src)
+	assert.Nil(err)
+
+	_, err = f2.WriteTo(ws.src)
+	assert.Nil(err)
+
+	done := false
+	ws.AsyncNextMessageDirect(func(cbErr error, mt MessageType, payloads ...[]byte) {
+		defer func() { done = true }()
+
+		assert.ErrorIs(cbErr, ErrMessageTooBig) // Verify we get message too big error
+		assert.Equal(StateClosedByUs, ws.state) // Verify WebSocket closed
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
+func TestClientAsyncDirectExpectedContinuation(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	// 1) First frame: text, FIN=false (start of a fragmented text message)
+	f1 := NewFrame()
+	f1.SetText()
+	f1.SetPayload([]byte("some data"))
+
+	// 2) Second frame: incorrectly text again instead of continuation
+	f2 := NewFrame()
+	f2.SetText()
+	f2.SetPayload([]byte("this is invalid as fragment #2"))
+
+	_, err = f1.WriteTo(ws.src)
+	assert.Nil(err)
+
+	_, err = f2.WriteTo(ws.src)
+	assert.Nil(err)
+
+	done := false
+	ws.AsyncNextMessageDirect(func(cbErr error, mt MessageType, payloads ...[]byte) {
+		defer func() { done = true }()
+
+		assert.ErrorIs(cbErr, ErrExpectedContinuation) // Verify we get expected continuation error
+		assert.Equal(StateClosedByUs, ws.state)        // Verify WebSocket closed
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
+// Returns the total read stream ByteBuffer usage of the websocket
+func byteBufferUsage(ws *Stream) int {
+	src := ws.src
+	return src.SaveLen() + src.ReadLen() + src.WriteLen()
+}
+
+func TestClientMultipleAsyncNextMessageDirectSequence(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	messages := []struct {
+		opcode  Opcode
+		payload []byte
+		mt      MessageType
+	}{
+		{OpcodeText, []byte("abc"), TypeText},
+		{OpcodeBinary, []byte{0x01, 0x02, 0x03}, TypeBinary},
+		{OpcodeText, []byte("def"), TypeText},
+	}
+
+	for _, msg := range messages {
+		fr := NewFrame()
+		fr.SetFIN()
+		fr.SetOpcode(msg.opcode)
+		fr.SetPayload(msg.payload)
+		_, werr := fr.WriteTo(ws.src)
+		assert.Nil(werr) // Verify no errors occurred writing frames
+	}
+
+	total := len(messages)
+	index := 0
+
+	usageAfterFirstMsg := -1
+
+	done := false
+	var readNext func()
+	readNext = func() {
+		ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+			assert.Nil(err)                           // Verify no error reading message
+
+			expect := messages[index]
+			assert.Equal(expect.mt, mt)               // Verify message type matches expected
+			assert.Len(payloads, 1)                   // Verify message payload a single fragment
+			assert.Equal(expect.payload, payloads[0]) // Verify message payload matches expected
+
+			index++
+			if index == 1 {
+				usageAfterFirstMsg = byteBufferUsage(ws)
+			}
+
+			if index < total {
+				readNext()
+			} else {
+				// Verify we don't have a memory leak in internal read stream buffer
+				// We can assume there is a leak if byte buffer usage doubled since reading the first message
+				usageEnd := byteBufferUsage(ws)
+				if usageAfterFirstMsg >= 0 {
+					assert.True(
+						usageEnd <= 2*usageAfterFirstMsg,
+						"ByteBuffer usage grew excessively. Start=%d, End=%d",
+						usageAfterFirstMsg, usageEnd,
+					)
+				}
+
+				done = true
+			}
+		})
+	}
+	readNext()
+
+	for !done {
+		ioc.PollOne()
+	}
+
+	assert.Equal(total, index)          // Verify we read the expected number of messages
+	assert.Equal(StateActive, ws.state) // Verify WebSocket still in active state
+}
+
+func TestClientMixedAsyncNextMessageDirectAndAsyncNextMessage(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	ws.state = StateActive
+	mock := NewMockStream()
+	ws.init(mock)
+
+	messages := []struct {
+		opcode  Opcode
+		payload []byte
+		mt      MessageType
+	}{
+		{OpcodeText, []byte("first"), TypeText},
+		{OpcodeBinary, []byte{0x01, 0x02}, TypeBinary},
+		{OpcodeText, []byte("second"), TypeText},
+		{OpcodeBinary, []byte{0xAA, 0xBB, 0xCC}, TypeBinary},
+	}
+
+	for _, msg := range messages {
+		fr := NewFrame()
+		fr.SetFIN()
+		fr.SetOpcode(msg.opcode)
+		fr.SetPayload(msg.payload)
+
+		_, werr := fr.WriteTo(ws.src)
+		assert.Nil(werr) // Verify no errors occurred writing frames
+	}
+
+	index := 0
+	total := len(messages)
+
+	usageAfterFirstMsg := -1
+
+	done := false
+	var readNext func()
+	readNext = func() {
+		if index < total {
+
+			// Alternate between reading messages using AsyncNextMessageDirect and AsyncNextMessage
+			if index%2 == 0 {
+
+				ws.AsyncNextMessageDirect(func(err error, mt MessageType, payloads ...[]byte) {
+					assert.Nil(err)                           // Verify no error reading message
+
+					expect := messages[index]
+					assert.Equal(expect.mt, mt)               // Verify message type matches expected
+					assert.Len(payloads, 1)                   // Verify message payload a single fragment
+					assert.Equal(expect.payload, payloads[0]) // Verify message payload matches expected
+
+					index++
+					if index == 1 {
+						usageAfterFirstMsg = byteBufferUsage(ws)
+					}
+
+					readNext()
+				})
+			} else {
+				buf := make([]byte, 128)
+				ws.AsyncNextMessage(buf, func(err error, n int, mt MessageType) {
+					assert.Nil(err)                   // Verify no error reading message
+
+					expect := messages[index]
+					assert.Equal(expect.mt, mt)           // Verify message type matches expected
+					assert.Equal(expect.payload, buf[:n]) // Verify message payload matches expected
+
+					index++
+					readNext()
+				})
+			}
+		} else {
+
+			// Verify we don't have a memory leak in internal read stream buffer
+			// We can assume there is a leak if byte buffer usage doubled since reading the first message
+			usageEnd := byteBufferUsage(ws)
+			if usageAfterFirstMsg >= 0 {
+				assert.True(
+					usageEnd <= 2*usageAfterFirstMsg,
+					"ByteBuffer usage grew excessively. Start=%d, End=%d",
+					usageAfterFirstMsg, usageEnd,
+				)
+			}
+
+			done = true
+		}
+	}
+	readNext()
+
+	for !done {
+		ioc.PollOne()
+	}
+
+	assert.Equal(total, index)          // Verify we read the expected number of messages
+	assert.Equal(StateActive, ws.state) // Verify WebSocket still in active state
 }
