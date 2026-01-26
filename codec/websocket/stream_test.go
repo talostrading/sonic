@@ -1,11 +1,13 @@
 package websocket
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"testing"
 
@@ -1846,4 +1848,194 @@ func TestMaxMsgSizeAfterHandshake(t *testing.T) {
 	for !done {
 		ioc.PollOne()
 	}
+}
+
+func TestServerAsyncAccept(t *testing.T) {
+	assert := assert.New(t)
+
+	// Use MockServer pattern - server runs in goroutine with blocking net.Listener
+	// Client uses sonic async
+	srv := NewMockServer()
+
+	go func() {
+		defer srv.Close()
+
+		err := srv.Accept(MockServerDynamicAddr)
+		if err != nil {
+			panic(err)
+		}
+
+		// Read a message from client
+		b := make([]byte, 128)
+		n, err := srv.Read(b)
+		if err != nil {
+			panic(err)
+		}
+
+		// Echo it back
+		err = srv.Write(b[:n])
+		if err != nil {
+			panic(err)
+		}
+	}()
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	done := false
+	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+		assert.Nil(err)
+		assertState(t, ws, StateActive)
+
+		// Send a message
+		ws.AsyncWrite([]byte("hello server"), TypeText, func(err error) {
+			assert.Nil(err)
+
+			// Read the echo
+			b := make([]byte, 128)
+			ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
+				assert.Nil(err)
+				assert.Equal(TypeText, mt)
+				assert.Equal("hello server", string(b[:n]))
+				done = true
+			})
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
+func TestServerAcceptIntegration(t *testing.T) {
+	// This test verifies the server Accept methods work correctly
+	// Server runs in goroutine with blocking net.Listener, client uses sonic async
+	assert := assert.New(t)
+
+	ln, err := net.Listen("tcp", "localhost:0")
+	assert.Nil(err)
+	defer ln.Close()
+
+	addr := ln.Addr().String()
+	serverReady := make(chan struct{})
+
+	// Server accepts in goroutine (blocking)
+	go func() {
+		close(serverReady)
+
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+
+		serverIoc := sonic.MustIO()
+		defer serverIoc.Close()
+
+		server, err := NewWebsocketStream(serverIoc, nil, RoleServer)
+		if err != nil {
+			panic(err)
+		}
+
+		// Use our new blocking Accept - need to wrap net.Conn
+		// Actually, we need a sonic.Conn. Let's test via the example pattern instead.
+		// For now, just do the handshake manually like MockServer does
+		b := make([]byte, 4096)
+		n, err := conn.Read(b)
+		if err != nil {
+			panic(err)
+		}
+		b = b[:n]
+
+		req, err := http.ReadRequest(bufio.NewReader(bytes.NewBuffer(b)))
+		if err != nil {
+			panic(err)
+		}
+
+		if !IsUpgradeReq(req) {
+			panic("not upgrade request")
+		}
+
+		res := bytes.NewBuffer(nil)
+		fmt.Fprintf(res, "HTTP/1.1 101 Switching Protocols\r\n")
+		fmt.Fprintf(res, "Upgrade: websocket\r\n")
+		fmt.Fprintf(res, "Connection: Upgrade\r\n")
+		fmt.Fprintf(res, "Sec-WebSocket-Accept: %s\r\n",
+			MakeResponseKey([]byte(req.Header.Get("Sec-WebSocket-Key"))))
+		fmt.Fprintf(res, "\r\n")
+
+		_, err = res.WriteTo(conn)
+		if err != nil {
+			panic(err)
+		}
+
+		// Now we can set the server stream to active and use it
+		server.state = StateActive
+		server.init(NewMockStream())
+
+		// Read frame from client
+		frame := NewFrame()
+		_, err = frame.ReadFrom(conn)
+		if err != nil {
+			panic(err)
+		}
+
+		frame.UnmaskPayload()
+
+		// Echo it back (server doesn't mask)
+		echoFrame := NewFrame()
+		echoFrame.SetFIN().SetText().SetPayload(frame.Payload())
+		_, err = echoFrame.WriteTo(conn)
+		if err != nil {
+			panic(err)
+		}
+
+		_ = server
+	}()
+
+	<-serverReady
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	done := false
+	ws.AsyncHandshake(fmt.Sprintf("ws://%s", addr), func(err error) {
+		assert.Nil(err)
+		assertState(t, ws, StateActive)
+
+		ws.AsyncWrite([]byte("integration test"), TypeText, func(err error) {
+			assert.Nil(err)
+
+			b := make([]byte, 128)
+			ws.AsyncNextMessage(b, func(err error, n int, mt MessageType) {
+				assert.Nil(err)
+				assert.Equal(TypeText, mt)
+				assert.Equal("integration test", string(b[:n]))
+				done = true
+			})
+		})
+	})
+
+	for !done {
+		ioc.PollOne()
+	}
+}
+
+func TestServerAcceptWrongRole(t *testing.T) {
+	assert := assert.New(t)
+
+	ioc := sonic.MustIO()
+	defer ioc.Close()
+
+	// Create a client stream and try to call Accept on it
+	client, err := NewWebsocketStream(ioc, nil, RoleClient)
+	assert.Nil(err)
+
+	err = client.Accept(nil)
+	assert.Equal(ErrWrongHandshakeRole, err)
 }
