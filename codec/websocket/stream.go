@@ -15,7 +15,6 @@ when the client cannot parse what the server sends.
 
 import (
 	"bufio"
-	"bytes"
 	"crypto/rand"
 	"crypto/sha1" //#nosec G505
 	"crypto/tls"
@@ -26,10 +25,10 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"sync"
 	"syscall"
+	"time"
 	"unicode/utf8"
 
 	"github.com/talostrading/sonic"
@@ -66,9 +65,6 @@ type Stream struct {
 	// Buffer for stream writes.
 	dst *sonic.ByteBuffer
 
-	// Contains the handshake response. Is emptied after the handshake is over.
-	handshakeBuffer []byte
-
 	// Contains frames waiting to be sent to the peer. Is emptied by AsyncFlush or Flush.
 	pendingFrames []*Frame
 
@@ -100,8 +96,7 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *Stream, e
 		dst:   sonic.NewByteBuffer(),
 		state: StateHandshake,
 		/* #nosec G401 */
-		hasher:          sha1.New(),
-		handshakeBuffer: make([]byte, 1024),
+		hasher: sha1.New(),
 		dialer: &net.Dialer{
 			Timeout: DialTimeout,
 		},
@@ -158,7 +153,6 @@ func (s *Stream) init(stream sonic.Stream) (err error) {
 }
 
 func (s *Stream) reset() {
-	s.handshakeBuffer = s.handshakeBuffer[:cap(s.handshakeBuffer)]
 	s.state = StateHandshake
 	s.stream = nil
 	s.conn = nil
@@ -943,32 +937,25 @@ func (s *Stream) upgrade(uri *url.URL, stream sonic.Stream, headers []Header) er
 		return err
 	}
 
-	s.handshakeBuffer = s.handshakeBuffer[:cap(s.handshakeBuffer)]
-	n, err := stream.Read(s.handshakeBuffer)
-	if err != nil {
-		return err
+	if s.conn != nil {
+		if err := s.conn.SetReadDeadline(
+			time.Now().Add(HandshakeReadTimeout),
+		); err != nil {
+			return err
+		}
+		defer func() { _ = s.conn.SetReadDeadline(time.Time{}) }()
 	}
-	s.handshakeBuffer = s.handshakeBuffer[:n]
-	rd := bytes.NewReader(s.handshakeBuffer)
-	res, err := http.ReadResponse(bufio.NewReader(rd), req)
+
+	br := bufio.NewReaderSize(stream, 4096)
+	res, err := http.ReadResponse(br, req)
 	if err != nil {
 		return err
 	}
 
-	rawRes, err := httputil.DumpResponse(res, true)
-	if err != nil {
-		return err
+	if n := br.Buffered(); n > 0 {
+		extra, _ := br.Peek(n)
+		_, _ = s.src.Write(extra)
 	}
-
-	resLen := len(rawRes)
-	extra := len(s.handshakeBuffer) - resLen
-	if extra > 0 {
-		// we got some frames as well with the handshake so we can put
-		// them in src for later decoding before clearing the handshake
-		// buffer
-		_, _ = s.src.Write(s.handshakeBuffer[resLen:])
-	}
-	s.handshakeBuffer = s.handshakeBuffer[:0]
 
 	if s.upgradeResponseCallback != nil {
 		s.upgradeResponseCallback(res)

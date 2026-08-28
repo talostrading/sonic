@@ -9,6 +9,7 @@ const (
 	DefaultMaxMessageSize = 1024 * 512
 	CloseTimeout          = 5 * time.Second
 	DialTimeout           = 5 * time.Second
+	HandshakeReadTimeout  = 5 * time.Second
 )
 
 type Role uint8
