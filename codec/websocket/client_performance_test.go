@@ -29,7 +29,7 @@ func TestClientReadWrite(t *testing.T) {
 
 	go func() {
 		defer s.Close()
-		if err := s.Accept("localhost:0"); err != nil {
+		if err := s.Accept("127.0.0.1:0"); err != nil {
 			panic(err)
 		}
 
@@ -97,7 +97,7 @@ func TestClientReadWrite(t *testing.T) {
 	}
 
 	client.AsyncHandshake(
-		fmt.Sprintf("ws://localhost:%d", s.Port()),
+		fmt.Sprintf("ws://127.0.0.1:%d", s.Port()),
 		onHandshake,
 	)
 
