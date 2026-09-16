@@ -14,10 +14,10 @@ import (
 
 // MockServer is a server which can be used to test the WebSocket client.
 type MockServer struct {
-	ln     net.Listener
-	conn   net.Conn
-	closed int32
-	port   int32
+	ln       net.Listener
+	conn     net.Conn
+	closed   int32
+	port     int32
 	portChan chan int
 
 	Upgrade *http.Request
@@ -32,9 +32,13 @@ func NewMockServer() *MockServer {
 // Accept starts the mock server on the specified address.
 // If MockServerDynamicAddr is provided as the address, the server binds to any available port.
 const MockServerDynamicAddr = ""
+
 func (s *MockServer) Accept(addr string) (err error) {
 	if addr == MockServerDynamicAddr {
-		s.ln, err = net.Listen("tcp", "localhost:0")
+		// 127.0.0.1, not "localhost", here and on the dialing side: on a
+		// dual-stack machine "localhost" can resolve to ::1, where the
+		// ephemeral port may be occupied by an unrelated service
+		s.ln, err = net.Listen("tcp", "127.0.0.1:0")
 	} else {
 		s.ln, err = net.Listen("tcp", addr)
 	}

@@ -69,7 +69,7 @@ func TestClientServerSendsInvalidCloseCode(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -132,7 +132,7 @@ func TestClientEchoCloseCode(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -201,7 +201,7 @@ func TestClientSendPingWithInvalidPayload(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -252,7 +252,7 @@ func TestClientSendMessageWithPayload126(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -306,7 +306,7 @@ func TestClientSendMessageWithPayload127(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -335,7 +335,7 @@ func TestClientReconnectOnFailedRead(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			var err error
 			if port != 0 {
-				err = srv.Accept(fmt.Sprintf("localhost:%d", port))
+				err = srv.Accept(fmt.Sprintf("127.0.0.1:%d", port))
 			} else {
 				err = srv.Accept(MockServerDynamicAddr)
 			}
@@ -397,7 +397,7 @@ func TestClientReconnectOnFailedRead(t *testing.T) {
 	}
 
 	connect = func() {
-		ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", port), onHandshake)
+		ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", port), onHandshake)
 	}
 
 	connect()
@@ -453,7 +453,7 @@ func TestClientFailedHandshakeNoServer(t *testing.T) {
 	}
 
 	done := false
-	ws.AsyncHandshake("ws://localhost:8081", func(err error) {
+	ws.AsyncHandshake("ws://127.0.0.1:8081", func(err error) {
 		done = true
 		if err == nil {
 			t.Fatal("expected error")
@@ -508,7 +508,7 @@ func TestClientSuccessfulHandshake(t *testing.T) {
 
 	assertState(t, ws, StateHandshake)
 
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		if err != nil {
 			assertState(t, ws, StateTerminated)
 		} else {
@@ -564,7 +564,7 @@ func TestClientSuccessfulHandshakeWithExtraHeaders(t *testing.T) {
 	}
 
 	ws.AsyncHandshake(
-		fmt.Sprintf("ws://localhost:%d", <-srv.portChan),
+		fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan),
 		func(err error) {
 			if err != nil {
 				assertState(t, ws, StateTerminated)
@@ -1670,7 +1670,7 @@ func TestClientAbnormalClose(t *testing.T) {
 	ws, err := NewWebsocketStream(ioc, nil, RoleClient)
 	assert.Nil(err)
 
-	err = ws.Handshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan))
+	err = ws.Handshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan))
 	assert.Nil(err)
 	assert.Equal(ws.State(), StateActive) // Verify WebSocket active
 
@@ -1711,7 +1711,7 @@ func TestClientAsyncAbnormalClose(t *testing.T) {
 	assert.Nil(err)
 
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		assert.Nil(err)
 		assert.Equal(ws.State(), StateActive) // Verify WebSocket active
 
@@ -1752,7 +1752,7 @@ func TestStreamResolveUrl(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = ws.resolve("ws://localhost:8080")
+	_, err = ws.resolve("ws://127.0.0.1:8080")
 	if err != nil {
 		t.Fatalf("valid url could not be resolved: %v", err)
 	}
@@ -1775,7 +1775,10 @@ func TestMaxMsgSizeBeforeHandshake(t *testing.T) {
 	go func() {
 		defer srv.Close()
 		assert.Nil(srv.Accept(MockServerDynamicAddr))
-		assert.Nil(srv.Write(make([]byte, msgSize+1)))
+		// not asserted: the client tears the connection down on seeing the
+		// oversized header, racing this write, which can then fail with
+		// EPIPE/ECONNRESET after the test has completed
+		_ = srv.Write(make([]byte, msgSize+1))
 	}()
 
 	ioc := sonic.MustIO()
@@ -1794,7 +1797,7 @@ func TestMaxMsgSizeBeforeHandshake(t *testing.T) {
 
 	// we now check if the max message size is enforced
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		assert.Nil(err)
 
 		ws.AsyncNextFrame(func(err error, f Frame) {
@@ -1827,7 +1830,7 @@ func TestMaxMsgSizeAfterHandshake(t *testing.T) {
 
 	// we now check if the max message size is enforced
 	done := false
-	ws.AsyncHandshake(fmt.Sprintf("ws://localhost:%d", <-srv.portChan), func(err error) {
+	ws.AsyncHandshake(fmt.Sprintf("ws://127.0.0.1:%d", <-srv.portChan), func(err error) {
 		assert.Nil(err)
 
 		// check that increasing it after the handshake works
