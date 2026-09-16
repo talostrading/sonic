@@ -21,6 +21,8 @@ type MockServer struct {
 	portChan chan int
 
 	Upgrade *http.Request
+
+	SendUpgradeResponse func(conn net.Conn, res []byte) error
 }
 
 func NewMockServer() *MockServer {
@@ -84,6 +86,10 @@ func (s *MockServer) Accept(addr string) (err error) {
 		MakeResponseKey([]byte(s.Upgrade.Header.Get("Sec-WebSocket-Key"))),
 	)
 	fmt.Fprintf(res, "\r\n")
+
+	if s.SendUpgradeResponse != nil {
+		return s.SendUpgradeResponse(s.conn, res.Bytes())
+	}
 
 	_, err = res.WriteTo(s.conn)
 	return err
