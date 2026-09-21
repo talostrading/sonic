@@ -1083,3 +1083,141 @@ func (s *Stream) CloseNextLayer() (err error) {
 	}
 	return
 }
+
+// Accept performs the server-side WebSocket handshake. This call blocks.
+//
+// The call blocks until one of the following conditions is true:
+//   - the HTTP upgrade request is received and the response is sent
+//   - an error occurs
+//
+// The provided sonic.Conn should be a connection accepted from a sonic.Listener.
+func (s *Stream) Accept(conn sonic.Conn) error {
+	if s.role != RoleServer {
+		return ErrWrongHandshakeRole
+	}
+
+	s.reset()
+
+	stream, err := s.accept(conn)
+	if err != nil {
+		s.state = StateTerminated
+		return err
+	}
+
+	s.state = StateActive
+	return s.init(stream)
+}
+
+// AsyncAccept performs the server-side WebSocket handshake asynchronously.
+//
+// This call does not block. The provided callback is called when the handshake
+// completes or when an error occurs.
+//
+// The provided sonic.Conn should be a connection accepted from a sonic.Listener.
+func (s *Stream) AsyncAccept(conn sonic.Conn, callback func(error)) {
+	if s.role != RoleServer {
+		callback(ErrWrongHandshakeRole)
+		return
+	}
+
+	s.reset()
+
+	s.conn = conn
+	s.asyncAccept(conn, func(err error, stream sonic.Stream) {
+		if err != nil {
+			s.state = StateTerminated
+		} else {
+			s.state = StateActive
+			err = s.init(stream)
+		}
+		callback(err)
+	})
+}
+
+func (s *Stream) accept(conn sonic.Conn) (sonic.Stream, error) {
+	s.conn = conn
+
+	s.handshakeBuffer = s.handshakeBuffer[:cap(s.handshakeBuffer)]
+	n, err := conn.Read(s.handshakeBuffer)
+	if err != nil {
+		return nil, err
+	}
+	s.handshakeBuffer = s.handshakeBuffer[:n]
+
+	req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(s.handshakeBuffer)))
+	if err != nil {
+		return nil, err
+	}
+
+	if !IsUpgradeReq(req) {
+		return nil, ErrCannotUpgrade
+	}
+
+	clientKey := req.Header.Get("Sec-WebSocket-Key")
+	if clientKey == "" {
+		return nil, ErrCannotUpgrade
+	}
+	acceptKey := MakeResponseKey([]byte(clientKey))
+
+	res := bytes.NewBuffer(nil)
+	fmt.Fprintf(res, "HTTP/1.1 101 Switching Protocols\r\n")
+	fmt.Fprintf(res, "Upgrade: websocket\r\n")
+	fmt.Fprintf(res, "Connection: Upgrade\r\n")
+	fmt.Fprintf(res, "Sec-WebSocket-Accept: %s\r\n", acceptKey)
+	fmt.Fprintf(res, "\r\n")
+
+	_, err = conn.Write(res.Bytes())
+	if err != nil {
+		return nil, err
+	}
+
+	s.handshakeBuffer = s.handshakeBuffer[:0]
+
+	return conn, nil
+}
+
+func (s *Stream) asyncAccept(conn sonic.Conn, callback func(error, sonic.Stream)) {
+	s.handshakeBuffer = s.handshakeBuffer[:cap(s.handshakeBuffer)]
+	conn.AsyncRead(s.handshakeBuffer, func(err error, n int) {
+		if err != nil {
+			callback(err, nil)
+			return
+		}
+		s.handshakeBuffer = s.handshakeBuffer[:n]
+
+		req, err := http.ReadRequest(bufio.NewReader(bytes.NewReader(s.handshakeBuffer)))
+		if err != nil {
+			callback(err, nil)
+			return
+		}
+
+		if !IsUpgradeReq(req) {
+			callback(ErrCannotUpgrade, nil)
+			return
+		}
+
+		clientKey := req.Header.Get("Sec-WebSocket-Key")
+		if clientKey == "" {
+			callback(ErrCannotUpgrade, nil)
+			return
+		}
+		acceptKey := MakeResponseKey([]byte(clientKey))
+
+		res := bytes.NewBuffer(nil)
+		fmt.Fprintf(res, "HTTP/1.1 101 Switching Protocols\r\n")
+		fmt.Fprintf(res, "Upgrade: websocket\r\n")
+		fmt.Fprintf(res, "Connection: Upgrade\r\n")
+		fmt.Fprintf(res, "Sec-WebSocket-Accept: %s\r\n", acceptKey)
+		fmt.Fprintf(res, "\r\n")
+
+		conn.AsyncWriteAll(res.Bytes(), func(err error, n int) {
+			if err != nil {
+				callback(err, nil)
+				return
+			}
+
+			s.handshakeBuffer = s.handshakeBuffer[:0]
+			callback(nil, conn)
+		})
+	})
+}

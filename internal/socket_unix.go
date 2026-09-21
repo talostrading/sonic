@@ -273,7 +273,14 @@ func Listen(network, addr string, opts ...sonicopts.Option) (int, net.Addr, erro
 		return -1, nil, os.NewSyscallError("listen", err)
 	}
 
-	return fd, localAddr, nil
+	// Get the actual bound address (with assigned port)
+	boundAddr, err := SocketAddress(fd)
+	if err != nil {
+		_ = syscall.Close(fd)
+		return -1, nil, err
+	}
+
+	return fd, boundAddr, nil
 }
 
 func ListenUDP(network, addr string, opts ...sonicopts.Option) (int, net.Addr, error) {
