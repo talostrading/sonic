@@ -20,7 +20,7 @@ type Timer struct {
 }
 
 func NewTimer(p Poller) (*Timer, error) {
-	fd, err := unix.TimerfdCreate(unix.CLOCK_REALTIME, unix.TFD_NONBLOCK)
+	fd, err := unix.TimerfdCreate(unix.CLOCK_MONOTONIC, unix.TFD_NONBLOCK)
 	if err != nil {
 		return nil, os.NewSyscallError("timerfd_create", err)
 	}
