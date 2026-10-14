@@ -33,9 +33,18 @@ import (
 	"unicode/utf8"
 
 	"github.com/talostrading/sonic"
+	"github.com/talostrading/sonic/bytes"
 	"github.com/talostrading/sonic/sonicerrors"
 	"github.com/talostrading/sonic/sonicopts"
 )
+
+// Buffer is a common interface for ByteBuffer and MirroredBuffer
+type Buffer interface {
+	io.Writer
+	Commit(n int)
+	Consume(n int) int
+	Reset()
+}
 
 type Stream struct {
 	ioc *sonic.IO
@@ -61,10 +70,10 @@ type Stream struct {
 	hasher hash.Hash
 
 	// Buffer for stream reads.
-	src *sonic.ByteBuffer
+	src Buffer
 
 	// Buffer for stream writes.
-	dst *sonic.ByteBuffer
+	dst Buffer
 
 	// Contains the handshake response. Is emptied after the handshake is over.
 	handshakeBuffer []byte
@@ -115,8 +124,52 @@ func NewWebsocketStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *Stream, e
 		validateUTF8:   false,
 	}
 
-	s.src.Reserve(4096)
-	s.dst.Reserve(4096)
+	s.src.(*sonic.ByteBuffer).Reserve(4096)
+	s.dst.(*sonic.ByteBuffer).Reserve(4096)
+
+	return s, nil
+}
+
+// NewStream creates a WebSocket stream using MirroredBuffer for zero-copy handling.
+// We use a MirroredBuffer of 1MB (256 * 4096 pages) for efficient frame processing.
+// If MirroredBuffer allocation fails, it falls back to standard ByteBuffer.
+func NewStream(ioc *sonic.IO, tls *tls.Config, role Role) (s *Stream, err error) {
+	// Try to allocate MirroredBuffer (1MB = 256 * 4096 pages)
+	srcBuf, err := bytes.NewMirroredBuffer(1024*1024, false)
+	if err != nil {
+		// Fallback to standard buffer if mmap fails (e.g., on non-Linux dev machines)
+		return NewWebsocketStream(ioc, tls, role)
+	}
+
+	dstBuf, err := bytes.NewMirroredBuffer(1024*1024, false)
+	if err != nil {
+		// Fallback to standard buffer if second mmap fails
+		_ = srcBuf.Destroy()
+		return NewWebsocketStream(ioc, tls, role)
+	}
+
+	s = &Stream{
+		ioc:   ioc,
+		tls:   tls,
+		role:  role,
+		src:   srcBuf,
+		dst:   dstBuf,
+		state: StateHandshake,
+		/* #nosec G401 */
+		hasher:          sha1.New(),
+		handshakeBuffer: make([]byte, 1024),
+		dialer: &net.Dialer{
+			Timeout: DialTimeout,
+		},
+		framePool: sync.Pool{
+			New: func() interface{} {
+				frame := NewFrame()
+				return &frame
+			},
+		},
+		maxMessageSize: DefaultMaxMessageSize,
+		validateUTF8:   false,
+	}
 
 	return s, nil
 }

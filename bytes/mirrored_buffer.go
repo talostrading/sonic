@@ -251,6 +251,28 @@ func (b *MirroredBuffer) Size() int {
 	return b.size
 }
 
+// Add this method so MirroredBuffer satisfies the io.Writer interface
+// just like the old ByteBuffer did.
+func (b *MirroredBuffer) Write(p []byte) (int, error) {
+    // 1. Claim space in the buffer equal to the length of p
+    buf := b.Claim(len(p))
+    
+    // 2. Copy p into the claimed space
+    n := copy(buf, p)
+    
+    // 3. Commit the bytes so they are available to be read
+    b.Commit(n)
+    
+    return n, nil
+}
+
+// Add Reset to match ByteBuffer interface
+func (b *MirroredBuffer) Reset() {
+    b.read = 0
+    b.write = 0
+    b.full = false
+}
+
 func (b *MirroredBuffer) Reset() {
 	b.head = 0
 	b.tail = 0
