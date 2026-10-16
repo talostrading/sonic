@@ -100,6 +100,7 @@ func (s StreamState) String() string {
 }
 
 type AsyncMessageCallback = func(err error, n int, messageType MessageType)
+type AsyncMessageDirectCallback = func(err error, messageType MessageType, payloads ...[]byte)
 type AsyncFrameCallback = func(err error, f Frame)
 type ControlCallback = func(messageType MessageType, payload []byte)
 type UpgradeRequestCallback = func(req *http.Request)
